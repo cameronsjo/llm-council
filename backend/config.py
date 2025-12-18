@@ -8,6 +8,9 @@ load_dotenv()
 # OpenRouter API key
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+# Tavily API key for web search (optional)
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
 # Council members - list of OpenRouter model identifiers
 COUNCIL_MODELS = [
     "openai/gpt-5.1",

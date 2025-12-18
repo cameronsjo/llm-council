@@ -9,6 +9,9 @@ export default function ChatInterface({
   conversation,
   onSendMessage,
   isLoading,
+  webSearchAvailable,
+  useWebSearch,
+  onToggleWebSearch,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -72,6 +75,19 @@ export default function ChatInterface({
                 <div className="assistant-message">
                   <div className="message-label">LLM Council</div>
 
+                  {/* Web Search */}
+                  {msg.loading?.webSearch && (
+                    <div className="stage-loading">
+                      <div className="spinner"></div>
+                      <span>Searching the web...</span>
+                    </div>
+                  )}
+                  {msg.webSearchUsed && (
+                    <div className="web-search-badge">
+                      <span className="web-search-icon">🔍</span> Web search results included
+                    </div>
+                  )}
+
                   {/* Stage 1 */}
                   {msg.loading?.stage1 && (
                     <div className="stage-loading">
@@ -131,13 +147,26 @@ export default function ChatInterface({
             disabled={isLoading}
             rows={3}
           />
-          <button
-            type="submit"
-            className="send-button"
-            disabled={!input.trim() || isLoading}
-          >
-            Send
-          </button>
+          <div className="input-controls">
+            {webSearchAvailable && (
+              <label className="web-search-toggle">
+                <input
+                  type="checkbox"
+                  checked={useWebSearch}
+                  onChange={onToggleWebSearch}
+                  disabled={isLoading}
+                />
+                <span className="toggle-label">🔍 Web Search</span>
+              </label>
+            )}
+            <button
+              type="submit"
+              className="send-button"
+              disabled={!input.trim() || isLoading}
+            >
+              Send
+            </button>
+          </div>
         </form>
       )}
     </div>

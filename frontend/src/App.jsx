@@ -9,11 +9,23 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [webSearchAvailable, setWebSearchAvailable] = useState(false);
+  const [useWebSearch, setUseWebSearch] = useState(false);
 
-  // Load conversations on mount
+  // Load conversations and config on mount
   useEffect(() => {
     loadConversations();
+    loadConfig();
   }, []);
+
+  const loadConfig = async () => {
+    try {
+      const config = await api.getConfig();
+      setWebSearchAvailable(config.web_search_available);
+    } catch (error) {
+      console.error('Failed to load config:', error);
+    }
+  };
 
   // Load conversation details when selected
   useEffect(() => {
@@ -76,7 +88,9 @@ function App() {
         stage2: null,
         stage3: null,
         metadata: null,
+        webSearchUsed: false,
         loading: {
+          webSearch: false,
           stage1: false,
           stage2: false,
           stage3: false,
@@ -90,8 +104,27 @@ function App() {
       }));
 
       // Send message with streaming
-      await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
+      await api.sendMessageStream(currentConversationId, content, useWebSearch, (eventType, event) => {
         switch (eventType) {
+          case 'web_search_start':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.loading.webSearch = true;
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'web_search_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.loading.webSearch = false;
+              lastMsg.webSearchUsed = event.data?.found || false;
+              return { ...prev, messages };
+            });
+            break;
+
           case 'stage1_start':
             setCurrentConversation((prev) => {
               const messages = [...prev.messages];
@@ -193,6 +226,9 @@ function App() {
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
+        webSearchAvailable={webSearchAvailable}
+        useWebSearch={useWebSearch}
+        onToggleWebSearch={() => setUseWebSearch(!useWebSearch)}
       />
     </div>
   );

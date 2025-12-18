@@ -59,12 +59,26 @@ CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 
 ## Running the Application
 
-**Option 1: Use the start script**
+**Option 1: Use Docker (Recommended)**
+```bash
+# Copy .env.example to .env and add your API keys
+cp .env.example .env
+
+# Start services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+```
+
+Then open http://localhost:3000 in your browser.
+
+**Option 2: Use the start script**
 ```bash
 ./start.sh
 ```
 
-**Option 2: Run manually**
+**Option 3: Run manually**
 
 Terminal 1 (Backend):
 ```bash
@@ -78,6 +92,18 @@ npm run dev
 ```
 
 Then open http://localhost:5173 in your browser.
+
+## Web Search (Optional)
+
+Enable web search to give the LLM Council access to current information from the web.
+
+1. Get a free API key from [Tavily](https://tavily.com/)
+2. Add to your `.env` file:
+   ```bash
+   TAVILY_API_KEY=tvly-...
+   ```
+3. Restart the backend (or Docker containers)
+4. Toggle "Web Search" when asking a question
 
 ## Tech Stack
 

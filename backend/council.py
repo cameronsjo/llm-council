@@ -1,21 +1,40 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .websearch import search_web, format_search_results, is_web_search_available
 
 
-async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(
+    user_query: str,
+    web_search_context: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
+        web_search_context: Optional web search results to include in context
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
-    messages = [{"role": "user", "content": user_query}]
+    # Build the prompt with optional web search context
+    if web_search_context:
+        prompt = f"""The following web search results have been gathered to help answer the user's question:
+
+{web_search_context}
+
+---
+
+User's Question: {user_query}
+
+Please use the web search results above as reference when answering. Cite sources where appropriate."""
+    else:
+        prompt = user_query
+
+    messages = [{"role": "user", "content": prompt}]
 
     # Query all models in parallel
     responses = await query_models_parallel(COUNCIL_MODELS, messages)
@@ -293,18 +312,46 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
+async def perform_web_search(query: str) -> Optional[str]:
+    """
+    Perform web search and return formatted results.
+
+    Args:
+        query: The search query
+
+    Returns:
+        Formatted search results string, or None if search failed/unavailable
+    """
+    if not is_web_search_available():
+        return None
+
+    search_results = await search_web(query, max_results=5)
+    if search_results:
+        return format_search_results(search_results)
+    return None
+
+
+async def run_full_council(
+    user_query: str,
+    use_web_search: bool = False
+) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
 
     Args:
         user_query: The user's question
+        use_web_search: Whether to include web search results
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
+    # Optionally perform web search
+    web_search_context = None
+    if use_web_search:
+        web_search_context = await perform_web_search(user_query)
+
     # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
+    stage1_results = await stage1_collect_responses(user_query, web_search_context)
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -329,7 +376,8 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
     # Prepare metadata
     metadata = {
         "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings
+        "aggregate_rankings": aggregate_rankings,
+        "web_search_used": web_search_context is not None,
     }
 
     return stage1_results, stage2_results, stage3_result, metadata

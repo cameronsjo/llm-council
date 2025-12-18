@@ -132,6 +132,47 @@ Models are hardcoded in `backend/config.py`. Chairman can be same or different f
 3. **Ranking Parse Failures**: If models don't follow format, fallback regex extracts any "Response X" patterns in order
 4. **Missing Metadata**: Metadata is ephemeral (not persisted), only available in API responses
 
+## Web Search Feature
+
+The web search feature allows models to access current information from the web via the Tavily API.
+
+**Backend Implementation:**
+- `backend/websearch.py`: Tavily API client with `search_web()` and `format_search_results()` functions
+- `backend/config.py`: `TAVILY_API_KEY` loaded from environment
+- `backend/council.py`: `perform_web_search()` function, integrated into Stage 1
+- `backend/main.py`: `/api/config` endpoint to check feature availability
+
+**Frontend Implementation:**
+- `api.js`: `getConfig()` function, updated `sendMessageStream()` signature
+- `App.jsx`: `webSearchAvailable` and `useWebSearch` state management
+- `ChatInterface.jsx`: Web search toggle checkbox and status indicators
+
+**Data Flow:**
+1. Frontend fetches `/api/config` on load to check if web search is available
+2. User toggles web search checkbox (only visible if TAVILY_API_KEY is set)
+3. On message send, `use_web_search` flag is passed to backend
+4. Backend performs Tavily search before Stage 1
+5. Search results are prepended to the user query as context
+6. Models receive both search context and original question
+
+## Docker Deployment
+
+**Files:**
+- `Dockerfile.backend`: Python 3.12 slim image with uv
+- `Dockerfile.frontend`: Multi-stage build (Node builder → nginx)
+- `docker-compose.yml`: Orchestrates backend and frontend services
+- `nginx.conf`: Frontend server configuration
+- `.dockerignore`: Excludes unnecessary files from builds
+
+**Services:**
+- `backend`: Port 8001, volumes for persistent data
+- `frontend`: Port 3000 (nginx serving built React app)
+
+**Environment Variables:**
+- `OPENROUTER_API_KEY`: Required for LLM queries
+- `TAVILY_API_KEY`: Optional for web search
+- `VITE_API_URL`: Build-time arg for API base URL
+
 ## Future Enhancement Ideas
 
 - Configurable council/chairman via UI instead of config file
