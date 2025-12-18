@@ -11,6 +11,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [webSearchAvailable, setWebSearchAvailable] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
+  const [councilModels, setCouncilModels] = useState([]);
+  const [chairmanModel, setChairmanModel] = useState('');
 
   // Load conversations and config on mount
   useEffect(() => {
@@ -22,6 +24,8 @@ function App() {
     try {
       const config = await api.getConfig();
       setWebSearchAvailable(config.web_search_available);
+      setCouncilModels(config.council_models || []);
+      setChairmanModel(config.chairman_model || '');
     } catch (error) {
       console.error('Failed to load config:', error);
     }
@@ -121,6 +125,7 @@ function App() {
               const lastMsg = messages[messages.length - 1];
               lastMsg.loading.webSearch = false;
               lastMsg.webSearchUsed = event.data?.found || false;
+              lastMsg.webSearchError = event.data?.error || null;
               return { ...prev, messages };
             });
             break;
@@ -221,6 +226,8 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        councilModels={councilModels}
+        chairmanModel={chairmanModel}
       />
       <ChatInterface
         conversation={currentConversation}

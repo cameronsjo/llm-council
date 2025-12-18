@@ -1,7 +1,7 @@
 """Web search functionality using Tavily API."""
 
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import httpx
 from .config import TAVILY_API_KEY
 
@@ -13,7 +13,7 @@ async def search_web(
     max_results: int = 5,
     search_depth: str = "basic",
     include_answer: bool = True,
-) -> Optional[Dict[str, Any]]:
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Perform a web search using Tavily API.
 
@@ -24,10 +24,12 @@ async def search_web(
         include_answer: Whether to include AI-generated answer summary
 
     Returns:
-        Dict with 'answer' (if requested) and 'results' list, or None on failure
+        Tuple of (results_dict, error_message)
+        - On success: (results, None)
+        - On error: (None, error_message)
     """
     if not TAVILY_API_KEY:
-        return None
+        return None, "Web search not configured"
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -43,10 +45,18 @@ async def search_web(
                 },
             )
             response.raise_for_status()
-            return response.json()
+            return response.json(), None
+    except httpx.TimeoutException:
+        return None, "Web search timed out"
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            return None, "Invalid Tavily API key"
+        elif e.response.status_code == 429:
+            return None, "Web search rate limit exceeded"
+        return None, f"Web search failed (HTTP {e.response.status_code})"
     except Exception as e:
         print(f"Web search error: {e}")
-        return None
+        return None, "Web search failed"
 
 
 def format_search_results(search_response: Dict[str, Any]) -> str:

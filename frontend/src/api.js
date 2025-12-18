@@ -2,7 +2,16 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+// In development: uses VITE_API_URL env var
+// In Docker: __API_URL_PLACEHOLDER__ gets replaced at container start
+const API_BASE = (() => {
+  const placeholder = '__API_URL_PLACEHOLDER__';
+  // If placeholder wasn't replaced, use env var or default
+  if (placeholder.startsWith('__')) {
+    return import.meta.env.VITE_API_URL || 'http://localhost:8001';
+  }
+  return placeholder;
+})();
 
 export const api = {
   /**

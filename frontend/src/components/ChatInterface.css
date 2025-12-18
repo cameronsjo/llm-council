@@ -210,3 +210,16 @@
 .web-search-icon {
   font-size: 14px;
 }
+
+.web-search-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 16px;
+  font-size: 12px;
+  color: #856404;
+}

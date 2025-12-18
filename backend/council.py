@@ -312,7 +312,7 @@ Title:"""
     return title
 
 
-async def perform_web_search(query: str) -> Optional[str]:
+async def perform_web_search(query: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Perform web search and return formatted results.
 
@@ -320,15 +320,19 @@ async def perform_web_search(query: str) -> Optional[str]:
         query: The search query
 
     Returns:
-        Formatted search results string, or None if search failed/unavailable
+        Tuple of (formatted_results, error_message)
+        - On success: (results_string, None)
+        - On error: (None, error_message)
     """
     if not is_web_search_available():
-        return None
+        return None, "Web search not configured"
 
-    search_results = await search_web(query, max_results=5)
+    search_results, error = await search_web(query, max_results=5)
+    if error:
+        return None, error
     if search_results:
-        return format_search_results(search_results)
-    return None
+        return format_search_results(search_results), None
+    return None, "No results found"
 
 
 async def run_full_council(
@@ -347,8 +351,9 @@ async def run_full_council(
     """
     # Optionally perform web search
     web_search_context = None
+    web_search_error = None
     if use_web_search:
-        web_search_context = await perform_web_search(user_query)
+        web_search_context, web_search_error = await perform_web_search(user_query)
 
     # Stage 1: Collect individual responses
     stage1_results = await stage1_collect_responses(user_query, web_search_context)
@@ -378,6 +383,7 @@ async def run_full_council(
         "label_to_model": label_to_model,
         "aggregate_rankings": aggregate_rankings,
         "web_search_used": web_search_context is not None,
+        "web_search_error": web_search_error,
     }
 
     return stage1_results, stage2_results, stage3_result, metadata

@@ -61,8 +61,11 @@ async def root():
 @app.get("/api/config")
 async def get_config():
     """Get API configuration and feature availability."""
+    from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
     return {
         "web_search_available": is_web_search_available(),
+        "council_models": COUNCIL_MODELS,
+        "chairman_model": CHAIRMAN_MODEL,
     }
 
 
@@ -160,10 +163,11 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Optionally perform web search
             web_search_context = None
+            web_search_error = None
             if request.use_web_search:
                 yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
-                web_search_context = await perform_web_search(request.content)
-                yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None}})}\n\n"
+                web_search_context, web_search_error = await perform_web_search(request.content)
+                yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
@@ -174,8 +178,13 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
             stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            web_search_used = web_search_context is not None
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings, 'web_search_used': web_search_used}})}\n\n"
+            metadata = {
+                'label_to_model': label_to_model,
+                'aggregate_rankings': aggregate_rankings,
+                'web_search_used': web_search_context is not None,
+                'web_search_error': web_search_error,
+            }
+            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"

@@ -87,6 +87,11 @@ export default function ChatInterface({
                       <span className="web-search-icon">🔍</span> Web search results included
                     </div>
                   )}
+                  {msg.webSearchError && !msg.webSearchUsed && (
+                    <div className="web-search-error">
+                      <span className="web-search-icon">⚠️</span> {msg.webSearchError}
+                    </div>
+                  )}
 
                   {/* Stage 1 */}
                   {msg.loading?.stage1 && (
