@@ -1,65 +1,116 @@
+/* Stage 1 - Individual Responses Chamber */
 .stage {
-  margin: 24px 0;
-  padding: 20px;
-  background: #fafafa;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  margin: var(--space-lg) 0;
+  padding: var(--space-lg);
+  background: var(--color-stage1);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-stage1-border);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Stage indicator badge */
+.stage::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--color-stage1-accent);
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
 }
 
 .stage-title {
-  margin: 0 0 16px 0;
-  color: #333;
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
   font-weight: 600;
+  margin: 0 0 var(--space-md) 0;
+  color: var(--color-stage1-accent);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
+.stage-title::before {
+  content: 'I';
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 700;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-stage1-accent);
+  color: white;
+  border-radius: 50%;
+}
+
+/* Tabs */
 .tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
   flex-wrap: wrap;
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-stage1-border);
 }
 
 .tab {
-  padding: 8px 16px;
-  background: #ffffff;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px 6px 0 0;
-  color: #666;
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition: all var(--transition-fast);
 }
 
 .tab:hover {
-  background: #f0f0f0;
-  color: #333;
-  border-color: #4a90e2;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--color-text-primary);
 }
 
 .tab.active {
-  background: #ffffff;
-  color: #4a90e2;
-  border-color: #4a90e2;
-  border-bottom-color: #ffffff;
-  font-weight: 600;
+  background: white;
+  color: var(--color-stage1-accent);
+  border-color: var(--color-stage1-border);
+  box-shadow: var(--shadow-subtle);
 }
 
 .tab-content {
-  background: #ffffff;
-  padding: 16px;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
+  background: white;
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-stage1-border);
+  box-shadow: var(--shadow-subtle);
 }
 
 .model-name {
-  color: #888;
-  font-size: 12px;
-  margin-bottom: 12px;
-  font-family: monospace;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  margin-bottom: var(--space-md);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.model-name::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: var(--color-stage1-accent);
+  border-radius: 50%;
+  opacity: 0.6;
 }
 
 .response-text {
-  color: #333;
-  line-height: 1.6;
+  color: var(--color-text-primary);
+  line-height: 1.7;
+  font-family: var(--font-body);
 }

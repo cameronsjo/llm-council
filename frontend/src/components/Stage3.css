@@ -1,25 +1,74 @@
+/* Stage 3 - Final Synthesis Chamber */
 .stage3 {
-  background: #f0fff0;
-  border-color: #c8e6c8;
+  background: var(--color-stage3);
+  border-color: var(--color-stage3-border);
+}
+
+.stage3::before {
+  background: var(--color-stage3-accent);
+}
+
+.stage3 .stage-title {
+  color: var(--color-stage3-accent);
+}
+
+.stage3 .stage-title::before {
+  content: 'III';
+  background: var(--color-stage3-accent);
+  font-size: 0.75rem;
 }
 
 .final-response {
-  background: #ffffff;
-  padding: 20px;
-  border-radius: 6px;
-  border: 1px solid #c8e6c8;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+  padding: var(--space-xl);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-stage3-border);
+  box-shadow: var(--shadow-medium);
+  position: relative;
+}
+
+/* Decorative flourish for final answer */
+.final-response::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--color-stage3-accent) 20%,
+    var(--color-stage3-accent) 80%,
+    transparent 100%
+  );
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .chairman-label {
-  color: #2d8a2d;
-  font-size: 12px;
-  font-family: monospace;
-  margin-bottom: 12px;
+  color: var(--color-stage3-accent);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  margin-bottom: var(--space-md);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chairman-label::before {
+  content: '👑';
+  font-size: 0.875rem;
 }
 
 .final-text {
-  color: #333;
-  line-height: 1.7;
-  font-size: 15px;
+  color: var(--color-text-primary);
+  line-height: 1.8;
+  font-size: 1rem;
+  font-family: var(--font-body);
+}
+
+.final-text p:first-child {
+  font-size: 1.0625rem;
 }

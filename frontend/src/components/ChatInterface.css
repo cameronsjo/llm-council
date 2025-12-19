@@ -1,95 +1,134 @@
+/* Chat Interface - Main Content Area */
 .chat-interface {
   flex: 1;
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #ffffff;
+  background: var(--color-cream);
+  position: relative;
 }
 
 .messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: var(--space-xl) var(--space-2xl);
 }
 
+/* Empty State */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #666;
   text-align: center;
+  padding: var(--space-xl);
 }
 
 .empty-state h2 {
-  margin: 0 0 8px 0;
-  font-size: 24px;
-  color: #333;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-md) 0;
+  color: var(--color-text-primary);
 }
 
 .empty-state p {
   margin: 0;
-  font-size: 16px;
+  font-size: 1.0625rem;
+  color: var(--color-text-secondary);
+  max-width: 400px;
 }
 
+/* Message Groups */
 .message-group {
-  margin-bottom: 32px;
+  margin-bottom: var(--space-2xl);
+  animation: messageSlideIn 0.4s ease-out;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .user-message,
 .assistant-message {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-md);
 }
 
 .message-label {
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 600;
-  color: #666;
-  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-sm);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
 }
 
+/* User Message */
 .user-message .message-content {
-  background: #f0f7ff;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #d0e7ff;
-  color: #333;
-  line-height: 1.6;
-  max-width: 80%;
+  background: linear-gradient(135deg, var(--color-ivory) 0%, var(--color-parchment) 100%);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  line-height: 1.7;
+  max-width: 75%;
   white-space: pre-wrap;
+  box-shadow: var(--shadow-subtle);
+  position: relative;
 }
 
+/* Decorative corner flourish */
+.user-message .message-content::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 24px;
+  height: 24px;
+  border-left: 2px solid var(--color-burgundy);
+  border-top: 2px solid var(--color-burgundy);
+  border-radius: var(--radius-lg) 0 0 0;
+}
+
+/* Loading States */
 .loading-indicator {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
-  color: #666;
-  font-size: 14px;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
 }
 
 .stage-loading {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
-  margin: 12px 0;
-  background: #f9fafb;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-  color: #666;
-  font-size: 14px;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  margin: var(--space-md) 0;
+  background: var(--color-ivory);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
   font-style: italic;
 }
 
+/* Spinner - Elegant rotating ring */
 .spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid #e0e0e0;
-  border-top-color: #4a90e2;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-burgundy);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -100,126 +139,148 @@
   }
 }
 
+/* Input Form */
 .input-form {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
-  padding: 24px;
-  border-top: 1px solid #e0e0e0;
-  background: #fafafa;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-2xl);
+  border-top: 1px solid var(--color-border);
+  background: linear-gradient(180deg, var(--color-ivory) 0%, var(--color-parchment) 100%);
 }
 
 .message-input {
   flex: 1;
-  padding: 14px;
-  background: #ffffff;
-  border: 1px solid #d0d0d0;
-  border-radius: 8px;
-  color: #333;
-  font-size: 15px;
-  font-family: inherit;
-  line-height: 1.5;
+  padding: var(--space-md);
+  background: var(--color-cream);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.6;
   outline: none;
   resize: vertical;
-  min-height: 80px;
+  min-height: 88px;
   max-height: 300px;
+  transition: all var(--transition-fast);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.message-input::placeholder {
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
 .message-input:focus {
-  border-color: #4a90e2;
-  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+  border-color: var(--color-burgundy);
+  box-shadow: 0 0 0 3px rgba(139, 38, 53, 0.1), inset 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .message-input:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
-  background: #f5f5f5;
+  background: var(--color-parchment);
+}
+
+/* Input Controls */
+.input-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-sm);
 }
 
 .send-button {
-  padding: 14px 28px;
-  background: #4a90e2;
-  border: 1px solid #4a90e2;
-  border-radius: 8px;
+  padding: var(--space-md) var(--space-xl);
+  background: var(--color-burgundy);
+  border: none;
+  border-radius: var(--radius-md);
   color: #fff;
-  font-size: 15px;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all var(--transition-medium);
   white-space: nowrap;
-  align-self: flex-end;
+  box-shadow: var(--shadow-subtle);
 }
 
 .send-button:hover:not(:disabled) {
-  background: #357abd;
-  border-color: #357abd;
+  background: var(--color-burgundy-dark);
+  box-shadow: var(--shadow-medium);
+  transform: translateY(-1px);
+}
+
+.send-button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .send-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: #ccc;
-  border-color: #ccc;
+  background: var(--color-text-muted);
+  box-shadow: none;
 }
 
-.input-controls {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
+/* Web Search Toggle */
 .web-search-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-sm);
   cursor: pointer;
-  font-size: 13px;
-  color: #666;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
   user-select: none;
+  transition: color var(--transition-fast);
 }
 
 .web-search-toggle input[type="checkbox"] {
   width: 16px;
   height: 16px;
   cursor: pointer;
-  accent-color: #4a90e2;
+  accent-color: var(--color-burgundy);
 }
 
 .web-search-toggle .toggle-label {
   white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
 }
 
 .web-search-toggle:hover {
-  color: #4a90e2;
+  color: var(--color-burgundy);
 }
 
+/* Web Search Badge */
 .web-search-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  margin-bottom: 12px;
-  background: #e8f4fd;
-  border: 1px solid #b8daff;
-  border-radius: 16px;
-  font-size: 12px;
-  color: #0066cc;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-stage1);
+  border: 1px solid var(--color-stage1-border);
+  border-radius: var(--radius-lg);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--color-stage1-accent);
 }
 
 .web-search-icon {
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .web-search-error {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  margin-bottom: 12px;
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 16px;
-  font-size: 12px;
-  color: #856404;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-stage2);
+  border: 1px solid var(--color-stage2-border);
+  border-radius: var(--radius-lg);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--color-stage2-accent);
 }
