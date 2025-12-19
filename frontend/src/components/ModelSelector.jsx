@@ -2,6 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import './ModelSelector.css';
 
+/** Major providers to show when filter is active */
+const MAJOR_PROVIDERS = new Set([
+  'anthropic', 'openai', 'google', 'meta-llama', 'mistralai',
+  'cohere', 'deepseek', 'x-ai', 'amazon', 'microsoft'
+]);
+
 /**
  * Model selection UI for configuring council members and chairman.
  */
@@ -19,6 +25,11 @@ export default function ModelSelector({
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedProviders, setExpandedProviders] = useState(new Set());
+
+  // Filter state
+  const [showMajorOnly, setShowMajorOnly] = useState(true);
+  const [showFreeOnly, setShowFreeOnly] = useState(false);
+  const [minContext, setMinContext] = useState(0);
 
   useEffect(() => {
     loadModels();
@@ -75,16 +86,36 @@ export default function ModelSelector({
   };
 
   // Filter and group models
-  const { groupedModels, sortedProviders, filteredCount } = useMemo(() => {
+  const { groupedModels, sortedProviders, filteredCount, totalCount } = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
 
-    const filtered = query
-      ? availableModels.filter(m =>
-          m.name?.toLowerCase().includes(query) ||
+    const filtered = availableModels.filter(m => {
+      // Text search filter
+      if (query) {
+        const matchesQuery = m.name?.toLowerCase().includes(query) ||
           m.id.toLowerCase().includes(query) ||
-          m.provider?.toLowerCase().includes(query)
-        )
-      : availableModels;
+          m.provider?.toLowerCase().includes(query);
+        if (!matchesQuery) return false;
+      }
+
+      // Major providers filter
+      if (showMajorOnly && !MAJOR_PROVIDERS.has(m.provider?.toLowerCase())) {
+        return false;
+      }
+
+      // Free models filter
+      if (showFreeOnly) {
+        const price = m.pricing?.completion || 0;
+        if (price > 0) return false;
+      }
+
+      // Context length filter
+      if (minContext > 0 && (m.context_length || 0) < minContext) {
+        return false;
+      }
+
+      return true;
+    });
 
     const grouped = filtered.reduce((acc, model) => {
       const provider = model.provider || 'Other';
@@ -93,12 +124,22 @@ export default function ModelSelector({
       return acc;
     }, {});
 
+    // Sort providers: major providers first, then alphabetically
+    const providers = Object.keys(grouped).sort((a, b) => {
+      const aMajor = MAJOR_PROVIDERS.has(a.toLowerCase());
+      const bMajor = MAJOR_PROVIDERS.has(b.toLowerCase());
+      if (aMajor && !bMajor) return -1;
+      if (!aMajor && bMajor) return 1;
+      return a.localeCompare(b);
+    });
+
     return {
       groupedModels: grouped,
-      sortedProviders: Object.keys(grouped).sort(),
+      sortedProviders: providers,
       filteredCount: filtered.length,
+      totalCount: availableModels.length,
     };
-  }, [availableModels, searchQuery]);
+  }, [availableModels, searchQuery, showMajorOnly, showFreeOnly, minContext]);
 
   // Count selected models per provider
   const selectedPerProvider = useMemo(() => {
@@ -180,11 +221,38 @@ export default function ModelSelector({
           )}
         </div>
 
-        {searchQuery && (
-          <div className="search-results-count">
-            {filteredCount} model{filteredCount !== 1 ? 's' : ''} found
-          </div>
-        )}
+        <div className="filter-bar">
+          <label className={`filter-chip ${showMajorOnly ? 'active' : ''}`}>
+            <input
+              type="checkbox"
+              checked={showMajorOnly}
+              onChange={(e) => setShowMajorOnly(e.target.checked)}
+            />
+            Major providers
+          </label>
+          <label className={`filter-chip ${showFreeOnly ? 'active' : ''}`}>
+            <input
+              type="checkbox"
+              checked={showFreeOnly}
+              onChange={(e) => setShowFreeOnly(e.target.checked)}
+            />
+            Free only
+          </label>
+          <select
+            className="context-filter"
+            value={minContext}
+            onChange={(e) => setMinContext(Number(e.target.value))}
+          >
+            <option value={0}>Any context</option>
+            <option value={32000}>32K+ context</option>
+            <option value={100000}>100K+ context</option>
+            <option value={200000}>200K+ context</option>
+          </select>
+        </div>
+
+        <div className="filter-results-count">
+          {filteredCount} of {totalCount} models
+        </div>
 
         <div className="model-groups">
           {sortedProviders.map(provider => {
