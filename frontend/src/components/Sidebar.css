@@ -239,8 +239,8 @@
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-elevated), 0 0 0 1px var(--color-border);
   width: 90%;
-  max-width: 520px;
-  max-height: 85vh;
+  max-width: 700px;
+  max-height: 90vh;
   overflow: hidden;
   animation: modalSlideIn 0.3s ease-out;
 }
