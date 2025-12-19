@@ -12,7 +12,7 @@ services:
       - council-data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/api/config')"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

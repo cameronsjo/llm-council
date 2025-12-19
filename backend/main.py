@@ -67,8 +67,8 @@ class Conversation(BaseModel):
     messages: List[Dict[str, Any]]
 
 
-@app.get("/")
-async def root():
+@app.get("/api/health")
+async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "service": "LLM Council API"}
 
@@ -275,10 +275,19 @@ if STATIC_DIR.exists():
     # Mount static assets (JS, CSS, etc.)
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
+    # Root route serves SPA
+    @app.get("/")
+    async def serve_root():
+        """Serve the SPA index."""
+        return FileResponse(STATIC_DIR / "index.html")
+
     # Catch-all route for SPA - must be last
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the SPA for any non-API route."""
+        # Don't intercept API routes
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
         # Try to serve the exact file first
         file_path = STATIC_DIR / full_path
         if file_path.is_file():
