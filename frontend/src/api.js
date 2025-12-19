@@ -2,9 +2,29 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = 'http://localhost:8001';
+// In development: uses VITE_API_URL env var
+// In Docker: __API_URL_PLACEHOLDER__ gets replaced at container start
+const API_BASE = (() => {
+  const placeholder = '__API_URL_PLACEHOLDER__';
+  // If placeholder wasn't replaced, use env var or default
+  if (placeholder.startsWith('__')) {
+    return import.meta.env.VITE_API_URL || 'http://localhost:8001';
+  }
+  return placeholder;
+})();
 
 export const api = {
+  /**
+   * Get API configuration (feature flags).
+   */
+  async getConfig() {
+    const response = await fetch(`${API_BASE}/api/config`);
+    if (!response.ok) {
+      throw new Error('Failed to get config');
+    }
+    return response.json();
+  },
+
   /**
    * List all conversations.
    */
@@ -49,7 +69,7 @@ export const api = {
   /**
    * Send a message in a conversation.
    */
-  async sendMessage(conversationId, content) {
+  async sendMessage(conversationId, content, useWebSearch = false) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message`,
       {
@@ -57,7 +77,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, use_web_search: useWebSearch }),
       }
     );
     if (!response.ok) {
@@ -70,10 +90,11 @@ export const api = {
    * Send a message and receive streaming updates.
    * @param {string} conversationId - The conversation ID
    * @param {string} content - The message content
+   * @param {boolean} useWebSearch - Whether to use web search
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, content, useWebSearch, onEvent) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
@@ -81,7 +102,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, use_web_search: useWebSearch }),
       }
     );
 
