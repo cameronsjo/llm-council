@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .config import get_council_models, get_chairman_model
 from .websearch import search_web, format_search_results, is_web_search_available
 
 
@@ -37,7 +37,8 @@ Please use the web search results above as reference when answering. Cite source
     messages = [{"role": "user", "content": prompt}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    council_models = get_council_models()
+    responses = await query_models_parallel(council_models, messages)
 
     # Format results
     stage1_results = []
@@ -45,7 +46,8 @@ Please use the web search results above as reference when answering. Cite source
         if response is not None:  # Only include successful responses
             stage1_results.append({
                 "model": model,
-                "response": response.get('content', '')
+                "response": response.get('content', ''),
+                "metrics": response.get('metrics', {})
             })
 
     return stage1_results
@@ -114,7 +116,8 @@ Now provide your evaluation and ranking:"""
     messages = [{"role": "user", "content": ranking_prompt}]
 
     # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    council_models = get_council_models()
+    responses = await query_models_parallel(council_models, messages)
 
     # Format results
     stage2_results = []
@@ -125,7 +128,8 @@ Now provide your evaluation and ranking:"""
             stage2_results.append({
                 "model": model,
                 "ranking": full_text,
-                "parsed_ranking": parsed
+                "parsed_ranking": parsed,
+                "metrics": response.get('metrics', {})
             })
 
     return stage2_results, label_to_model
@@ -178,18 +182,21 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    chairman_model = get_chairman_model()
+    response = await query_model(chairman_model, messages)
 
     if response is None:
         # Fallback if chairman fails
         return {
-            "model": CHAIRMAN_MODEL,
-            "response": "Error: Unable to generate final synthesis."
+            "model": chairman_model,
+            "response": "Error: Unable to generate final synthesis.",
+            "metrics": {}
         }
 
     return {
-        "model": CHAIRMAN_MODEL,
-        "response": response.get('content', '')
+        "model": chairman_model,
+        "response": response.get('content', ''),
+        "metrics": response.get('metrics', {})
     }
 
 
@@ -225,6 +232,106 @@ def parse_ranking_from_text(ranking_text: str) -> List[str]:
     # Fallback: try to find any "Response X" patterns in order
     matches = re.findall(r'Response [A-Z]', ranking_text)
     return matches
+
+
+def aggregate_metrics(
+    stage1_results: List[Dict[str, Any]],
+    stage2_results: List[Dict[str, Any]],
+    stage3_result: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Aggregate metrics across all stages.
+
+    Args:
+        stage1_results: Results from Stage 1 with metrics
+        stage2_results: Results from Stage 2 with metrics
+        stage3_result: Result from Stage 3 with metrics
+
+    Returns:
+        Aggregated metrics dict with totals and per-stage breakdown
+    """
+    metrics = {
+        'total_cost': 0.0,
+        'total_tokens': 0,
+        'total_latency_ms': 0,
+        'by_stage': {
+            'stage1': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0, 'models': []},
+            'stage2': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0, 'models': []},
+            'stage3': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0},
+        }
+    }
+
+    # Aggregate Stage 1 metrics
+    for result in stage1_results:
+        m = result.get('metrics', {})
+        cost = m.get('cost', 0.0) or 0.0
+        tokens = m.get('total_tokens', 0) or 0
+        latency = m.get('latency_ms', 0) or 0
+
+        metrics['total_cost'] += cost
+        metrics['total_tokens'] += tokens
+        metrics['total_latency_ms'] = max(metrics['total_latency_ms'], latency)  # Parallel, so take max
+
+        metrics['by_stage']['stage1']['cost'] += cost
+        metrics['by_stage']['stage1']['tokens'] += tokens
+        metrics['by_stage']['stage1']['latency_ms'] = max(
+            metrics['by_stage']['stage1']['latency_ms'], latency
+        )
+        metrics['by_stage']['stage1']['models'].append({
+            'model': result.get('model'),
+            'cost': cost,
+            'tokens': tokens,
+            'latency_ms': latency,
+            'provider': m.get('provider'),
+        })
+
+    # Aggregate Stage 2 metrics
+    for result in stage2_results:
+        m = result.get('metrics', {})
+        cost = m.get('cost', 0.0) or 0.0
+        tokens = m.get('total_tokens', 0) or 0
+        latency = m.get('latency_ms', 0) or 0
+
+        metrics['total_cost'] += cost
+        metrics['total_tokens'] += tokens
+        # Stage 2 runs in parallel after Stage 1
+        metrics['by_stage']['stage2']['cost'] += cost
+        metrics['by_stage']['stage2']['tokens'] += tokens
+        metrics['by_stage']['stage2']['latency_ms'] = max(
+            metrics['by_stage']['stage2']['latency_ms'], latency
+        )
+        metrics['by_stage']['stage2']['models'].append({
+            'model': result.get('model'),
+            'cost': cost,
+            'tokens': tokens,
+            'latency_ms': latency,
+            'provider': m.get('provider'),
+        })
+
+    # Add Stage 2 latency to total (sequential with Stage 1)
+    metrics['total_latency_ms'] += metrics['by_stage']['stage2']['latency_ms']
+
+    # Aggregate Stage 3 metrics
+    m = stage3_result.get('metrics', {})
+    cost = m.get('cost', 0.0) or 0.0
+    tokens = m.get('total_tokens', 0) or 0
+    latency = m.get('latency_ms', 0) or 0
+
+    metrics['total_cost'] += cost
+    metrics['total_tokens'] += tokens
+    metrics['total_latency_ms'] += latency  # Sequential
+
+    metrics['by_stage']['stage3']['cost'] = cost
+    metrics['by_stage']['stage3']['tokens'] = tokens
+    metrics['by_stage']['stage3']['latency_ms'] = latency
+
+    # Round cost for display
+    metrics['total_cost'] = round(metrics['total_cost'], 6)
+    metrics['by_stage']['stage1']['cost'] = round(metrics['by_stage']['stage1']['cost'], 6)
+    metrics['by_stage']['stage2']['cost'] = round(metrics['by_stage']['stage2']['cost'], 6)
+    metrics['by_stage']['stage3']['cost'] = round(metrics['by_stage']['stage3']['cost'], 6)
+
+    return metrics
 
 
 def calculate_aggregate_rankings(
@@ -378,12 +485,16 @@ async def run_full_council(
         stage2_results
     )
 
+    # Calculate aggregated metrics
+    metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
+
     # Prepare metadata
     metadata = {
         "label_to_model": label_to_model,
         "aggregate_rankings": aggregate_rankings,
         "web_search_used": web_search_context is not None,
         "web_search_error": web_search_error,
+        "metrics": metrics,
     }
 
     return stage1_results, stage2_results, stage3_result, metadata
