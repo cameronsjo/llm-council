@@ -73,6 +73,17 @@ function App() {
     setCurrentConversationId(id);
   };
 
+  const handleConfigChange = async (newCouncilModels, newChairmanModel) => {
+    try {
+      await api.updateConfig(newCouncilModels, newChairmanModel);
+      setCouncilModels(newCouncilModels);
+      setChairmanModel(newChairmanModel);
+    } catch (error) {
+      console.error('Failed to update config:', error);
+      throw error;
+    }
+  };
+
   const handleSendMessage = async (content) => {
     if (!currentConversationId) return;
 
@@ -188,6 +199,15 @@ function App() {
             });
             break;
 
+          case 'metrics_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.metrics = event.data;
+              return { ...prev, messages };
+            });
+            break;
+
           case 'title_complete':
             // Reload conversations to get updated title
             loadConversations();
@@ -228,6 +248,7 @@ function App() {
         onNewConversation={handleNewConversation}
         councilModels={councilModels}
         chairmanModel={chairmanModel}
+        onConfigChange={handleConfigChange}
       />
       <ChatInterface
         conversation={currentConversation}

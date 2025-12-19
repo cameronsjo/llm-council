@@ -22,7 +22,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports:
-      - "3000:80"
+      - "3100:80"
     environment:
       # Change this for different deployments (e.g., https://api.example.com)
       - VITE_API_URL=${VITE_API_URL:-http://localhost:8001}

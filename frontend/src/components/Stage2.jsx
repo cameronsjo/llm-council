@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import MetricsDisplay from './MetricsDisplay';
 import './Stage2.css';
 
 function deAnonymizeText(text, labelToModel) {
@@ -14,7 +15,7 @@ function deAnonymizeText(text, labelToModel) {
   return result;
 }
 
-export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
+export default function Stage2({ rankings, labelToModel, aggregateRankings, metrics }) {
   const [activeTab, setActiveTab] = useState(0);
 
   if (!rankings || rankings.length === 0) {
@@ -94,6 +95,8 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
           </div>
         </div>
       )}
+
+      {metrics && <MetricsDisplay metrics={metrics} />}
     </div>
   );
 }

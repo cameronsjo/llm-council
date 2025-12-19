@@ -26,6 +26,37 @@ export const api = {
   },
 
   /**
+   * Update council configuration.
+   */
+  async updateConfig(councilModels, chairmanModel) {
+    const response = await fetch(`${API_BASE}/api/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        council_models: councilModels,
+        chairman_model: chairmanModel,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update config');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get available models from OpenRouter.
+   */
+  async getAvailableModels() {
+    const response = await fetch(`${API_BASE}/api/models`);
+    if (!response.ok) {
+      throw new Error('Failed to get available models');
+    }
+    return response.json();
+  },
+
+  /**
    * List all conversations.
    */
   async listConversations() {

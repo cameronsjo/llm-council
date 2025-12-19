@@ -1,0 +1,147 @@
+.metrics-display {
+  background: #fff8e6;
+  border: 1px solid #f0e0b0;
+  border-radius: 8px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.metrics-summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.metrics-summary:hover {
+  background: #fff5d9;
+}
+
+.metrics-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metric-icon {
+  font-size: 14px;
+}
+
+.metric-value {
+  font-family: monospace;
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #888;
+}
+
+.expand-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 10px;
+  color: #888;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.expand-btn:hover {
+  color: #333;
+}
+
+.metrics-details {
+  border-top: 1px solid #f0e0b0;
+  padding: 12px 16px;
+  background: #fffef8;
+}
+
+.stage-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stage-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 100px 80px;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.stage-name {
+  color: #666;
+}
+
+.stage-cost {
+  font-family: monospace;
+  color: #333;
+  font-weight: 500;
+}
+
+.stage-tokens {
+  font-family: monospace;
+  color: #666;
+  font-size: 12px;
+}
+
+.stage-latency {
+  font-family: monospace;
+  color: #888;
+  font-size: 12px;
+  text-align: right;
+}
+
+.model-metrics {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e8d8a0;
+}
+
+.model-metrics-header {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.model-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 60px 80px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.model-name {
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-cost {
+  font-family: monospace;
+  color: #333;
+}
+
+.model-latency {
+  font-family: monospace;
+  color: #888;
+}
+
+.model-provider {
+  color: #aaa;
+  font-size: 11px;
+  text-align: right;
+}

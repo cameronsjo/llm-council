@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import './Sidebar.css';
+import ModelSelector from './ModelSelector';
 
 // Extract short model name from full identifier (e.g., "openai/gpt-5.1" -> "GPT-5.1")
 function getShortModelName(model) {
@@ -14,8 +15,29 @@ export default function Sidebar({
   onNewConversation,
   councilModels = [],
   chairmanModel = '',
+  onConfigChange,
 }) {
   const [showModels, setShowModels] = useState(false);
+  const [showConfigUI, setShowConfigUI] = useState(false);
+  const [pendingCouncil, setPendingCouncil] = useState(councilModels);
+  const [pendingChairman, setPendingChairman] = useState(chairmanModel);
+
+  const handleOpenConfig = () => {
+    setPendingCouncil(councilModels);
+    setPendingChairman(chairmanModel);
+    setShowConfigUI(true);
+  };
+
+  const handleSaveConfig = async () => {
+    if (onConfigChange) {
+      await onConfigChange(pendingCouncil, pendingChairman);
+    }
+    setShowConfigUI(false);
+  };
+
+  const handleCancelConfig = () => {
+    setShowConfigUI(false);
+  };
 
   return (
     <div className="sidebar">
@@ -51,13 +73,22 @@ export default function Sidebar({
 
       {councilModels.length > 0 && (
         <div className="council-config">
-          <button
-            className="council-toggle"
-            onClick={() => setShowModels(!showModels)}
-          >
-            <span>Council Members</span>
-            <span className="toggle-icon">{showModels ? '▼' : '▶'}</span>
-          </button>
+          <div className="council-header">
+            <button
+              className="council-toggle"
+              onClick={() => setShowModels(!showModels)}
+            >
+              <span>Council Members</span>
+              <span className="toggle-icon">{showModels ? '▼' : '▶'}</span>
+            </button>
+            <button
+              className="configure-btn"
+              onClick={handleOpenConfig}
+              title="Configure models"
+            >
+              ⚙️
+            </button>
+          </div>
           {showModels && (
             <div className="council-models">
               {councilModels.map((model, idx) => (
@@ -80,6 +111,24 @@ export default function Sidebar({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {showConfigUI && (
+        <div className="config-modal-overlay" onClick={handleCancelConfig}>
+          <div className="config-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="config-modal-header">
+              <h3>Configure Council</h3>
+            </div>
+            <ModelSelector
+              selectedCouncil={pendingCouncil}
+              selectedChairman={pendingChairman}
+              onCouncilChange={setPendingCouncil}
+              onChairmanChange={setPendingChairman}
+              onSave={handleSaveConfig}
+              onCancel={handleCancelConfig}
+            />
+          </div>
         </div>
       )}
     </div>
