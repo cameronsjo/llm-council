@@ -170,11 +170,14 @@
 .model-groups {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 50vh;
-  min-height: 300px;
-  overflow-y: auto;
-  padding-right: 4px;
+  gap: 8px;
+  height: 400px;
+  overflow-y: scroll;
+  padding-right: 8px;
+  border: 1px solid #e8e0d4;
+  border-radius: 8px;
+  padding: 8px;
+  background: #faf8f5;
 }
 
 .model-group {
