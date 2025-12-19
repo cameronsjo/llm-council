@@ -10,15 +10,17 @@ import json
 import asyncio
 
 from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings, perform_web_search
+from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings, aggregate_metrics, perform_web_search
 from .websearch import is_web_search_available
+from .models import fetch_available_models
+from .config import get_council_models, get_chairman_model, update_council_config
 
 app = FastAPI(title="LLM Council API")
 
 # Enable CORS for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:3100"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +36,12 @@ class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
     use_web_search: bool = False
+
+
+class UpdateConfigRequest(BaseModel):
+    """Request to update council configuration."""
+    council_models: List[str]
+    chairman_model: str
 
 
 class ConversationMetadata(BaseModel):
@@ -61,12 +69,39 @@ async def root():
 @app.get("/api/config")
 async def get_config():
     """Get API configuration and feature availability."""
-    from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
     return {
         "web_search_available": is_web_search_available(),
-        "council_models": COUNCIL_MODELS,
-        "chairman_model": CHAIRMAN_MODEL,
+        "council_models": get_council_models(),
+        "chairman_model": get_chairman_model(),
     }
+
+
+@app.post("/api/config")
+async def update_config(request: UpdateConfigRequest):
+    """Update council configuration."""
+    if len(request.council_models) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least 2 council models are required"
+        )
+
+    config = update_council_config(
+        council_models=request.council_models,
+        chairman_model=request.chairman_model
+    )
+
+    return {
+        "status": "ok",
+        "council_models": config.get('council_models', get_council_models()),
+        "chairman_model": config.get('chairman_model', get_chairman_model()),
+    }
+
+
+@app.get("/api/models")
+async def get_available_models():
+    """Get list of available models from OpenRouter."""
+    models = await fetch_available_models()
+    return {"models": models}
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
@@ -120,12 +155,13 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         use_web_search=request.use_web_search
     )
 
-    # Add assistant message with all stages
+    # Add assistant message with all stages and metrics
     storage.add_assistant_message(
         conversation_id,
         stage1_results,
         stage2_results,
-        stage3_result
+        stage3_result,
+        metrics=metadata.get('metrics')
     )
 
     # Return the complete response with metadata
@@ -191,18 +227,23 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
+            # Calculate and send aggregated metrics
+            metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
+            yield f"data: {json.dumps({'type': 'metrics_complete', 'data': metrics})}\n\n"
+
             # Wait for title generation if it was started
             if title_task:
                 title = await title_task
                 storage.update_conversation_title(conversation_id, title)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
-            # Save complete assistant message
+            # Save complete assistant message with metrics
             storage.add_assistant_message(
                 conversation_id,
                 stage1_results,
                 stage2_results,
-                stage3_result
+                stage3_result,
+                metrics=metrics
             )
 
             # Send completion event
