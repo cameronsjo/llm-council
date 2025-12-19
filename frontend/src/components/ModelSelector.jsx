@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import './ModelSelector.css';
 
@@ -17,6 +17,8 @@ export default function ModelSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedProviders, setExpandedProviders] = useState(new Set());
 
   useEffect(() => {
     loadModels();
@@ -44,9 +46,20 @@ export default function ModelSelector({
     }
   };
 
+  const toggleProvider = (provider) => {
+    setExpandedProviders(prev => {
+      const next = new Set(prev);
+      if (next.has(provider)) {
+        next.delete(provider);
+      } else {
+        next.add(provider);
+      }
+      return next;
+    });
+  };
+
   const formatPrice = (price) => {
     if (!price || price === 0) return 'Free';
-    // Price is per token, convert to per million tokens
     const perMillion = price * 1000000;
     if (perMillion < 0.01) return '<$0.01/M';
     return `$${perMillion.toFixed(2)}/M`;
@@ -60,6 +73,66 @@ export default function ModelSelector({
       setSaving(false);
     }
   };
+
+  // Filter and group models
+  const { groupedModels, sortedProviders, filteredCount } = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+
+    const filtered = query
+      ? availableModels.filter(m =>
+          m.name?.toLowerCase().includes(query) ||
+          m.id.toLowerCase().includes(query) ||
+          m.provider?.toLowerCase().includes(query)
+        )
+      : availableModels;
+
+    const grouped = filtered.reduce((acc, model) => {
+      const provider = model.provider || 'Other';
+      if (!acc[provider]) acc[provider] = [];
+      acc[provider].push(model);
+      return acc;
+    }, {});
+
+    return {
+      groupedModels: grouped,
+      sortedProviders: Object.keys(grouped).sort(),
+      filteredCount: filtered.length,
+    };
+  }, [availableModels, searchQuery]);
+
+  // Count selected models per provider
+  const selectedPerProvider = useMemo(() => {
+    const counts = {};
+    selectedCouncil.forEach(id => {
+      const model = availableModels.find(m => m.id === id);
+      if (model) {
+        const provider = model.provider || 'Other';
+        counts[provider] = (counts[provider] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [selectedCouncil, availableModels]);
+
+  // Auto-expand providers with selected models or when searching
+  useEffect(() => {
+    if (searchQuery) {
+      setExpandedProviders(new Set(sortedProviders));
+    }
+  }, [searchQuery, sortedProviders]);
+
+  // Initially expand providers with selected models
+  useEffect(() => {
+    if (availableModels.length > 0 && expandedProviders.size === 0) {
+      const providersWithSelected = new Set();
+      selectedCouncil.forEach(id => {
+        const model = availableModels.find(m => m.id === id);
+        if (model) providersWithSelected.add(model.provider || 'Other');
+      });
+      if (providersWithSelected.size > 0) {
+        setExpandedProviders(providersWithSelected);
+      }
+    }
+  }, [availableModels, selectedCouncil]);
 
   if (loading) {
     return (
@@ -80,17 +153,6 @@ export default function ModelSelector({
     );
   }
 
-  // Group models by provider
-  const groupedModels = availableModels.reduce((acc, model) => {
-    const provider = model.provider;
-    if (!acc[provider]) acc[provider] = [];
-    acc[provider].push(model);
-    return acc;
-  }, {});
-
-  // Sort providers alphabetically
-  const sortedProviders = Object.keys(groupedModels).sort();
-
   const isValid = selectedCouncil.length >= 2 && selectedChairman;
 
   return (
@@ -98,29 +160,76 @@ export default function ModelSelector({
       <div className="selector-section">
         <h4>Council Members ({selectedCouncil.length})</h4>
         <p className="selector-help">Select 2+ models to participate in the council</p>
+
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="Search models..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+          {searchQuery && (
+            <button
+              className="search-clear"
+              onClick={() => setSearchQuery('')}
+              title="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        {searchQuery && (
+          <div className="search-results-count">
+            {filteredCount} model{filteredCount !== 1 ? 's' : ''} found
+          </div>
+        )}
+
         <div className="model-groups">
-          {sortedProviders.map(provider => (
-            <div key={provider} className="model-group">
-              <div className="group-header">{provider}</div>
-              <div className="group-models">
-                {groupedModels[provider].map(model => (
-                  <label key={model.id} className="model-option">
-                    <input
-                      type="checkbox"
-                      checked={selectedCouncil.includes(model.id)}
-                      onChange={() => toggleCouncilMember(model.id)}
-                    />
-                    <span className="model-info">
-                      <span className="model-name" title={model.id}>
-                        {model.name || model.id.split('/').pop()}
-                      </span>
-                      <span className="model-price">{formatPrice(model.pricing?.completion)}</span>
-                    </span>
-                  </label>
-                ))}
+          {sortedProviders.map(provider => {
+            const isExpanded = expandedProviders.has(provider);
+            const selectedCount = selectedPerProvider[provider] || 0;
+            const models = groupedModels[provider];
+
+            return (
+              <div key={provider} className={`model-group ${isExpanded ? 'expanded' : ''}`}>
+                <button
+                  className="group-header"
+                  onClick={() => toggleProvider(provider)}
+                >
+                  <span className="group-toggle">{isExpanded ? '▼' : '▶'}</span>
+                  <span className="group-name">{provider}</span>
+                  <span className="group-count">
+                    {selectedCount > 0 && (
+                      <span className="selected-badge">{selectedCount} selected</span>
+                    )}
+                    <span className="total-count">{models.length}</span>
+                  </span>
+                </button>
+
+                {isExpanded && (
+                  <div className="group-models">
+                    {models.map(model => (
+                      <label key={model.id} className="model-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedCouncil.includes(model.id)}
+                          onChange={() => toggleCouncilMember(model.id)}
+                        />
+                        <span className="model-info">
+                          <span className="model-name" title={model.id}>
+                            {model.name || model.id.split('/').pop()}
+                          </span>
+                          <span className="model-price">{formatPrice(model.pricing?.completion)}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -133,10 +242,14 @@ export default function ModelSelector({
           className="chairman-select"
         >
           <option value="">Select a chairman...</option>
-          {availableModels.map(model => (
-            <option key={model.id} value={model.id}>
-              {model.name || model.id} ({formatPrice(model.pricing?.completion)})
-            </option>
+          {sortedProviders.map(provider => (
+            <optgroup key={provider} label={provider}>
+              {groupedModels[provider]?.map(model => (
+                <option key={model.id} value={model.id}>
+                  {model.name || model.id.split('/').pop()} ({formatPrice(model.pricing?.completion)})
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>
