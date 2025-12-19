@@ -1,8 +1,8 @@
 services:
-  backend:
+  llm-council:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: Dockerfile
     ports:
       - "8001:8001"
     environment:
@@ -12,24 +12,10 @@ services:
       - council-data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/')"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/api/config')"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "3100:80"
-    environment:
-      # Change this for different deployments (e.g., https://api.example.com)
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:8001}
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
 
 volumes:
   council-data:
