@@ -4,17 +4,48 @@ This file contains technical details, architectural decisions, and important imp
 
 ## Project Overview
 
-LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively answer user questions. The key innovation is anonymized peer review in Stage 2, preventing models from playing favorites.
+LLM Council is a collaborative LLM deliberation system with two modes:
+
+1. **Council Mode**: 3-stage deliberation where multiple LLMs answer questions, anonymously peer-review each other, and a Chairman synthesizes the final response.
+
+2. **Arena Mode**: Multi-round structured debates with opening statements, rebuttals, closing arguments, and synthesis.
+
+The key innovation is anonymized peer review, preventing models from playing favorites.
+
+> **Fork Note**: This is a fork of [karpathy/llm-council](https://github.com/karpathy/llm-council) with significant extensions (~60% new/rewritten code). See README.md for full attribution.
 
 ## Architecture
 
 ### Backend Structure (`backend/`)
 
 **`config.py`**
-- Contains `COUNCIL_MODELS` (list of OpenRouter model identifiers)
-- Contains `CHAIRMAN_MODEL` (model that synthesizes final answer)
-- Uses environment variable `OPENROUTER_API_KEY` from `.env`
+- `COUNCIL_MODELS` and `CHAIRMAN_MODEL` (defaults, can be overridden via API)
+- `DATA_BASE_DIR`: Configurable via `LLMCOUNCIL_DATA_DIR` env var
+- `TAVILY_API_KEY`: Optional web search
 - Backend runs on **port 8001** (NOT 8000 - user had another app on 8000)
+
+**`auth.py`** - Authentication Module
+- `AUTH_ENABLED`: Controlled by `LLMCOUNCIL_AUTH_ENABLED` env var
+- `TRUSTED_PROXY_IPS`: CIDR-aware IP validation for reverse proxy trust
+- `User` dataclass: username, email, groups, display_name
+- `get_current_user()`: Extracts user from `Remote-User`, `Remote-Email`, etc. headers
+- `get_optional_user()`: FastAPI dependency for optional auth
+- Used for per-user conversation isolation
+
+**`arena.py`** - Arena Mode Logic
+- `ArenaDebate` class: Orchestrates multi-round debates
+- `run_debate()`: Executes opening → rebuttals → closing → synthesis
+- `_run_opening_round()`: Parallel initial statements
+- `_run_rebuttal_round()`: Each model responds to others
+- `_run_closing_round()`: Final arguments
+- `_run_synthesis()`: Chairman summarizes with participant mapping
+- Anonymization: Models see "Participant A, B, C" during debate
+
+**`models.py`** - Dynamic Model Discovery
+- `get_available_models()`: Fetches model list from OpenRouter API
+- `filter_supported_models()`: Excludes vision-only, deprecated models
+- `group_models_by_provider()`: Groups for UI display
+- Caches model list to reduce API calls
 
 **`openrouter.py`**
 - `query_model()`: Single async model query
@@ -35,15 +66,22 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
 
 **`storage.py`**
-- JSON-based conversation storage in `data/conversations/`
-- Each conversation: `{id, created_at, messages[]}`
-- Assistant messages contain: `{role, stage1, stage2, stage3}`
-- Note: metadata (label_to_model, aggregate_rankings) is NOT persisted to storage, only returned via API
+- JSON-based conversation storage
+- All functions accept optional `user_id` parameter for per-user isolation
+- Without auth: `data/conversations/`
+- With auth: `data/users/{username}/conversations/`
+- Each conversation: `{id, created_at, title, messages[]}`
+- Assistant messages contain mode-specific data (council or arena)
 
 **`main.py`**
 - FastAPI app with CORS enabled for localhost:5173 and localhost:3000
-- POST `/api/conversations/{id}/message` returns metadata in addition to stages
-- Metadata includes: label_to_model mapping and aggregate_rankings
+- SSE streaming for real-time response updates
+- Key endpoints:
+  - `GET /api/config`: Returns available features, models, arena config
+  - `GET /api/user`: Returns current user info (when auth enabled)
+  - `GET /api/models`: Dynamic model list from OpenRouter
+  - `POST /api/conversations/{id}/message`: Streaming council/arena response
+- All conversation endpoints use `Depends(get_optional_user)` for user isolation
 
 ### Frontend Structure (`frontend/src/`)
 
@@ -71,6 +109,29 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 **`components/Stage3.jsx`**
 - Final synthesized answer from chairman
 - Green-tinted background (#f0fff0) to highlight conclusion
+
+**`components/ArenaMode.jsx`**
+- Container for Arena debate display
+- Orchestrates ArenaRound and ArenaSynthesis components
+- Handles mode toggle between Council and Arena
+
+**`components/ArenaRound.jsx`**
+- Displays individual debate rounds (opening, rebuttal, closing)
+- Participant responses in expandable sections
+- Round type indicators and styling
+
+**`components/ArenaSynthesis.jsx`**
+- Chairman's synthesis with participant de-anonymization
+- Displays participant mapping (A→model, B→model, etc.)
+
+**`components/ModelSelector.jsx`**
+- Full-featured model picker modal
+- Search, provider grouping, multi-select
+- Separate council member and chairman selection
+
+**`components/MetricsDisplay.jsx`**
+- Token usage and latency display
+- Per-model and aggregate statistics
 
 **Styling (`*.css`)**
 - Light mode theme (not dark mode)
@@ -158,29 +219,45 @@ The web search feature allows models to access current information from the web 
 ## Docker Deployment
 
 **Files:**
-- `Dockerfile.backend`: Python 3.12 slim image with uv
-- `Dockerfile.frontend`: Multi-stage build (Node builder → nginx)
-- `docker-compose.yml`: Orchestrates backend and frontend services
-- `nginx.conf`: Frontend server configuration
+- `Dockerfile`: Single multi-stage build (Python + Node → unified image)
+- `docker-compose.yml`: Single-container deployment
 - `.dockerignore`: Excludes unnecessary files from builds
 
-**Services:**
-- `backend`: Port 8001, volumes for persistent data
-- `frontend`: Port 3000 (nginx serving built React app)
+**Single Container Design:**
+- FastAPI serves both API and static frontend
+- Port 3000 exposed
+- Volumes for persistent data (`/app/data`)
 
 **Environment Variables:**
 - `OPENROUTER_API_KEY`: Required for LLM queries
 - `TAVILY_API_KEY`: Optional for web search
-- `VITE_API_URL`: Build-time arg for API base URL
+- `LLMCOUNCIL_DATA_DIR`: Data directory (default: `/app/data`)
+- `LLMCOUNCIL_AUTH_ENABLED`: Enable reverse proxy auth
+- `LLMCOUNCIL_TRUSTED_PROXY_IPS`: Trusted proxy IPs for auth headers
+
+## Authentication
+
+**Reverse Proxy Auth Pattern:**
+- Backend trusts headers from configured proxy IPs only
+- Headers: `Remote-User`, `Remote-Email`, `Remote-Name`, `Remote-Groups`
+- Compatible with: Authelia, OAuth2 Proxy, Authentik, etc.
+
+**Per-User Isolation:**
+When auth is enabled, each user's conversations are stored separately:
+```
+data/users/{username}/conversations/
+```
+
+See `docs/auth-setup.md` for detailed configuration.
 
 ## Future Enhancement Ideas
 
-- Configurable council/chairman via UI instead of config file
-- Streaming responses instead of batch loading
 - Export conversations to markdown/PDF
 - Model performance analytics over time
 - Custom ranking criteria (not just accuracy/insight)
 - Support for reasoning models (o1, etc.) with special handling
+- Conversation sharing between users
+- Admin dashboard for usage monitoring
 
 ## Testing Notes
 
@@ -188,6 +265,7 @@ Use `test_openrouter.py` to verify API connectivity and test different model ide
 
 ## Data Flow Summary
 
+### Council Mode
 ```
 User Query
     ↓
@@ -204,4 +282,21 @@ Return: {stage1, stage2, stage3, metadata}
 Frontend: Display with tabs + validation UI
 ```
 
-The entire flow is async/parallel where possible to minimize latency.
+### Arena Mode
+```
+User Query
+    ↓
+Opening Round: Parallel initial statements (anonymized as Participant A, B, C)
+    ↓
+Rebuttal Rounds (configurable count): Each model responds to others
+    ↓
+Closing Round: Final arguments from each participant
+    ↓
+Synthesis: Chairman summarizes with participant de-anonymization
+    ↓
+Return: {rounds[], synthesis, participant_mapping}
+    ↓
+Frontend: Expandable round display + synthesis with mapping
+```
+
+Both flows use SSE streaming for real-time updates and async/parallel execution where possible.

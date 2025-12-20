@@ -2,112 +2,150 @@
 
 ![llmcouncil](header.jpg)
 
-The idea of this repo is that instead of asking a question to your favorite LLM provider (e.g. OpenAI GPT 5.1, Google Gemini 3.0 Pro, Anthropic Claude Sonnet 4.5, xAI Grok 4, eg.c), you can group them into your "LLM Council". This repo is a simple, local web app that essentially looks like ChatGPT except it uses OpenRouter to send your query to multiple LLMs, it then asks them to review and rank each other's work, and finally a Chairman LLM produces the final response.
+> **Fork Attribution**: This project is a fork of [karpathy/llm-council](https://github.com/karpathy/llm-council), originally created by Andrej Karpathy as a weekend hack for exploring LLM collaboration. This fork extends the original with Arena Mode, authentication, Docker deployment, and other features.
 
-In a bit more detail, here is what happens when you submit a query:
+## Overview
 
-1. **Stage 1: First opinions**. The user query is given to all LLMs individually, and the responses are collected. The individual responses are shown in a "tab view", so that the user can inspect them all one by one.
-2. **Stage 2: Review**. Each individual LLM is given the responses of the other LLMs. Under the hood, the LLM identities are anonymized so that the LLM can't play favorites when judging their outputs. The LLM is asked to rank them in accuracy and insight.
-3. **Stage 3: Final response**. The designated Chairman of the LLM Council takes all of the model's responses and compiles them into a single final answer that is presented to the user.
+Instead of asking a question to a single LLM, group them into your "LLM Council". This web app uses OpenRouter to send your query to multiple LLMs, has them review and rank each other's work anonymously, and produces a synthesized final response.
 
-## Vibe Code Alert
+### Council Mode (Original)
 
-This project was 99% vibe coded as a fun Saturday hack because I wanted to explore and evaluate a number of LLMs side by side in the process of [reading books together with LLMs](https://x.com/karpathy/status/1990577951671509438). It's nice and useful to see multiple responses side by side, and also the cross-opinions of all LLMs on each other's outputs. I'm not going to support it in any way, it's provided here as is for other people's inspiration and I don't intend to improve it. Code is ephemeral now and libraries are over, ask your LLM to change it in whatever way you like.
+1. **Stage 1: First Opinions** - Query sent to all LLMs individually, responses shown in tabs
+2. **Stage 2: Peer Review** - Each LLM reviews and ranks others' responses (anonymized to prevent bias)
+3. **Stage 3: Synthesis** - Chairman LLM compiles all responses into a final answer
 
-## Setup
+### Arena Mode (New)
 
-### 1. Install Dependencies
+Multi-round structured debates between LLMs with:
+- **Opening statements** from each participant
+- **Rebuttal rounds** where models respond to each other
+- **Closing arguments** summarizing positions
+- **Synthesis** by the Chairman with participant de-anonymization
 
-The project uses [uv](https://docs.astral.sh/uv/) for project management.
+## What's New in This Fork
 
-**Backend:**
+This fork significantly extends the original project (~60% new/rewritten code):
+
+| Feature | Description |
+|---------|-------------|
+| **Arena Mode** | Multi-round debate format with opening/rebuttal/closing rounds |
+| **Web Search** | Tavily API integration for current information |
+| **Authentication** | Reverse proxy auth support (Authelia, OAuth2 Proxy) |
+| **Per-User Isolation** | Separate conversation storage when auth is enabled |
+| **Docker Deployment** | Single-container deployment with docker-compose |
+| **Model Selector UI** | Dynamic model configuration with search and grouping |
+| **Metrics Display** | Token usage and latency tracking |
+| **Streaming Responses** | Real-time SSE updates during deliberation |
+| **Configurable Data Dir** | `LLMCOUNCIL_DATA_DIR` environment variable |
+
+## Quick Start
+
+### Docker (Recommended)
+
 ```bash
-uv sync
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-cd ..
-```
-
-### 2. Configure API Key
-
-Create a `.env` file in the project root:
-
-```bash
-OPENROUTER_API_KEY=sk-or-v1-...
-```
-
-Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
-
-### 3. Configure Models (Optional)
-
-Edit `backend/config.py` to customize the council:
-
-```python
-COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
-]
-
-CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
-```
-
-## Running the Application
-
-**Option 1: Use Docker (Recommended)**
-```bash
-# Copy .env.example to .env and add your API keys
+# Clone and configure
+git clone https://github.com/cameronsjo/llm-council.git
+cd llm-council
 cp .env.example .env
+# Edit .env with your OPENROUTER_API_KEY
 
-# Start services
+# Start
 docker compose up -d
 
 # View logs
 docker compose logs -f
 ```
 
-Then open http://localhost:3000 in your browser.
+Open http://localhost:3000
 
-**Option 2: Use the start script**
+### Manual Setup
+
+**Prerequisites**: Python 3.10+, Node.js 18+, [uv](https://docs.astral.sh/uv/)
+
 ```bash
-./start.sh
+# Backend
+uv sync
+
+# Frontend
+cd frontend && npm install && cd ..
+
+# Configure
+cp .env.example .env
+# Edit .env with your OPENROUTER_API_KEY
+
+# Run (two terminals)
+uv run python -m backend.main     # Terminal 1
+cd frontend && npm run dev        # Terminal 2
 ```
 
-**Option 3: Run manually**
+Open http://localhost:5173
 
-Terminal 1 (Backend):
-```bash
-uv run python -m backend.main
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key |
+| `TAVILY_API_KEY` | No | Tavily API key for web search |
+| `LLMCOUNCIL_DATA_DIR` | No | Data directory (default: `data`) |
+| `LLMCOUNCIL_AUTH_ENABLED` | No | Enable reverse proxy auth |
+| `LLMCOUNCIL_TRUSTED_PROXY_IPS` | No | Trusted proxy IPs for auth headers |
+
+See [`.env.example`](.env.example) for all options.
+
+### Model Configuration
+
+Models can be configured via the UI (gear icon in sidebar) or by editing `backend/config.py`:
+
+```python
+COUNCIL_MODELS = [
+    "openai/gpt-4o",
+    "anthropic/claude-sonnet-4",
+    "google/gemini-2.0-flash",
+]
+
+CHAIRMAN_MODEL = "google/gemini-2.0-flash"
 ```
 
-Terminal 2 (Frontend):
-```bash
-cd frontend
-npm run dev
-```
+## Optional Features
 
-Then open http://localhost:5173 in your browser.
+### Web Search
 
-## Web Search (Optional)
-
-Enable web search to give the LLM Council access to current information from the web.
+Give the Council access to current web information:
 
 1. Get a free API key from [Tavily](https://tavily.com/)
-2. Add to your `.env` file:
-   ```bash
-   TAVILY_API_KEY=tvly-...
-   ```
-3. Restart the backend (or Docker containers)
-4. Toggle "Web Search" when asking a question
+2. Add `TAVILY_API_KEY=tvly-...` to `.env`
+3. Toggle "Web Search" when asking a question
+
+### Authentication
+
+For multi-user deployments behind a reverse proxy (Authelia, OAuth2 Proxy, etc.):
+
+```yaml
+# docker-compose.yml
+environment:
+  - LLMCOUNCIL_AUTH_ENABLED=true
+  - LLMCOUNCIL_TRUSTED_PROXY_IPS=172.16.0.0/12
+```
+
+See [docs/auth-setup.md](docs/auth-setup.md) for detailed configuration.
 
 ## Tech Stack
 
-- **Backend:** FastAPI (Python 3.10+), async httpx, OpenRouter API
-- **Frontend:** React + Vite, react-markdown for rendering
-- **Storage:** JSON files in `data/conversations/`
-- **Package Management:** uv for Python, npm for JavaScript
+- **Backend**: FastAPI, Python 3.12, async httpx, OpenRouter API
+- **Frontend**: React 18, Vite, react-markdown
+- **Storage**: JSON files (conversation persistence)
+- **Deployment**: Docker, nginx (optional reverse proxy)
+
+## License
+
+This fork is released under the [MIT License](LICENSE).
+
+**Note**: The original [karpathy/llm-council](https://github.com/karpathy/llm-council) was published without a license file. This fork adds MIT licensing for the new code and modifications. If you're concerned about licensing, please refer to the original repository or contact the original author.
+
+## Acknowledgments
+
+- [Andrej Karpathy](https://github.com/karpathy) for the original LLM Council concept and implementation
+- [OpenRouter](https://openrouter.ai/) for unified LLM API access
+- [Tavily](https://tavily.com/) for web search capabilities
