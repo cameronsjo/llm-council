@@ -14,6 +14,9 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # Tavily API key for web search (optional)
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
+# Base data directory - configurable via environment
+DATA_BASE_DIR = os.getenv("LLMCOUNCIL_DATA_DIR", "data")
+
 # Default council members - list of OpenRouter model identifiers
 DEFAULT_COUNCIL_MODELS = [
     "openai/gpt-5.1",
@@ -37,11 +40,11 @@ CHAIRMAN_MODEL = DEFAULT_CHAIRMAN_MODEL
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Data directory for conversation storage
-DATA_DIR = "data/conversations"
+# Data directory for conversation storage (used when auth disabled)
+DATA_DIR = os.path.join(DATA_BASE_DIR, "conversations")
 
 # User config file path
-USER_CONFIG_FILE = "data/user_config.json"
+USER_CONFIG_FILE = os.path.join(DATA_BASE_DIR, "user_config.json")
 
 
 def load_user_config() -> Dict[str, Any]:

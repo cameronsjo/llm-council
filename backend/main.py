@@ -1,24 +1,47 @@
 """FastAPI backend for LLM Council."""
 
-import os
+import asyncio
+import json
+import uuid
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import uuid
-import json
-import asyncio
 
 from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings, aggregate_metrics, perform_web_search
-from .arena import run_arena_debate, create_participant_mapping, round1_initial_positions, round_n_deliberation, final_synthesis, aggregate_arena_metrics
-from .websearch import is_web_search_available
+from .arena import (
+    aggregate_arena_metrics,
+    create_participant_mapping,
+    final_synthesis,
+    round1_initial_positions,
+    round_n_deliberation,
+    run_arena_debate,
+)
+from .auth import AUTH_ENABLED, User, get_current_user, get_optional_user
+from .config import (
+    DEFAULT_ARENA_ROUNDS,
+    MAX_ARENA_ROUNDS,
+    MIN_ARENA_ROUNDS,
+    get_chairman_model,
+    get_council_models,
+    update_council_config,
+)
+from .council import (
+    aggregate_metrics,
+    calculate_aggregate_rankings,
+    generate_conversation_title,
+    perform_web_search,
+    run_full_council,
+    stage1_collect_responses,
+    stage2_collect_rankings,
+    stage3_synthesize_final,
+)
 from .models import fetch_available_models
-from .config import get_council_models, get_chairman_model, update_council_config, DEFAULT_ARENA_ROUNDS, MIN_ARENA_ROUNDS, MAX_ARENA_ROUNDS
+from .websearch import is_web_search_available
 
 app = FastAPI(title="LLM Council API")
 
@@ -98,6 +121,21 @@ async def get_config():
             "min_rounds": MIN_ARENA_ROUNDS,
             "max_rounds": MAX_ARENA_ROUNDS,
         },
+        "auth_enabled": AUTH_ENABLED,
+    }
+
+
+@app.get("/api/user")
+async def get_user_info(user: Optional[User] = Depends(get_optional_user)):
+    """Get current user information from auth headers."""
+    if not user:
+        return {"authenticated": False}
+    return {
+        "authenticated": True,
+        "username": user.username,
+        "email": user.email,
+        "display_name": user.display_name,
+        "groups": user.groups,
     }
 
 
@@ -130,36 +168,51 @@ async def get_available_models():
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
-async def list_conversations():
+async def list_conversations(user: Optional[User] = Depends(get_optional_user)):
     """List all conversations (metadata only)."""
-    return storage.list_conversations()
+    user_id = user.username if user else None
+    return storage.list_conversations(user_id=user_id)
 
 
 @app.post("/api/conversations", response_model=Conversation)
-async def create_conversation(request: CreateConversationRequest):
+async def create_conversation(
+    request: CreateConversationRequest,
+    user: Optional[User] = Depends(get_optional_user),
+):
     """Create a new conversation."""
+    user_id = user.username if user else None
     conversation_id = str(uuid.uuid4())
-    conversation = storage.create_conversation(conversation_id)
+    conversation = storage.create_conversation(conversation_id, user_id=user_id)
     return conversation
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
-async def get_conversation(conversation_id: str):
+async def get_conversation(
+    conversation_id: str,
+    user: Optional[User] = Depends(get_optional_user),
+):
     """Get a specific conversation with all its messages."""
-    conversation = storage.get_conversation(conversation_id)
+    user_id = user.username if user else None
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
 
 
 @app.post("/api/conversations/{conversation_id}/message")
-async def send_message(conversation_id: str, request: SendMessageRequest):
-    """
-    Send a message and run the 3-stage council process.
+async def send_message(
+    conversation_id: str,
+    request: SendMessageRequest,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Send a message and run the 3-stage council process.
+
     Returns the complete response with all stages.
     """
+    user_id = user.username if user else None
+
     # Check if conversation exists
-    conversation = storage.get_conversation(conversation_id)
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -167,17 +220,16 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     is_first_message = len(conversation["messages"]) == 0
 
     # Add user message
-    storage.add_user_message(conversation_id, request.content)
+    storage.add_user_message(conversation_id, request.content, user_id=user_id)
 
     # If this is the first message, generate a title
     if is_first_message:
         title = await generate_conversation_title(request.content)
-        storage.update_conversation_title(conversation_id, title)
+        storage.update_conversation_title(conversation_id, title, user_id=user_id)
 
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content,
-        use_web_search=request.use_web_search
+        request.content, use_web_search=request.use_web_search
     )
 
     # Add assistant message with all stages and metrics
@@ -186,7 +238,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         stage1_results,
         stage2_results,
         stage3_result,
-        metrics=metadata.get('metrics')
+        metrics=metadata.get("metrics"),
+        user_id=user_id,
     )
 
     # Return the complete response with metadata
@@ -194,18 +247,24 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         "stage1": stage1_results,
         "stage2": stage2_results,
         "stage3": stage3_result,
-        "metadata": metadata
+        "metadata": metadata,
     }
 
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
-async def send_message_stream(conversation_id: str, request: SendMessageRequest):
-    """
-    Send a message and stream the council or arena process.
+async def send_message_stream(
+    conversation_id: str,
+    request: SendMessageRequest,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Send a message and stream the council or arena process.
+
     Returns Server-Sent Events as each stage/round completes.
     """
+    user_id = user.username if user else None
+
     # Check if conversation exists
-    conversation = storage.get_conversation(conversation_id)
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -216,41 +275,53 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         """Generate events for council mode (3-stage process)."""
         try:
             # Add user message
-            storage.add_user_message(conversation_id, request.content)
+            storage.add_user_message(conversation_id, request.content, user_id=user_id)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(
+                    generate_conversation_title(request.content)
+                )
 
             # Optionally perform web search
             web_search_context = None
             web_search_error = None
             if request.use_web_search:
                 yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
-                web_search_context, web_search_error = await perform_web_search(request.content)
+                web_search_context, web_search_error = await perform_web_search(
+                    request.content
+                )
                 yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content, web_search_context)
+            stage1_results = await stage1_collect_responses(
+                request.content, web_search_context
+            )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+            stage2_results, label_to_model = await stage2_collect_rankings(
+                request.content, stage1_results
+            )
+            aggregate_rankings = calculate_aggregate_rankings(
+                stage2_results, label_to_model
+            )
             metadata = {
-                'label_to_model': label_to_model,
-                'aggregate_rankings': aggregate_rankings,
-                'web_search_used': web_search_context is not None,
-                'web_search_error': web_search_error,
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+                "web_search_used": web_search_context is not None,
+                "web_search_error": web_search_error,
             }
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(
+                request.content, stage1_results, stage2_results
+            )
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Calculate and send aggregated metrics
@@ -260,7 +331,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Wait for title generation if it was started
             if title_task:
                 title = await title_task
-                storage.update_conversation_title(conversation_id, title)
+                storage.update_conversation_title(
+                    conversation_id, title, user_id=user_id
+                )
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
             # Save complete assistant message with metrics
@@ -269,7 +342,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 stage1_results,
                 stage2_results,
                 stage3_result,
-                metrics=metrics
+                metrics=metrics,
+                user_id=user_id,
             )
 
             # Send completion event
@@ -283,7 +357,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         """Generate events for arena mode (multi-round debate)."""
         try:
             # Add user message
-            storage.add_user_message(conversation_id, request.content)
+            storage.add_user_message(conversation_id, request.content, user_id=user_id)
 
             # Get arena configuration
             arena_config = request.arena_config or ArenaConfig()
@@ -292,14 +366,18 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Start title generation in parallel
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(
+                    generate_conversation_title(request.content)
+                )
 
             # Optionally perform web search
             web_search_context = None
             web_search_error = None
             if request.use_web_search:
                 yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
-                web_search_context, web_search_error = await perform_web_search(request.content)
+                web_search_context, web_search_error = await perform_web_search(
+                    request.content
+                )
                 yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
 
             # Create participant mapping
@@ -343,7 +421,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Wait for title generation if it was started
             if title_task:
                 title = await title_task
-                storage.update_conversation_title(conversation_id, title)
+                storage.update_conversation_title(
+                    conversation_id, title, user_id=user_id
+                )
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
             # Save arena message
@@ -352,7 +432,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 rounds_as_dicts,
                 synthesis,
                 participant_mapping,
-                metrics=metrics
+                metrics=metrics,
+                user_id=user_id,
             )
 
             # Send completion event
@@ -360,6 +441,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

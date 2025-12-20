@@ -16,6 +16,7 @@ export default function Sidebar({
   councilModels = [],
   chairmanModel = '',
   onConfigChange,
+  userInfo = null,
 }) {
   const [showModels, setShowModels] = useState(false);
   const [showConfigUI, setShowConfigUI] = useState(false);
@@ -43,6 +44,16 @@ export default function Sidebar({
     <div className="sidebar">
       <div className="sidebar-header">
         <h1>LLM Council</h1>
+        {userInfo?.authenticated && (
+          <div className="user-info">
+            <span className="user-avatar">
+              {(userInfo.display_name || userInfo.username || '?')[0].toUpperCase()}
+            </span>
+            <span className="user-name">
+              {userInfo.display_name || userInfo.username}
+            </span>
+          </div>
+        )}
         <button className="new-conversation-btn" onClick={onNewConversation}>
           + New Conversation
         </button>

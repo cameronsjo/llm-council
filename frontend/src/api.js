@@ -19,6 +19,17 @@ export const api = {
   },
 
   /**
+   * Get current user information (from reverse proxy auth headers).
+   */
+  async getUserInfo() {
+    const response = await fetch(`${API_BASE}/api/user`);
+    if (!response.ok) {
+      throw new Error('Failed to get user info');
+    }
+    return response.json();
+  },
+
+  /**
    * Update council configuration.
    */
   async updateConfig(councilModels, chairmanModel) {

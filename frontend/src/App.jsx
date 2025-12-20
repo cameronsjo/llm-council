@@ -13,6 +13,7 @@ function App() {
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [councilModels, setCouncilModels] = useState([]);
   const [chairmanModel, setChairmanModel] = useState('');
+  const [userInfo, setUserInfo] = useState(null);
 
   // Arena mode state
   const [mode, setMode] = useState('council'); // 'council' or 'arena'
@@ -23,10 +24,11 @@ function App() {
     max_rounds: 10,
   });
 
-  // Load conversations and config on mount
+  // Load conversations, config, and user info on mount
   useEffect(() => {
     loadConversations();
     loadConfig();
+    loadUserInfo();
   }, []);
 
   const loadConfig = async () => {
@@ -41,6 +43,15 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to load config:', error);
+    }
+  };
+
+  const loadUserInfo = async () => {
+    try {
+      const info = await api.getUserInfo();
+      setUserInfo(info);
+    } catch (error) {
+      console.error('Failed to load user info:', error);
     }
   };
 
@@ -347,6 +358,7 @@ function App() {
         councilModels={councilModels}
         chairmanModel={chairmanModel}
         onConfigChange={handleConfigChange}
+        userInfo={userInfo}
       />
       <ChatInterface
         conversation={currentConversation}
