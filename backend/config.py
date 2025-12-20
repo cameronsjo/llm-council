@@ -25,6 +25,11 @@ DEFAULT_COUNCIL_MODELS = [
 # Default chairman model - synthesizes final response
 DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 
+# Arena mode defaults
+DEFAULT_ARENA_ROUNDS = 3
+MIN_ARENA_ROUNDS = 2
+MAX_ARENA_ROUNDS = 10
+
 # Keep backwards compatibility
 COUNCIL_MODELS = DEFAULT_COUNCIL_MODELS
 CHAIRMAN_MODEL = DEFAULT_CHAIRMAN_MODEL

@@ -70,14 +70,16 @@ async def query_model(
 
 async def query_models_parallel(
     models: List[str],
-    messages: List[Dict[str, str]]
+    messages: Optional[List[Dict[str, str]]] = None,
+    custom_messages: Optional[Dict[str, List[Dict[str, str]]]] = None,
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """
     Query multiple models in parallel.
 
     Args:
         models: List of OpenRouter model identifiers
-        messages: List of message dicts to send to each model
+        messages: List of message dicts to send to ALL models (used if custom_messages not provided)
+        custom_messages: Dict mapping model ID to its specific messages (for per-model prompts)
 
     Returns:
         Dict mapping model identifier to response dict (or None if failed)
@@ -85,7 +87,15 @@ async def query_models_parallel(
     import asyncio
 
     # Create tasks for all models
-    tasks = [query_model(model, messages) for model in models]
+    tasks = []
+    for model in models:
+        if custom_messages and model in custom_messages:
+            model_messages = custom_messages[model]
+        elif messages is not None:
+            model_messages = messages
+        else:
+            raise ValueError(f"No messages provided for model {model}")
+        tasks.append(query_model(model, model_messages))
 
     # Wait for all to complete
     responses = await asyncio.gather(*tasks)

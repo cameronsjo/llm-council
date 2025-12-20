@@ -1,0 +1,136 @@
+.arena-synthesis {
+  background: linear-gradient(135deg, #F5EEF8 0%, #EDE4F3 100%);
+  border: 1px solid #D4C1E0;
+  border-left: 4px solid #7D5BA6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.synthesis-title {
+  padding: 16px 20px;
+  margin: 0;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #5B3D7A;
+  background: linear-gradient(135deg, #EDE4F3 0%, #E3D8EC 100%);
+  border-bottom: 1px solid #D4C1E0;
+}
+
+.synthesis-content {
+  padding: 20px;
+}
+
+.chairman-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #D4C1E0;
+}
+
+.chairman-label {
+  font-family: 'Source Serif 4', serif;
+  font-size: 0.85rem;
+  color: #6B5D7A;
+}
+
+.chairman-model {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #5B3D7A;
+}
+
+.synthesis-text {
+  font-family: 'Source Serif 4', serif;
+  line-height: 1.7;
+  color: #2c2416;
+}
+
+.identity-reveal {
+  background: rgba(255, 255, 255, 0.5);
+  border-top: 1px solid #D4C1E0;
+  padding: 16px 20px;
+}
+
+.reveal-title {
+  margin: 0 0 12px 0;
+  font-family: 'Playfair Display', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #5B3D7A;
+}
+
+.participant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.participant-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Source Serif 4', serif;
+  font-size: 0.875rem;
+}
+
+.identity-label {
+  font-weight: 600;
+  color: #7D5BA6;
+  min-width: 100px;
+}
+
+.identity-arrow {
+  color: #9B8AAB;
+}
+
+.identity-model {
+  font-weight: 500;
+  color: #2c2416;
+}
+
+.identity-full-model {
+  font-size: 0.75rem;
+  color: #6B5D7A;
+  font-style: italic;
+}
+
+/* Ensure markdown content has proper styling */
+.arena-synthesis .markdown-content h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem;
+  color: #5B3D7A;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid #D4C1E0;
+}
+
+.arena-synthesis .markdown-content h2:first-child {
+  margin-top: 0;
+}
+
+.arena-synthesis .markdown-content ul,
+.arena-synthesis .markdown-content ol {
+  padding-left: 1.5em;
+  margin: 0.75em 0;
+}
+
+.arena-synthesis .markdown-content li {
+  margin: 0.25em 0;
+}
+
+.arena-synthesis .markdown-content p {
+  margin: 0.75em 0;
+}
+
+.arena-synthesis .markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.arena-synthesis .markdown-content p:last-child {
+  margin-bottom: 0;
+}

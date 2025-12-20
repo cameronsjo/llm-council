@@ -176,3 +176,39 @@ def update_conversation_title(conversation_id: str, title: str):
 
     conversation["title"] = title
     save_conversation(conversation)
+
+
+def add_arena_message(
+    conversation_id: str,
+    rounds: List[Dict[str, Any]],
+    synthesis: Dict[str, Any],
+    participant_mapping: Dict[str, str],
+    metrics: Optional[Dict[str, Any]] = None,
+):
+    """
+    Add an arena debate result as an assistant message.
+
+    Args:
+        conversation_id: Conversation identifier
+        rounds: List of debate rounds, each with round_number, round_type, and responses
+        synthesis: Final synthesis with consensus, answer, and dissents
+        participant_mapping: Map of participant labels to model identifiers
+        metrics: Optional aggregated metrics for this debate
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    message = {
+        "role": "assistant",
+        "mode": "arena",
+        "rounds": rounds,
+        "synthesis": synthesis,
+        "participant_mapping": participant_mapping,
+    }
+
+    if metrics:
+        message["metrics"] = metrics
+
+    conversation["messages"].append(message)
+    save_conversation(conversation)

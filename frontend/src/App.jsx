@@ -14,6 +14,15 @@ function App() {
   const [councilModels, setCouncilModels] = useState([]);
   const [chairmanModel, setChairmanModel] = useState('');
 
+  // Arena mode state
+  const [mode, setMode] = useState('council'); // 'council' or 'arena'
+  const [arenaRoundCount, setArenaRoundCount] = useState(3);
+  const [arenaConfig, setArenaConfig] = useState({
+    default_rounds: 3,
+    min_rounds: 2,
+    max_rounds: 10,
+  });
+
   // Load conversations and config on mount
   useEffect(() => {
     loadConversations();
@@ -26,6 +35,10 @@ function App() {
       setWebSearchAvailable(config.web_search_available);
       setCouncilModels(config.council_models || []);
       setChairmanModel(config.chairman_model || '');
+      if (config.arena) {
+        setArenaConfig(config.arena);
+        setArenaRoundCount(config.arena.default_rounds);
+      }
     } catch (error) {
       console.error('Failed to load config:', error);
     }
@@ -96,21 +109,38 @@ function App() {
         messages: [...prev.messages, userMessage],
       }));
 
-      // Create a partial assistant message that will be updated progressively
-      const assistantMessage = {
-        role: 'assistant',
-        stage1: null,
-        stage2: null,
-        stage3: null,
-        metadata: null,
-        webSearchUsed: false,
-        loading: {
-          webSearch: false,
-          stage1: false,
-          stage2: false,
-          stage3: false,
-        },
-      };
+      // Create a partial assistant message based on mode
+      const assistantMessage =
+        mode === 'arena'
+          ? {
+              role: 'assistant',
+              mode: 'arena',
+              rounds: [],
+              synthesis: null,
+              participant_mapping: null,
+              webSearchUsed: false,
+              loading: {
+                webSearch: false,
+                round: false,
+                roundNumber: null,
+                roundType: null,
+                synthesis: false,
+              },
+            }
+          : {
+              role: 'assistant',
+              stage1: null,
+              stage2: null,
+              stage3: null,
+              metadata: null,
+              webSearchUsed: false,
+              loading: {
+                webSearch: false,
+                stage1: false,
+                stage2: false,
+                stage3: false,
+              },
+            };
 
       // Add the partial assistant message
       setCurrentConversation((prev) => ({
@@ -118,116 +148,184 @@ function App() {
         messages: [...prev.messages, assistantMessage],
       }));
 
+      // Prepare arena config if in arena mode
+      const arenaConfigParam =
+        mode === 'arena' ? { round_count: arenaRoundCount } : null;
+
       // Send message with streaming
-      await api.sendMessageStream(currentConversationId, content, useWebSearch, (eventType, event) => {
-        switch (eventType) {
-          case 'web_search_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.webSearch = true;
-              return { ...prev, messages };
-            });
-            break;
+      await api.sendMessageStream(
+        currentConversationId,
+        content,
+        useWebSearch,
+        mode,
+        arenaConfigParam,
+        (eventType, event) => {
+          switch (eventType) {
+            // Shared events
+            case 'web_search_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.webSearch = true;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'web_search_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.webSearch = false;
-              lastMsg.webSearchUsed = event.data?.found || false;
-              lastMsg.webSearchError = event.data?.error || null;
-              return { ...prev, messages };
-            });
-            break;
+            case 'web_search_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.webSearch = false;
+                lastMsg.webSearchUsed = event.data?.found || false;
+                lastMsg.webSearchError = event.data?.error || null;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'stage1_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage1 = true;
-              return { ...prev, messages };
-            });
-            break;
+            // Council mode events
+            case 'stage1_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.stage1 = true;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'stage1_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage1 = event.data;
-              lastMsg.loading.stage1 = false;
-              return { ...prev, messages };
-            });
-            break;
+            case 'stage1_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.stage1 = event.data;
+                lastMsg.loading.stage1 = false;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'stage2_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage2 = true;
-              return { ...prev, messages };
-            });
-            break;
+            case 'stage2_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.stage2 = true;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'stage2_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage2 = event.data;
-              lastMsg.metadata = event.metadata;
-              lastMsg.loading.stage2 = false;
-              return { ...prev, messages };
-            });
-            break;
+            case 'stage2_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.stage2 = event.data;
+                lastMsg.metadata = event.metadata;
+                lastMsg.loading.stage2 = false;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'stage3_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage3 = true;
-              return { ...prev, messages };
-            });
-            break;
+            case 'stage3_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.stage3 = true;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'stage3_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage3 = event.data;
-              lastMsg.loading.stage3 = false;
-              return { ...prev, messages };
-            });
-            break;
+            case 'stage3_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.stage3 = event.data;
+                lastMsg.loading.stage3 = false;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'metrics_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.metrics = event.data;
-              return { ...prev, messages };
-            });
-            break;
+            // Arena mode events
+            case 'arena_start':
+              // Arena started - info about participants and round count
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.arenaInfo = event.data;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'title_complete':
-            // Reload conversations to get updated title
-            loadConversations();
-            break;
+            case 'round_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.round = true;
+                lastMsg.loading.roundNumber = event.data.round_number;
+                lastMsg.loading.roundType = event.data.round_type;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'complete':
-            // Stream complete, reload conversations list
-            loadConversations();
-            setIsLoading(false);
-            break;
+            case 'round_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.rounds = [...(lastMsg.rounds || []), event.data];
+                lastMsg.loading.round = false;
+                lastMsg.loading.roundNumber = null;
+                lastMsg.loading.roundType = null;
+                return { ...prev, messages };
+              });
+              break;
 
-          case 'error':
-            console.error('Stream error:', event.message);
-            setIsLoading(false);
-            break;
+            case 'synthesis_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.synthesis = true;
+                return { ...prev, messages };
+              });
+              break;
 
-          default:
-            console.log('Unknown event type:', eventType);
+            case 'synthesis_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.synthesis = event.data;
+                lastMsg.participant_mapping = event.participant_mapping;
+                lastMsg.loading.synthesis = false;
+                return { ...prev, messages };
+              });
+              break;
+
+            // Shared completion events
+            case 'metrics_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.metrics = event.data;
+                return { ...prev, messages };
+              });
+              break;
+
+            case 'title_complete':
+              // Reload conversations to get updated title
+              loadConversations();
+              break;
+
+            case 'complete':
+              // Stream complete, reload conversations list
+              loadConversations();
+              setIsLoading(false);
+              break;
+
+            case 'error':
+              console.error('Stream error:', event.message);
+              setIsLoading(false);
+              break;
+
+            default:
+              console.log('Unknown event type:', eventType);
+          }
         }
-      });
+      );
     } catch (error) {
       console.error('Failed to send message:', error);
       // Remove optimistic messages on error
@@ -257,6 +355,11 @@ function App() {
         webSearchAvailable={webSearchAvailable}
         useWebSearch={useWebSearch}
         onToggleWebSearch={() => setUseWebSearch(!useWebSearch)}
+        mode={mode}
+        onModeChange={setMode}
+        arenaRoundCount={arenaRoundCount}
+        onArenaRoundCountChange={setArenaRoundCount}
+        arenaConfig={arenaConfig}
       />
     </div>
   );

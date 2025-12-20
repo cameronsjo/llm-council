@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import ArenaMode from './ArenaMode';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -12,6 +13,11 @@ export default function ChatInterface({
   webSearchAvailable,
   useWebSearch,
   onToggleWebSearch,
+  mode,
+  onModeChange,
+  arenaRoundCount,
+  onArenaRoundCountChange,
+  arenaConfig,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -73,7 +79,9 @@ export default function ChatInterface({
                 </div>
               ) : (
                 <div className="assistant-message">
-                  <div className="message-label">LLM Council</div>
+                  <div className="message-label">
+                    {msg.mode === 'arena' ? 'Arena Debate' : 'LLM Council'}
+                  </div>
 
                   {/* Web Search */}
                   {msg.loading?.webSearch && (
@@ -93,39 +101,51 @@ export default function ChatInterface({
                     </div>
                   )}
 
-                  {/* Stage 1 */}
-                  {msg.loading?.stage1 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 1: Collecting individual responses...</span>
-                    </div>
-                  )}
-                  {msg.stage1 && <Stage1 responses={msg.stage1} />}
-
-                  {/* Stage 2 */}
-                  {msg.loading?.stage2 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 2: Peer rankings...</span>
-                    </div>
-                  )}
-                  {msg.stage2 && (
-                    <Stage2
-                      rankings={msg.stage2}
-                      labelToModel={msg.metadata?.label_to_model}
-                      aggregateRankings={msg.metadata?.aggregate_rankings}
-                      metrics={msg.metrics}
+                  {/* Arena Mode */}
+                  {msg.mode === 'arena' ? (
+                    <ArenaMode
+                      rounds={msg.rounds}
+                      synthesis={msg.synthesis}
+                      participantMapping={msg.participant_mapping}
+                      loading={msg.loading}
                     />
-                  )}
+                  ) : (
+                    <>
+                      {/* Stage 1 */}
+                      {msg.loading?.stage1 && (
+                        <div className="stage-loading">
+                          <div className="spinner"></div>
+                          <span>Running Stage 1: Collecting individual responses...</span>
+                        </div>
+                      )}
+                      {msg.stage1 && <Stage1 responses={msg.stage1} />}
 
-                  {/* Stage 3 */}
-                  {msg.loading?.stage3 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 3: Final synthesis...</span>
-                    </div>
+                      {/* Stage 2 */}
+                      {msg.loading?.stage2 && (
+                        <div className="stage-loading">
+                          <div className="spinner"></div>
+                          <span>Running Stage 2: Peer rankings...</span>
+                        </div>
+                      )}
+                      {msg.stage2 && (
+                        <Stage2
+                          rankings={msg.stage2}
+                          labelToModel={msg.metadata?.label_to_model}
+                          aggregateRankings={msg.metadata?.aggregate_rankings}
+                          metrics={msg.metrics}
+                        />
+                      )}
+
+                      {/* Stage 3 */}
+                      {msg.loading?.stage3 && (
+                        <div className="stage-loading">
+                          <div className="spinner"></div>
+                          <span>Running Stage 3: Final synthesis...</span>
+                        </div>
+                      )}
+                      {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+                    </>
                   )}
-                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
                 </div>
               )}
             </div>
@@ -153,6 +173,48 @@ export default function ChatInterface({
             disabled={isLoading}
             rows={3}
           />
+
+          {/* Mode Toggle */}
+          <div className="mode-toggle">
+            <button
+              type="button"
+              className={`mode-btn ${mode === 'council' ? 'active' : ''}`}
+              onClick={() => onModeChange('council')}
+              disabled={isLoading}
+            >
+              Council Mode
+            </button>
+            <button
+              type="button"
+              className={`mode-btn ${mode === 'arena' ? 'active' : ''}`}
+              onClick={() => onModeChange('arena')}
+              disabled={isLoading}
+            >
+              Arena Debate
+            </button>
+          </div>
+
+          {/* Arena Round Count */}
+          {mode === 'arena' && arenaConfig && (
+            <div className="arena-config">
+              <label className="rounds-label">
+                <span>Debate Rounds: {arenaRoundCount}</span>
+                <input
+                  type="range"
+                  min={arenaConfig.min_rounds}
+                  max={arenaConfig.max_rounds}
+                  value={arenaRoundCount}
+                  onChange={(e) => onArenaRoundCountChange(parseInt(e.target.value))}
+                  disabled={isLoading}
+                  className="rounds-slider"
+                />
+              </label>
+              <span className="rounds-hint">
+                Round 1: Initial positions, Rounds 2+: Deliberation
+              </span>
+            </div>
+          )}
+
           <div className="input-controls">
             {webSearchAvailable && (
               <label className="web-search-toggle">
@@ -170,7 +232,7 @@ export default function ChatInterface({
               className="send-button"
               disabled={!input.trim() || isLoading}
             >
-              Send
+              {mode === 'arena' ? 'Start Debate' : 'Send'}
             </button>
           </div>
         </form>

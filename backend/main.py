@@ -7,17 +7,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from typing import List, Dict, Any
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
 import uuid
 import json
 import asyncio
 
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings, aggregate_metrics, perform_web_search
+from .arena import run_arena_debate, create_participant_mapping, round1_initial_positions, round_n_deliberation, final_synthesis, aggregate_arena_metrics
 from .websearch import is_web_search_available
 from .models import fetch_available_models
-from .config import get_council_models, get_chairman_model, update_council_config
+from .config import get_council_models, get_chairman_model, update_council_config, DEFAULT_ARENA_ROUNDS, MIN_ARENA_ROUNDS, MAX_ARENA_ROUNDS
 
 app = FastAPI(title="LLM Council API")
 
@@ -39,10 +40,22 @@ class CreateConversationRequest(BaseModel):
     pass
 
 
+class ArenaConfig(BaseModel):
+    """Configuration for arena mode debates."""
+    round_count: int = Field(
+        default=DEFAULT_ARENA_ROUNDS,
+        ge=MIN_ARENA_ROUNDS,
+        le=MAX_ARENA_ROUNDS,
+        description=f"Number of debate rounds ({MIN_ARENA_ROUNDS}-{MAX_ARENA_ROUNDS})"
+    )
+
+
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
     use_web_search: bool = False
+    mode: str = Field(default="council", pattern="^(council|arena)$")
+    arena_config: Optional[ArenaConfig] = None
 
 
 class UpdateConfigRequest(BaseModel):
@@ -80,6 +93,11 @@ async def get_config():
         "web_search_available": is_web_search_available(),
         "council_models": get_council_models(),
         "chairman_model": get_chairman_model(),
+        "arena": {
+            "default_rounds": DEFAULT_ARENA_ROUNDS,
+            "min_rounds": MIN_ARENA_ROUNDS,
+            "max_rounds": MAX_ARENA_ROUNDS,
+        },
     }
 
 
@@ -183,8 +201,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
 @app.post("/api/conversations/{conversation_id}/message/stream")
 async def send_message_stream(conversation_id: str, request: SendMessageRequest):
     """
-    Send a message and stream the 3-stage council process.
-    Returns Server-Sent Events as each stage completes.
+    Send a message and stream the council or arena process.
+    Returns Server-Sent Events as each stage/round completes.
     """
     # Check if conversation exists
     conversation = storage.get_conversation(conversation_id)
@@ -194,7 +212,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
-    async def event_generator():
+    async def council_event_generator():
+        """Generate events for council mode (3-stage process)."""
         try:
             # Add user message
             storage.add_user_message(conversation_id, request.content)
@@ -260,8 +279,99 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
+    async def arena_event_generator():
+        """Generate events for arena mode (multi-round debate)."""
+        try:
+            # Add user message
+            storage.add_user_message(conversation_id, request.content)
+
+            # Get arena configuration
+            arena_config = request.arena_config or ArenaConfig()
+            round_count = arena_config.round_count
+
+            # Start title generation in parallel
+            title_task = None
+            if is_first_message:
+                title_task = asyncio.create_task(generate_conversation_title(request.content))
+
+            # Optionally perform web search
+            web_search_context = None
+            web_search_error = None
+            if request.use_web_search:
+                yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
+                web_search_context, web_search_error = await perform_web_search(request.content)
+                yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
+
+            # Create participant mapping
+            council_models = get_council_models()
+            participant_mapping = create_participant_mapping(council_models)
+
+            # Send arena start event
+            yield f"data: {json.dumps({'type': 'arena_start', 'data': {'participant_count': len(participant_mapping), 'round_count': round_count, 'participants': list(participant_mapping.keys())}})}\n\n"
+
+            from .arena import ArenaRound
+
+            rounds: List[ArenaRound] = []
+
+            # Round 1: Initial positions
+            yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': 1, 'round_type': 'initial'}})}\n\n"
+            round1 = await round1_initial_positions(
+                request.content, participant_mapping, round_count, web_search_context
+            )
+            rounds.append(round1)
+            yield f"data: {json.dumps({'type': 'round_complete', 'data': round1.to_dict()})}\n\n"
+
+            # Rounds 2-N: Deliberation
+            for round_num in range(2, round_count + 1):
+                yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': round_num, 'round_type': 'deliberation'}})}\n\n"
+                deliberation_round = await round_n_deliberation(
+                    request.content, round_num, round_count, rounds, participant_mapping
+                )
+                rounds.append(deliberation_round)
+                yield f"data: {json.dumps({'type': 'round_complete', 'data': deliberation_round.to_dict()})}\n\n"
+
+            # Final synthesis
+            yield f"data: {json.dumps({'type': 'synthesis_start'})}\n\n"
+            synthesis = await final_synthesis(request.content, rounds, participant_mapping)
+            yield f"data: {json.dumps({'type': 'synthesis_complete', 'data': synthesis, 'participant_mapping': participant_mapping})}\n\n"
+
+            # Calculate and send metrics
+            rounds_as_dicts = [r.to_dict() for r in rounds]
+            metrics = aggregate_arena_metrics(rounds, synthesis)
+            yield f"data: {json.dumps({'type': 'metrics_complete', 'data': metrics})}\n\n"
+
+            # Wait for title generation if it was started
+            if title_task:
+                title = await title_task
+                storage.update_conversation_title(conversation_id, title)
+                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+
+            # Save arena message
+            storage.add_arena_message(
+                conversation_id,
+                rounds_as_dicts,
+                synthesis,
+                participant_mapping,
+                metrics=metrics
+            )
+
+            # Send completion event
+            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            # Send error event
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    # Choose the appropriate event generator based on mode
+    if request.mode == "arena":
+        generator = arena_event_generator()
+    else:
+        generator = council_event_generator()
+
     return StreamingResponse(
-        event_generator(),
+        generator,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
