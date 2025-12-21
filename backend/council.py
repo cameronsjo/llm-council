@@ -46,11 +46,15 @@ Please use the web search results above as reference when answering. Cite source
     stage1_results = []
     for model, response in responses.items():
         if response is not None:  # Only include successful responses
-            stage1_results.append({
+            result = {
                 "model": model,
                 "response": response.get('content', ''),
                 "metrics": response.get('metrics', {})
-            })
+            }
+            # Include reasoning details if present (for o1/o3 models)
+            if response.get('reasoning_details'):
+                result['reasoning_details'] = response['reasoning_details']
+            stage1_results.append(result)
 
     return stage1_results
 
@@ -129,12 +133,16 @@ Now provide your evaluation and ranking:"""
         if response is not None:
             full_text = response.get('content', '')
             parsed = parse_ranking_from_text(full_text)
-            stage2_results.append({
+            result = {
                 "model": model,
                 "ranking": full_text,
                 "parsed_ranking": parsed,
                 "metrics": response.get('metrics', {})
-            })
+            }
+            # Include reasoning details if present (for o1/o3 models)
+            if response.get('reasoning_details'):
+                result['reasoning_details'] = response['reasoning_details']
+            stage2_results.append(result)
 
     return stage2_results, label_to_model
 
@@ -199,11 +207,16 @@ Provide a clear, well-reasoned final answer that represents the council's collec
             "metrics": {}
         }
 
-    return {
+    result = {
         "model": effective_chairman,
         "response": response.get('content', ''),
         "metrics": response.get('metrics', {})
     }
+    # Include reasoning details if present (for o1/o3 models)
+    if response.get('reasoning_details'):
+        result['reasoning_details'] = response['reasoning_details']
+
+    return result
 
 
 def parse_ranking_from_text(ranking_text: str) -> List[str]:

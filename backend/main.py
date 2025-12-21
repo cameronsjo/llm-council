@@ -6,13 +6,19 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import storage
+from .attachments import (
+    get_file_type,
+    process_attachments,
+    save_attachment,
+    validate_file,
+)
 from .arena import (
     aggregate_arena_metrics,
     create_participant_mapping,
@@ -29,6 +35,7 @@ from .config import (
     get_chairman_model,
     get_council_models,
     get_curated_models,
+    reload_config,
     update_council_config,
     update_curated_models,
 )
@@ -42,8 +49,9 @@ from .council import (
     stage2_collect_rankings,
     stage3_synthesize_final,
 )
+from .export import export_to_json, export_to_markdown
 from .models import fetch_available_models
-from .websearch import is_web_search_available
+from .websearch import get_search_provider, is_web_search_available
 
 app = FastAPI(title="LLM Council API")
 
@@ -76,12 +84,20 @@ class ArenaConfig(BaseModel):
     )
 
 
+class AttachmentRef(BaseModel):
+    """Reference to an uploaded attachment."""
+    id: str
+    filename: str
+    file_type: str
+
+
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
     use_web_search: bool = False
     mode: str = Field(default="council", pattern="^(council|arena)$")
     arena_config: Optional[ArenaConfig] = None
+    attachments: List[AttachmentRef] = Field(default_factory=list)
 
 
 class UpdateConfigRequest(BaseModel):
@@ -122,6 +138,7 @@ async def get_config():
     """Get API configuration and feature availability."""
     return {
         "web_search_available": is_web_search_available(),
+        "search_provider": get_search_provider(),
         "council_models": get_council_models(),
         "chairman_model": get_chairman_model(),
         "curated_models": get_curated_models(),
@@ -169,6 +186,19 @@ async def update_config(request: UpdateConfigRequest):
     }
 
 
+@app.post("/api/config/reload")
+async def reload_config_endpoint():
+    """Reload configuration from .env and config files.
+
+    This allows updating API keys and other settings without restarting
+    the server. Useful for:
+    - Adding/changing API keys
+    - Updating default model configuration
+    """
+    result = reload_config()
+    return result
+
+
 class UpdateCuratedModelsRequest(BaseModel):
     """Request to update curated models list."""
     model_ids: List[str] = Field(..., description="List of model IDs to curate")
@@ -192,6 +222,35 @@ async def get_available_models():
     """Get list of available models from OpenRouter."""
     models = await fetch_available_models()
     return {"models": models}
+
+
+@app.post("/api/attachments")
+async def upload_attachment(
+    file: UploadFile = File(...),
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Upload a file attachment.
+
+    Supported file types:
+    - Text: .txt, .md, .json, .csv, .xml, .html, .py, .js, .ts
+    - PDF: .pdf
+    - Images: .png, .jpg, .jpeg, .gif, .webp
+    """
+    user_id = user.username if user else None
+
+    # Read file content
+    content = await file.read()
+    filename = file.filename or "unnamed"
+
+    # Validate file
+    is_valid, error = validate_file(filename, content)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    # Save attachment
+    attachment = save_attachment(filename, content, user_id)
+
+    return attachment
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
@@ -260,6 +319,50 @@ async def delete_conversation(
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"status": "ok", "id": conversation_id}
+
+
+@app.get("/api/conversations/{conversation_id}/export/markdown")
+async def export_conversation_markdown(
+    conversation_id: str,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Export a conversation as Markdown."""
+    user_id = user.username if user else None
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    markdown_content = export_to_markdown(conversation)
+    title = conversation.get("title", "conversation").replace(" ", "_")
+    filename = f"{title}.md"
+
+    return StreamingResponse(
+        iter([markdown_content]),
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/conversations/{conversation_id}/export/json")
+async def export_conversation_json(
+    conversation_id: str,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Export a conversation as JSON."""
+    user_id = user.username if user else None
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    json_content = export_to_json(conversation)
+    title = conversation.get("title", "conversation").replace(" ", "_")
+    filename = f"{title}.json"
+
+    return StreamingResponse(
+        iter([json.dumps(json_content, indent=2)]),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/conversations/{conversation_id}/pending")
@@ -409,6 +512,14 @@ async def send_message_stream(
                     generate_conversation_title(request.content)
                 )
 
+            # Process attachments if any
+            attachment_context = ""
+            if request.attachments:
+                attachment_dicts = [a.model_dump() for a in request.attachments]
+                text_context, _ = process_attachments(attachment_dicts, user_id)
+                if text_context:
+                    attachment_context = f"## Attached Documents\n\n{text_context}\n\n---\n\n"
+
             # Optionally perform web search
             web_search_context = None
             web_search_error = None
@@ -421,8 +532,12 @@ async def send_message_stream(
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+            # Combine attachment and web search context
+            combined_context = attachment_context
+            if web_search_context:
+                combined_context += web_search_context
             stage1_results = await stage1_collect_responses(
-                request.content, web_search_context, council_models
+                request.content, combined_context or None, council_models
             )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
@@ -524,6 +639,14 @@ async def send_message_stream(
                     generate_conversation_title(request.content)
                 )
 
+            # Process attachments if any
+            attachment_context = ""
+            if request.attachments:
+                attachment_dicts = [a.model_dump() for a in request.attachments]
+                text_context, _ = process_attachments(attachment_dicts, user_id)
+                if text_context:
+                    attachment_context = f"## Attached Documents\n\n{text_context}\n\n---\n\n"
+
             # Optionally perform web search
             web_search_context = None
             web_search_error = None
@@ -533,6 +656,11 @@ async def send_message_stream(
                     request.content
                 )
                 yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
+
+            # Combine attachment and web search context
+            combined_context = attachment_context
+            if web_search_context:
+                combined_context += web_search_context
 
             # Create participant mapping
             participant_mapping = create_participant_mapping(council_models)
@@ -547,7 +675,7 @@ async def send_message_stream(
             # Round 1: Initial positions
             yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': 1, 'round_type': 'initial'}})}\n\n"
             round1 = await round1_initial_positions(
-                request.content, participant_mapping, round_count, web_search_context
+                request.content, participant_mapping, round_count, combined_context or None
             )
             rounds.append(round1)
             yield f"data: {json.dumps({'type': 'round_complete', 'data': round1.to_dict()})}\n\n"

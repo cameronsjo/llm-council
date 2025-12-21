@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Download } from 'lucide-react';
 
 /**
- * Single conversation item with rename/delete functionality.
+ * Single conversation item with rename/delete/export functionality.
  */
 export function ConversationItem({
   conversation,
@@ -10,11 +10,14 @@ export function ConversationItem({
   onSelect,
   onRename,
   onDelete,
+  onExport,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editingTitle, setEditingTitle] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const inputRef = useRef(null);
+  const exportMenuRef = useRef(null);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -22,6 +25,19 @@ export function ConversationItem({
       inputRef.current.select();
     }
   }, [isEditing]);
+
+  // Close export menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setShowExportMenu(false);
+      }
+    };
+    if (showExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showExportMenu]);
 
   const handleStartRename = (e) => {
     e.stopPropagation();
@@ -64,6 +80,18 @@ export function ConversationItem({
   const handleCancelDelete = (e) => {
     e.stopPropagation();
     setIsDeleting(false);
+  };
+
+  const handleExportClick = (e) => {
+    e.stopPropagation();
+    setShowExportMenu(!showExportMenu);
+  };
+
+  const handleExport = async (format) => {
+    setShowExportMenu(false);
+    if (onExport) {
+      await onExport(conversation.id, format);
+    }
   };
 
   const handleClick = () => {
@@ -139,6 +167,31 @@ export function ConversationItem({
         >
           <Pencil size={14} />
         </button>
+        <div className="export-menu-container" ref={exportMenuRef}>
+          <button
+            className="action-btn"
+            onClick={handleExportClick}
+            title="Export"
+          >
+            <Download size={14} />
+          </button>
+          {showExportMenu && (
+            <div className="export-menu">
+              <button
+                className="export-menu-item"
+                onClick={() => handleExport('markdown')}
+              >
+                Export as Markdown
+              </button>
+              <button
+                className="export-menu-item"
+                onClick={() => handleExport('json')}
+              >
+                Export as JSON
+              </button>
+            </div>
+          )}
+        </div>
         <button
           className="action-btn action-delete"
           onClick={handleDeleteClick}

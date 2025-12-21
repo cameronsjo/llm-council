@@ -2,9 +2,12 @@
 
 import os
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -149,3 +152,40 @@ def update_curated_models(model_ids: List[str]) -> List[str]:
     config['curated_models'] = model_ids
     save_user_config(config)
     return model_ids
+
+
+def reload_config() -> Dict[str, Any]:
+    """
+    Reload configuration from .env and user config files.
+
+    This allows updating API keys and other settings without restarting
+    the server.
+
+    Returns:
+        Dict with reload status and current config
+    """
+    global OPENROUTER_API_KEY, TAVILY_API_KEY
+
+    # Reload .env file
+    load_dotenv(override=True)
+
+    # Update module-level variables
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+    TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+    # Also update the websearch module's reference
+    try:
+        from . import websearch
+        websearch.TAVILY_API_KEY = TAVILY_API_KEY
+    except ImportError:
+        pass
+
+    logger.info("Configuration reloaded")
+
+    return {
+        "status": "reloaded",
+        "openrouter_configured": bool(OPENROUTER_API_KEY),
+        "tavily_configured": bool(TAVILY_API_KEY),
+        "council_models": get_council_models(),
+        "chairman_model": get_chairman_model(),
+    }

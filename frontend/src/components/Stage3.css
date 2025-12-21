@@ -72,3 +72,61 @@
 .final-text p:first-child {
   font-size: 1.0625rem;
 }
+
+/* Reasoning indicator */
+.stage3 .reasoning-indicator {
+  margin-left: var(--space-xs);
+  opacity: 0.8;
+}
+
+/* Reasoning section */
+.stage3 .reasoning-section {
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--color-stage3-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.stage3 .reasoning-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #2E7D32;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.stage3 .reasoning-toggle:hover {
+  background: linear-gradient(135deg, #C8E6C9 0%, #A5D6A7 100%);
+}
+
+.stage3 .reasoning-toggle svg {
+  flex-shrink: 0;
+}
+
+.stage3 .reasoning-content {
+  padding: var(--space-md);
+  background: #FAFFFE;
+  border-top: 1px solid #C8E6C9;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.stage3 .reasoning-content p {
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.stage3 .reasoning-content p:last-child {
+  margin-bottom: 0;
+}

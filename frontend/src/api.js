@@ -175,6 +175,56 @@ export const api = {
   },
 
   /**
+   * Export a conversation as Markdown.
+   * @returns {Promise<Blob>}
+   */
+  async exportMarkdown(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/export/markdown`
+    );
+    if (!response.ok) {
+      throw new Error('Failed to export conversation');
+    }
+    return response.blob();
+  },
+
+  /**
+   * Export a conversation as JSON.
+   * @returns {Promise<Blob>}
+   */
+  async exportJson(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/export/json`
+    );
+    if (!response.ok) {
+      throw new Error('Failed to export conversation');
+    }
+    return response.blob();
+  },
+
+  /**
+   * Upload a file attachment.
+   * @param {File} file - File to upload
+   * @returns {Promise<{id: string, filename: string, file_type: string}>}
+   */
+  async uploadAttachment(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/api/attachments`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to upload file');
+    }
+
+    return response.json();
+  },
+
+  /**
    * Get pending response status for a conversation.
    * Returns info about any in-progress or interrupted response.
    */
@@ -231,6 +281,7 @@ export const api = {
    * @param {boolean} useWebSearch - Whether to use web search
    * @param {string} mode - Mode: 'council' or 'arena'
    * @param {object|null} arenaConfig - Arena configuration (e.g., { round_count: 3 })
+   * @param {Array} attachments - Array of attachment objects from upload
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
@@ -240,6 +291,7 @@ export const api = {
     useWebSearch,
     mode = 'council',
     arenaConfig = null,
+    attachments = [],
     onEvent
   ) {
     const body = {
@@ -250,6 +302,10 @@ export const api = {
 
     if (mode === 'arena' && arenaConfig) {
       body.arena_config = arenaConfig;
+    }
+
+    if (attachments && attachments.length > 0) {
+      body.attachments = attachments;
     }
 
     const response = await fetch(

@@ -114,3 +114,62 @@
   line-height: 1.7;
   font-family: var(--font-body);
 }
+
+/* Reasoning indicator on tabs */
+.reasoning-indicator {
+  margin-left: var(--space-xs);
+  color: var(--color-burgundy);
+  opacity: 0.8;
+}
+
+/* Reasoning section */
+.reasoning-section {
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.reasoning-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: linear-gradient(135deg, #F5F0FF 0%, #EDE4F8 100%);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #6B4C8A;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.reasoning-toggle:hover {
+  background: linear-gradient(135deg, #EDE4F8 0%, #E0D4ED 100%);
+}
+
+.reasoning-toggle svg {
+  flex-shrink: 0;
+}
+
+.reasoning-content {
+  padding: var(--space-md);
+  background: #FDFBFF;
+  border-top: 1px solid #E0D4ED;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.reasoning-content p {
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.reasoning-content p:last-child {
+  margin-bottom: 0;
+}

@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { Moon, Sun, Monitor } from 'lucide-react';
 import './Sidebar.css';
 import { ConversationItem, CouncilDisplay } from './sidebar/index.js';
 import ModelSelector from './ModelSelector';
 import ModelCuration from './ModelCuration';
+import { useTheme } from '../hooks';
 
 export default function Sidebar({
   conversations,
@@ -11,6 +13,7 @@ export default function Sidebar({
   onNewConversation,
   onDeleteConversation,
   onRenameConversation,
+  onExportConversation,
   councilModels = [],
   chairmanModel = '',
   onConfigChange,
@@ -20,6 +23,19 @@ export default function Sidebar({
   const [showCuration, setShowCuration] = useState(false);
   const [pendingCouncil, setPendingCouncil] = useState(councilModels);
   const [pendingChairman, setPendingChairman] = useState(chairmanModel);
+  const { theme, cycleTheme } = useTheme();
+
+  const themeIcon = {
+    system: <Monitor size={16} />,
+    light: <Sun size={16} />,
+    dark: <Moon size={16} />,
+  }[theme];
+
+  const themeLabel = {
+    system: 'System',
+    light: 'Light',
+    dark: 'Dark',
+  }[theme];
 
   const handleOpenConfig = () => {
     setPendingCouncil(councilModels);
@@ -69,6 +85,7 @@ export default function Sidebar({
               onSelect={onSelectConversation}
               onRename={onRenameConversation}
               onDelete={onDeleteConversation}
+              onExport={onExportConversation}
             />
           ))
         )}
@@ -80,6 +97,17 @@ export default function Sidebar({
         onOpenConfig={handleOpenConfig}
         onOpenCuration={() => setShowCuration(true)}
       />
+
+      <div className="sidebar-footer">
+        <button
+          className="theme-toggle"
+          onClick={cycleTheme}
+          title={`Theme: ${themeLabel}`}
+        >
+          {themeIcon}
+          <span>{themeLabel}</span>
+        </button>
+      </div>
 
       {showConfigUI && (
         <div className="config-modal-overlay" onClick={handleCancelConfig}>

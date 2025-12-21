@@ -6,7 +6,7 @@ Feature ideas and enhancements for LLM Council.
 
 | Item | Priority | Effort | Notes |
 |------|----------|--------|-------|
-| Ollama integration | p1 | small | Local model execution with zero API cost. Privacy-conscious deployment. Same async pattern as OpenRouter. Config: OLLAMA_HOST, OLLAMA_ENABLED |
+| Ollama integration | p4 | small | Local model execution with zero API cost. Privacy-conscious deployment. Same async pattern as OpenRouter. Config: OLLAMA_HOST, OLLAMA_ENABLED |
 | File attachments | p1 | medium | PDF, TXT, MD, image upload support. Uses pymupdf4llm for PDF→markdown. Base64 data URIs for vision models. Opens document analysis use case |
 | Built-in tools | p2 | medium | Calculator (AST-based safe eval), Wikipedia, ArXiv, Yahoo Finance. Research capabilities for council. Consider LangChain dependency |
 | DuckDuckGo search | p2 | small | Free web search alternative to Tavily. Fallback when no API key. LangChain DuckDuckGoSearchRun |

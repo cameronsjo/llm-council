@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Check, RotateCcw, AlertTriangle, X } from 'lucide-react';
+import { Copy, Check, RotateCcw, AlertTriangle, X, Paperclip, FileText, Image } from 'lucide-react';
+import { api } from '../api';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
@@ -15,6 +16,7 @@ export default function ChatInterface({
   onDismissInterrupted,
   isLoading,
   webSearchAvailable,
+  searchProvider,
   useWebSearch,
   onToggleWebSearch,
   mode,
@@ -25,7 +27,10 @@ export default function ChatInterface({
 }) {
   const [input, setInput] = useState('');
   const [copiedIndex, setCopiedIndex] = useState(null);
+  const [attachments, setAttachments] = useState([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const handleCopy = async (text, index) => {
     try {
@@ -84,19 +89,54 @@ export default function ChatInterface({
     scrollToBottom();
   }, [conversation]);
 
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setUploadingFile(true);
+    try {
+      for (const file of files) {
+        const attachment = await api.uploadAttachment(file);
+        setAttachments((prev) => [...prev, attachment]);
+      }
+    } catch (error) {
+      console.error('Failed to upload file:', error);
+      alert(error.message || 'Failed to upload file');
+    } finally {
+      setUploadingFile(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveAttachment = (id) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (input.trim() && !isLoading) {
-      onSendMessage(input);
+      onSendMessage(input, attachments);
       setInput('');
+      setAttachments([]);
     }
   };
 
   const handleKeyDown = (e) => {
-    // Submit on Enter (without Shift)
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const isMod = e.metaKey || e.ctrlKey;
+
+    // Submit on Enter (without Shift) or Cmd/Ctrl+Enter
+    if ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Enter' && isMod)) {
       e.preventDefault();
       handleSubmit(e);
+    }
+
+    // Escape to clear input
+    if (e.key === 'Escape') {
+      setInput('');
+      e.target.blur();
     }
   };
 
@@ -338,16 +378,60 @@ export default function ChatInterface({
             </div>
           )}
 
+          {/* Attachment Chips */}
+          {attachments.length > 0 && (
+            <div className="attachment-chips">
+              {attachments.map((att) => (
+                <div key={att.id} className="attachment-chip">
+                  {att.file_type === 'image' ? <Image size={14} /> : <FileText size={14} />}
+                  <span className="attachment-name">{att.filename}</span>
+                  <button
+                    type="button"
+                    className="attachment-remove"
+                    onClick={() => handleRemoveAttachment(att.id)}
+                    disabled={isLoading}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="input-controls">
+            {/* File attachment button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="file-input-hidden"
+              onChange={handleFileSelect}
+              disabled={isLoading || uploadingFile}
+              multiple
+              accept=".txt,.md,.json,.csv,.xml,.html,.py,.js,.ts,.pdf,.png,.jpg,.jpeg,.gif,.webp"
+            />
+            <button
+              type="button"
+              className="attach-btn"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || uploadingFile}
+              title="Attach files (PDF, images, text)"
+            >
+              <Paperclip size={18} />
+              {uploadingFile && <span className="uploading-indicator">...</span>}
+            </button>
+
             {webSearchAvailable && (
-              <label className="web-search-toggle">
+              <label className="web-search-toggle" title={`Search via ${searchProvider === 'tavily' ? 'Tavily' : 'DuckDuckGo'}`}>
                 <input
                   type="checkbox"
                   checked={useWebSearch}
                   onChange={onToggleWebSearch}
                   disabled={isLoading}
                 />
-                <span className="toggle-label">🔍 Web Search</span>
+                <span className="toggle-label">
+                  🔍 Web Search
+                  {searchProvider && <span className="provider-badge">{searchProvider === 'tavily' ? 'Tavily' : 'DDG'}</span>}
+                </span>
               </label>
             )}
             <button

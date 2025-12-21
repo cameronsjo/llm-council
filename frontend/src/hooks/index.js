@@ -9,3 +9,4 @@ export {
   useExpandableGroups,
   useAutoExpandableGroups,
 } from './useExpandableGroups';
+export { useTheme } from './useTheme';

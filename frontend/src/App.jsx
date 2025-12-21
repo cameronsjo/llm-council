@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import { api } from './api';
@@ -10,6 +10,7 @@ function App() {
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [webSearchAvailable, setWebSearchAvailable] = useState(false);
+  const [searchProvider, setSearchProvider] = useState('');
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [councilModels, setCouncilModels] = useState([]);
   const [chairmanModel, setChairmanModel] = useState('');
@@ -35,6 +36,7 @@ function App() {
     try {
       const config = await api.getConfig();
       setWebSearchAvailable(config.web_search_available);
+      setSearchProvider(config.search_provider || '');
       setCouncilModels(config.council_models || []);
       setChairmanModel(config.chairman_model || '');
       if (config.arena) {
@@ -113,6 +115,22 @@ function App() {
     }
   };
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isMod = e.metaKey || e.ctrlKey;
+
+      // Cmd/Ctrl+N - New conversation
+      if (isMod && e.key === 'n') {
+        e.preventDefault();
+        handleNewConversation();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [councilModels, chairmanModel, conversations]);
+
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
   };
@@ -152,6 +170,32 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to rename conversation:', error);
+    }
+  };
+
+  const handleExportConversation = async (id, format) => {
+    try {
+      const blob = format === 'markdown'
+        ? await api.exportMarkdown(id)
+        : await api.exportJson(id);
+
+      // Find conversation title for filename
+      const conv = conversations.find((c) => c.id === id);
+      const title = (conv?.title || 'conversation').replace(/[^a-zA-Z0-9]/g, '_');
+      const extension = format === 'markdown' ? 'md' : 'json';
+      const filename = `${title}.${extension}`;
+
+      // Trigger download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export conversation:', error);
     }
   };
 
@@ -199,13 +243,13 @@ function App() {
     setCurrentConversation(conv);
   };
 
-  const handleSendMessage = async (content) => {
+  const handleSendMessage = async (content, attachments = []) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
     try {
       // Optimistically add user message to UI
-      const userMessage = { role: 'user', content };
+      const userMessage = { role: 'user', content, attachments };
       setCurrentConversation((prev) => ({
         ...prev,
         messages: [...prev.messages, userMessage],
@@ -261,6 +305,7 @@ function App() {
         useWebSearch,
         mode,
         arenaConfigParam,
+        attachments,
         (eventType, event) => {
           switch (eventType) {
             // Shared events
@@ -448,6 +493,7 @@ function App() {
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
         onRenameConversation={handleRenameConversation}
+        onExportConversation={handleExportConversation}
         councilModels={councilModels}
         chairmanModel={chairmanModel}
         onConfigChange={handleConfigChange}
@@ -461,6 +507,7 @@ function App() {
         onDismissInterrupted={handleDismissInterrupted}
         isLoading={isLoading}
         webSearchAvailable={webSearchAvailable}
+        searchProvider={searchProvider}
         useWebSearch={useWebSearch}
         onToggleWebSearch={() => setUseWebSearch(!useWebSearch)}
         mode={mode}

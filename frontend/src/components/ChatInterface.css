@@ -231,9 +231,9 @@
 /* Input Controls */
 .input-controls {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-sm);
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-md);
 }
 
 .send-button {
@@ -288,9 +288,23 @@
 }
 
 .web-search-toggle .toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 0.75rem;
+}
+
+.provider-badge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 1px 4px;
+  background: var(--color-burgundy-light, #f5e6e8);
+  color: var(--color-burgundy);
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .web-search-toggle:hover {
@@ -528,6 +542,109 @@
 }
 
 .interrupted-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* File Attachments */
+.file-input-hidden {
+  display: none;
+}
+
+.attach-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-sm);
+  background: var(--color-cream);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--color-ivory);
+  border-color: var(--color-burgundy);
+  color: var(--color-burgundy);
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.uploading-indicator {
+  margin-left: var(--space-xs);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-ivory);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  animation: chipFadeIn 0.2s ease-out;
+}
+
+@keyframes chipFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.attachment-chip svg {
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.attachment-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.attachment-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.attachment-remove:hover:not(:disabled) {
+  background: rgba(139, 38, 53, 0.1);
+  color: var(--color-burgundy);
+}
+
+.attachment-remove:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
