@@ -83,8 +83,31 @@ function App() {
       if (pendingStatus.pending) {
         if (pendingStatus.stale || pendingStatus.has_error) {
           // Show interrupted state with partial data
+          const partialData = pendingStatus.partial_data || {};
+          const hasPartialResults = partialData.stage1?.length > 0 || partialData.rounds?.length > 0;
+
+          // If we have partial results, inject a synthetic assistant message to display them
+          let messagesWithPartial = conv.messages;
+          if (hasPartialResults) {
+            const partialMessage = {
+              role: 'assistant',
+              partial: true, // Mark as partial for UI styling
+              mode: pendingStatus.mode,
+              // Council mode partial data
+              stage1: partialData.stage1 || null,
+              stage2: partialData.stage2 || null,
+              stage3: partialData.stage3 || null,
+              // Arena mode partial data
+              rounds: partialData.rounds || null,
+              synthesis: partialData.synthesis || null,
+              participant_mapping: partialData.participant_mapping || null,
+            };
+            messagesWithPartial = [...conv.messages, partialMessage];
+          }
+
           setCurrentConversation({
             ...conv,
+            messages: messagesWithPartial,
             pendingInterrupted: true,
             pendingInfo: pendingStatus,
           });
@@ -212,24 +235,31 @@ function App() {
     await handleSendMessage(content);
   };
 
-  const handleRetryInterrupted = async () => {
+  const handleRetryInterrupted = async (shouldResume = false) => {
     if (!currentConversationId || !currentConversation?.pendingInfo) return;
 
     const userContent = currentConversation.pendingInfo.user_content;
     const pendingMode = currentConversation.pendingInfo.mode || 'council';
+    const hasStage1 = currentConversation.pendingInfo.partial_data?.stage1?.length > 0;
 
-    // Clear pending state and orphaned message on backend
-    await api.clearPending(currentConversationId);
+    // If resuming with Stage 1 data, don't clear pending - the backend will use it
+    if (shouldResume && hasStage1) {
+      setMode(pendingMode);
+      await handleSendMessage(userContent, [], true); // resume=true
+    } else {
+      // Full retry: Clear pending state and orphaned message on backend
+      await api.clearPending(currentConversationId);
 
-    // Reload conversation to get clean state
-    const conv = await api.getConversation(currentConversationId);
-    setCurrentConversation(conv);
+      // Reload conversation to get clean state
+      const conv = await api.getConversation(currentConversationId);
+      setCurrentConversation(conv);
 
-    // Set mode to match the interrupted request
-    setMode(pendingMode);
+      // Set mode to match the interrupted request
+      setMode(pendingMode);
 
-    // Re-send the message
-    await handleSendMessage(userContent);
+      // Re-send the message
+      await handleSendMessage(userContent);
+    }
   };
 
   const handleDismissInterrupted = async () => {
@@ -243,7 +273,7 @@ function App() {
     setCurrentConversation(conv);
   };
 
-  const handleSendMessage = async (content, attachments = []) => {
+  const handleSendMessage = async (content, attachments = [], resume = false) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
@@ -471,7 +501,8 @@ function App() {
             default:
               console.log('Unknown event type:', eventType);
           }
-        }
+        },
+        resume
       );
     } catch (error) {
       console.error('Failed to send message:', error);

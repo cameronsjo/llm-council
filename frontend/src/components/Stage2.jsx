@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Copy, Check } from 'lucide-react';
 import MetricsDisplay from './MetricsDisplay';
 import './Stage2.css';
 
@@ -17,10 +18,21 @@ function deAnonymizeText(text, labelToModel) {
 
 export default function Stage2({ rankings, labelToModel, aggregateRankings, metrics }) {
   const [activeTab, setActiveTab] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   if (!rankings || rankings.length === 0) {
     return null;
   }
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(rankings[activeTab].ranking);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   return (
     <div className="stage stage2">
@@ -45,8 +57,13 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, metr
       </div>
 
       <div className="tab-content">
-        <div className="ranking-model">
-          {rankings[activeTab].model}
+        <div className="tab-content-header">
+          <div className="ranking-model">
+            {rankings[activeTab].model}
+          </div>
+          <button className="copy-btn" onClick={handleCopy} title="Copy evaluation">
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
         </div>
         <div className="ranking-content markdown-content">
           <ReactMarkdown>

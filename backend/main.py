@@ -98,6 +98,7 @@ class SendMessageRequest(BaseModel):
     mode: str = Field(default="council", pattern="^(council|arena)$")
     arena_config: Optional[ArenaConfig] = None
     attachments: List[AttachmentRef] = Field(default_factory=list)
+    resume: bool = Field(default=False, description="Resume from partial results if available")
 
 
 class UpdateConfigRequest(BaseModel):
@@ -497,54 +498,71 @@ async def send_message_stream(
                 conversation_id, user_id=user_id
             )
 
-            # Add user message
-            storage.add_user_message(conversation_id, request.content, user_id=user_id)
-
-            # Mark as pending
-            storage.mark_response_pending(
-                conversation_id, "council", request.content, user_id=user_id
+            # Check for resume mode with existing partial data
+            pending_data = storage.get_pending_message(conversation_id, user_id=user_id)
+            can_resume = (
+                request.resume
+                and pending_data
+                and pending_data.get("partial_data", {}).get("stage1")
             )
 
-            # Start title generation in parallel (don't await yet)
+            if can_resume:
+                # Resume from saved Stage 1 results
+                yield f"data: {json.dumps({'type': 'resume_start', 'data': {'from_stage': 2}})}\n\n"
+                stage1_results = pending_data["partial_data"]["stage1"]
+                yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results, 'resumed': True})}\n\n"
+                # Web search info from original run (if any)
+                web_search_context = None
+                web_search_error = None
+            else:
+                # Normal flow: Add user message and run Stage 1
+                storage.add_user_message(conversation_id, request.content, user_id=user_id)
+
+                # Mark as pending
+                storage.mark_response_pending(
+                    conversation_id, "council", request.content, user_id=user_id
+                )
+
+                # Process attachments if any
+                attachment_context = ""
+                if request.attachments:
+                    attachment_dicts = [a.model_dump() for a in request.attachments]
+                    text_context, _ = process_attachments(attachment_dicts, user_id)
+                    if text_context:
+                        attachment_context = f"## Attached Documents\n\n{text_context}\n\n---\n\n"
+
+                # Optionally perform web search
+                web_search_context = None
+                web_search_error = None
+                if request.use_web_search:
+                    yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
+                    web_search_context, web_search_error = await perform_web_search(
+                        request.content
+                    )
+                    yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
+
+                # Stage 1: Collect responses
+                yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+                # Combine attachment and web search context
+                combined_context = attachment_context
+                if web_search_context:
+                    combined_context += web_search_context
+                stage1_results = await stage1_collect_responses(
+                    request.content, combined_context or None, council_models
+                )
+                yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+
+                # Update pending progress
+                storage.update_pending_progress(
+                    conversation_id, {"stage1": stage1_results}, user_id=user_id
+                )
+
+            # Start title generation in parallel (don't await yet) - only for new conversations
             title_task = None
-            if is_first_message:
+            if is_first_message and not can_resume:
                 title_task = asyncio.create_task(
                     generate_conversation_title(request.content)
                 )
-
-            # Process attachments if any
-            attachment_context = ""
-            if request.attachments:
-                attachment_dicts = [a.model_dump() for a in request.attachments]
-                text_context, _ = process_attachments(attachment_dicts, user_id)
-                if text_context:
-                    attachment_context = f"## Attached Documents\n\n{text_context}\n\n---\n\n"
-
-            # Optionally perform web search
-            web_search_context = None
-            web_search_error = None
-            if request.use_web_search:
-                yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
-                web_search_context, web_search_error = await perform_web_search(
-                    request.content
-                )
-                yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
-
-            # Stage 1: Collect responses
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            # Combine attachment and web search context
-            combined_context = attachment_context
-            if web_search_context:
-                combined_context += web_search_context
-            stage1_results = await stage1_collect_responses(
-                request.content, combined_context or None, council_models
-            )
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
-
-            # Update pending progress
-            storage.update_pending_progress(
-                conversation_id, {"stage1": stage1_results}, user_id=user_id
-            )
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"

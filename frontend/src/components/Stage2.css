@@ -187,11 +187,36 @@
   box-shadow: var(--shadow-subtle);
 }
 
+.stage2 .tab-content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.stage2 .copy-btn {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-ivory);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage2 .copy-btn:hover {
+  background: var(--color-parchment);
+  border-color: var(--color-stage2-accent);
+  color: var(--color-stage2-accent);
+}
+
 .ranking-model {
   color: var(--color-text-muted);
   font-size: 0.75rem;
   font-family: var(--font-mono);
-  margin-bottom: var(--space-md);
   display: flex;
   align-items: center;
   gap: var(--space-sm);

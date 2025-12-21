@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Check, RotateCcw, AlertTriangle, X, Paperclip, FileText, Image } from 'lucide-react';
+import { Copy, Check, RotateCcw, AlertTriangle, X, Paperclip, FileText, Image, Play } from 'lucide-react';
 import { api } from '../api';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
@@ -156,38 +156,55 @@ export default function ChatInterface({
     <div className="chat-interface">
       <div className="messages-container">
         {/* Interrupted Response Banner */}
-        {conversation.pendingInterrupted && conversation.pendingInfo && (
-          <div className="interrupted-banner">
-            <div className="interrupted-content">
-              <AlertTriangle size={20} />
-              <div className="interrupted-text">
-                <strong>Response was interrupted</strong>
-                <span>
-                  {conversation.pendingInfo.mode === 'arena' ? 'Arena debate' : 'Council response'}
-                  {' '}was interrupted. Would you like to retry?
-                </span>
+        {conversation.pendingInterrupted && conversation.pendingInfo && (() => {
+          const hasStage1 = conversation.pendingInfo.partial_data?.stage1?.length > 0;
+          const canResume = hasStage1 && conversation.pendingInfo.mode === 'council';
+          return (
+            <div className="interrupted-banner">
+              <div className="interrupted-content">
+                <AlertTriangle size={20} />
+                <div className="interrupted-text">
+                  <strong>Response was interrupted</strong>
+                  <span>
+                    {conversation.pendingInfo.mode === 'arena' ? 'Arena debate' : 'Council response'}
+                    {' '}was interrupted.
+                    {canResume
+                      ? ' Stage 1 completed - you can resume from Stage 2.'
+                      : ' Would you like to retry?'}
+                  </span>
+                </div>
+              </div>
+              <div className="interrupted-actions">
+                {canResume && (
+                  <button
+                    className="interrupted-btn resume"
+                    onClick={() => onRetryInterrupted(true)}
+                    disabled={isLoading}
+                  >
+                    <Play size={14} />
+                    Resume
+                  </button>
+                )}
+                <button
+                  className="interrupted-btn retry"
+                  onClick={() => onRetryInterrupted(false)}
+                  disabled={isLoading}
+                >
+                  <RotateCcw size={14} />
+                  Retry
+                </button>
+                <button
+                  className="interrupted-btn dismiss"
+                  onClick={onDismissInterrupted}
+                  disabled={isLoading}
+                >
+                  <X size={14} />
+                  Dismiss
+                </button>
               </div>
             </div>
-            <div className="interrupted-actions">
-              <button
-                className="interrupted-btn retry"
-                onClick={onRetryInterrupted}
-                disabled={isLoading}
-              >
-                <RotateCcw size={14} />
-                Retry
-              </button>
-              <button
-                className="interrupted-btn dismiss"
-                onClick={onDismissInterrupted}
-                disabled={isLoading}
-              >
-                <X size={14} />
-                Dismiss
-              </button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {conversation.messages.length === 0 && !conversation.pendingInterrupted ? (
           <div className="empty-state">
@@ -219,10 +236,11 @@ export default function ChatInterface({
                   </div>
                 </div>
               ) : (
-                <div className="assistant-message">
+                <div className={`assistant-message ${msg.partial ? 'partial-response' : ''}`}>
                   <div className="message-header">
                     <div className="message-label">
                       {msg.mode === 'arena' ? 'Arena Debate' : 'LLM Council'}
+                      {msg.partial && <span className="partial-badge">Partial</span>}
                     </div>
                     <div className="message-actions">
                       {getMessageText(msg) && (

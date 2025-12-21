@@ -292,12 +292,14 @@ export const api = {
     mode = 'council',
     arenaConfig = null,
     attachments = [],
-    onEvent
+    onEvent,
+    resume = false
   ) {
     const body = {
       content,
       use_web_search: useWebSearch,
       mode,
+      resume,
     };
 
     if (mode === 'arena' && arenaConfig) {
