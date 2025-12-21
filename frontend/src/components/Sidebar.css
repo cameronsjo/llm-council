@@ -23,7 +23,7 @@
 .sidebar-header {
   padding: var(--space-lg);
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--color-surface-elevated);
 }
 
 .sidebar-header h1 {
@@ -42,7 +42,7 @@
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   margin-bottom: var(--space-md);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--color-surface);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light);
 }
@@ -128,12 +128,12 @@
 }
 
 .conversation-item:hover {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--color-surface);
   border-color: var(--color-border-light);
 }
 
 .conversation-item.active {
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--color-surface-elevated);
   border-color: var(--color-burgundy);
   box-shadow: var(--shadow-subtle);
 }
@@ -197,7 +197,7 @@
 
 .action-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--color-surface);
 }
 
 .action-btn.action-delete:hover {
@@ -215,7 +215,7 @@
   right: 0;
   z-index: 100;
   min-width: 160px;
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -250,7 +250,8 @@
   font-size: 0.9375rem;
   border: 1px solid var(--color-burgundy);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   outline: none;
 }
 
@@ -312,7 +313,7 @@
 .council-config {
   border-top: 1px solid var(--color-border);
   padding: var(--space-sm);
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--color-parchment);
 }
 
 .council-header {
@@ -339,7 +340,7 @@
 }
 
 .council-toggle:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--color-surface);
   color: var(--color-text-primary);
 }
 
@@ -405,7 +406,7 @@
 .curate-btn:hover,
 .configure-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--color-surface);
   border-color: var(--color-border-light);
 }
 
@@ -500,7 +501,7 @@
 }
 
 .theme-toggle:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--color-surface);
   color: var(--color-text-primary);
 }
 

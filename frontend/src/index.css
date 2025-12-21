@@ -40,6 +40,8 @@
   /* Borders & Shadows */
   --color-border: #DCD7CE;
   --color-border-light: #E8E4DC;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #FFFFFF;
   --shadow-subtle: 0 1px 3px rgba(42, 37, 32, 0.06);
   --shadow-medium: 0 4px 12px rgba(42, 37, 32, 0.08);
   --shadow-elevated: 0 8px 24px rgba(42, 37, 32, 0.12);
@@ -76,94 +78,98 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     /* Base Palette - Deep, Warm Darks */
-    --color-cream: #1A1816;
-    --color-ivory: #222018;
-    --color-parchment: #2A2722;
-    --color-sage-light: #1E2320;
-    --color-sage: #252B28;
+    --color-cream: #18171a;
+    --color-ivory: #1e1d21;
+    --color-parchment: #252428;
+    --color-sage-light: #1c1e1d;
+    --color-sage: #232625;
+    --color-surface: #2a292e;
+    --color-surface-elevated: #323136;
 
-    /* Primary - Muted Burgundy for Dark */
-    --color-burgundy: #C4536A;
-    --color-burgundy-dark: #A83D54;
-    --color-burgundy-light: #D4738A;
+    /* Primary - Brighter Burgundy for Dark */
+    --color-burgundy: #E07A8E;
+    --color-burgundy-dark: #C95A6E;
+    --color-burgundy-light: #F09AAE;
 
-    /* Secondary - Warm Gold (slightly brighter) */
-    --color-gold: #D4B36A;
+    /* Secondary - Warm Gold (brighter for dark) */
+    --color-gold: #E5C87A;
     --color-gold-light: #3D3528;
-    --color-gold-dark: #BFA054;
+    --color-gold-dark: #D4B86A;
 
-    /* Stage Colors - Darker variants */
-    --color-stage1: #1E2530;
-    --color-stage1-border: #3A4558;
-    --color-stage1-accent: #7A9BC0;
+    /* Stage Colors - Darker variants with better contrast */
+    --color-stage1: #1E2430;
+    --color-stage1-border: #3A4860;
+    --color-stage1-accent: #8AADD4;
 
     --color-stage2: #2A2518;
-    --color-stage2-border: #4A4030;
-    --color-stage2-accent: #C4A35A;
+    --color-stage2-border: #4A4230;
+    --color-stage2-accent: #E5C87A;
 
     --color-stage3: #1E2A1E;
-    --color-stage3-border: #3A5040;
-    --color-stage3-accent: #6A9C79;
+    --color-stage3-border: #3A5840;
+    --color-stage3-accent: #7AB889;
 
-    /* Text - Light on Dark */
-    --color-text-primary: #E8E4DC;
-    --color-text-secondary: #B0A89C;
-    --color-text-muted: #7A746C;
+    /* Text - Better contrast for readability */
+    --color-text-primary: #F0EDE8;
+    --color-text-secondary: #C0B8AC;
+    --color-text-muted: #908880;
 
     /* Borders & Shadows */
-    --color-border: #3A3630;
-    --color-border-light: #2A2620;
-    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.2);
-    --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.3);
-    --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+    --color-border: #3E3A36;
+    --color-border-light: #2E2A26;
+    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.6);
   }
 }
 
 /* Manual dark theme override */
 :root[data-theme="dark"] {
   /* Base Palette - Deep, Warm Darks */
-  --color-cream: #1A1816;
-  --color-ivory: #222018;
-  --color-parchment: #2A2722;
-  --color-sage-light: #1E2320;
-  --color-sage: #252B28;
+  --color-cream: #18171a;
+  --color-ivory: #1e1d21;
+  --color-parchment: #252428;
+  --color-sage-light: #1c1e1d;
+  --color-sage: #232625;
+  --color-surface: #2a292e;
+  --color-surface-elevated: #323136;
 
-  /* Primary - Muted Burgundy for Dark */
-  --color-burgundy: #C4536A;
-  --color-burgundy-dark: #A83D54;
-  --color-burgundy-light: #D4738A;
+  /* Primary - Brighter Burgundy for Dark */
+  --color-burgundy: #E07A8E;
+  --color-burgundy-dark: #C95A6E;
+  --color-burgundy-light: #F09AAE;
 
-  /* Secondary - Warm Gold (slightly brighter) */
-  --color-gold: #D4B36A;
+  /* Secondary - Warm Gold (brighter for dark) */
+  --color-gold: #E5C87A;
   --color-gold-light: #3D3528;
-  --color-gold-dark: #BFA054;
+  --color-gold-dark: #D4B86A;
 
-  /* Stage Colors - Darker variants */
-  --color-stage1: #1E2530;
-  --color-stage1-border: #3A4558;
-  --color-stage1-accent: #7A9BC0;
+  /* Stage Colors - Darker variants with better contrast */
+  --color-stage1: #1E2430;
+  --color-stage1-border: #3A4860;
+  --color-stage1-accent: #8AADD4;
 
   --color-stage2: #2A2518;
-  --color-stage2-border: #4A4030;
-  --color-stage2-accent: #C4A35A;
+  --color-stage2-border: #4A4230;
+  --color-stage2-accent: #E5C87A;
 
   --color-stage3: #1E2A1E;
-  --color-stage3-border: #3A5040;
-  --color-stage3-accent: #6A9C79;
+  --color-stage3-border: #3A5840;
+  --color-stage3-accent: #7AB889;
 
-  /* Text - Light on Dark */
-  --color-text-primary: #E8E4DC;
-  --color-text-secondary: #B0A89C;
-  --color-text-muted: #7A746C;
+  /* Text - Better contrast for readability */
+  --color-text-primary: #F0EDE8;
+  --color-text-secondary: #C0B8AC;
+  --color-text-muted: #908880;
 
   /* Borders & Shadows */
-  --color-border: #3A3630;
-  --color-border-light: #2A2620;
-  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.3);
-  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --color-border: #3E3A36;
+  --color-border-light: #2E2A26;
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.6);
 }
 
 * {
