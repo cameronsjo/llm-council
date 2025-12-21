@@ -8,7 +8,8 @@ from .websearch import search_web, format_search_results, is_web_search_availabl
 
 async def stage1_collect_responses(
     user_query: str,
-    web_search_context: Optional[str] = None
+    web_search_context: Optional[str] = None,
+    council_models: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -16,6 +17,7 @@ async def stage1_collect_responses(
     Args:
         user_query: The user's question
         web_search_context: Optional web search results to include in context
+        council_models: Optional list of models (uses global config if None)
 
     Returns:
         List of dicts with 'model' and 'response' keys
@@ -36,9 +38,9 @@ Please use the web search results above as reference when answering. Cite source
 
     messages = [{"role": "user", "content": prompt}]
 
-    # Query all models in parallel
-    council_models = get_council_models()
-    responses = await query_models_parallel(council_models, messages)
+    # Query all models in parallel (use provided or fall back to global)
+    effective_council = council_models if council_models else get_council_models()
+    responses = await query_models_parallel(effective_council, messages)
 
     # Format results
     stage1_results = []
@@ -55,7 +57,8 @@ Please use the web search results above as reference when answering. Cite source
 
 async def stage2_collect_rankings(
     user_query: str,
-    stage1_results: List[Dict[str, Any]]
+    stage1_results: List[Dict[str, Any]],
+    council_models: Optional[List[str]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -63,6 +66,7 @@ async def stage2_collect_rankings(
     Args:
         user_query: The original user query
         stage1_results: Results from Stage 1
+        council_models: Optional list of models (uses global config if None)
 
     Returns:
         Tuple of (rankings list, label_to_model mapping)
@@ -115,9 +119,9 @@ Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
 
-    # Get rankings from all council models in parallel
-    council_models = get_council_models()
-    responses = await query_models_parallel(council_models, messages)
+    # Get rankings from all council models in parallel (use provided or fall back to global)
+    effective_council = council_models if council_models else get_council_models()
+    responses = await query_models_parallel(effective_council, messages)
 
     # Format results
     stage2_results = []
@@ -138,7 +142,8 @@ Now provide your evaluation and ranking:"""
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    stage2_results: List[Dict[str, Any]],
+    chairman_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
@@ -147,6 +152,7 @@ async def stage3_synthesize_final(
         user_query: The original user query
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
+        chairman_model: Optional chairman model (uses global config if None)
 
     Returns:
         Dict with 'model' and 'response' keys
@@ -181,20 +187,20 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model
-    chairman_model = get_chairman_model()
-    response = await query_model(chairman_model, messages)
+    # Query the chairman model (use provided or fall back to global)
+    effective_chairman = chairman_model if chairman_model else get_chairman_model()
+    response = await query_model(effective_chairman, messages)
 
     if response is None:
         # Fallback if chairman fails
         return {
-            "model": chairman_model,
+            "model": effective_chairman,
             "response": "Error: Unable to generate final synthesis.",
             "metrics": {}
         }
 
     return {
-        "model": chairman_model,
+        "model": effective_chairman,
         "response": response.get('content', ''),
         "metrics": response.get('metrics', {})
     }
@@ -444,7 +450,9 @@ async def perform_web_search(query: str) -> Tuple[Optional[str], Optional[str]]:
 
 async def run_full_council(
     user_query: str,
-    use_web_search: bool = False
+    use_web_search: bool = False,
+    council_models: Optional[List[str]] = None,
+    chairman_model: Optional[str] = None,
 ) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
@@ -452,6 +460,8 @@ async def run_full_council(
     Args:
         user_query: The user's question
         use_web_search: Whether to include web search results
+        council_models: Optional list of models (uses global config if None)
+        chairman_model: Optional chairman model (uses global config if None)
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
@@ -463,7 +473,9 @@ async def run_full_council(
         web_search_context, web_search_error = await perform_web_search(user_query)
 
     # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query, web_search_context)
+    stage1_results = await stage1_collect_responses(
+        user_query, web_search_context, council_models
+    )
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -473,7 +485,9 @@ async def run_full_council(
         }, {}
 
     # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
+    stage2_results, label_to_model = await stage2_collect_rankings(
+        user_query, stage1_results, council_models
+    )
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -482,7 +496,8 @@ async def run_full_council(
     stage3_result = await stage3_synthesize_final(
         user_query,
         stage1_results,
-        stage2_results
+        stage2_results,
+        chairman_model,
     )
 
     # Calculate aggregated metrics

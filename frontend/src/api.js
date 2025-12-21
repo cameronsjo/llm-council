@@ -61,6 +61,34 @@ export const api = {
   },
 
   /**
+   * Get curated models list.
+   */
+  async getCuratedModels() {
+    const response = await fetch(`${API_BASE}/api/curated-models`);
+    if (!response.ok) {
+      throw new Error('Failed to get curated models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update curated models list.
+   */
+  async updateCuratedModels(modelIds) {
+    const response = await fetch(`${API_BASE}/api/curated-models`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model_ids: modelIds }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update curated models');
+    }
+    return response.json();
+  },
+
+  /**
    * List all conversations.
    */
   async listConversations() {
@@ -72,15 +100,24 @@ export const api = {
   },
 
   /**
-   * Create a new conversation.
+   * Create a new conversation with optional model configuration.
+   * @param {string[]|null} councilModels - Optional council models (inherits global if null)
+   * @param {string|null} chairmanModel - Optional chairman model (inherits global if null)
    */
-  async createConversation() {
+  async createConversation(councilModels = null, chairmanModel = null) {
+    const body = {};
+    if (councilModels) {
+      body.council_models = councilModels;
+    }
+    if (chairmanModel) {
+      body.chairman_model = chairmanModel;
+    }
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       throw new Error('Failed to create conversation');
@@ -97,6 +134,72 @@ export const api = {
     );
     if (!response.ok) {
       throw new Error('Failed to get conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a conversation.
+   */
+  async deleteConversation(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to delete conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * Rename a conversation.
+   */
+  async renameConversation(conversationId, title) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to rename conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get pending response status for a conversation.
+   * Returns info about any in-progress or interrupted response.
+   */
+  async getPendingStatus(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/pending`
+    );
+    if (!response.ok) {
+      throw new Error('Failed to get pending status');
+    }
+    return response.json();
+  },
+
+  /**
+   * Clear pending status and remove the orphaned user message for retry.
+   */
+  async clearPending(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/pending`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to clear pending');
     }
     return response.json();
   },

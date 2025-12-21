@@ -122,6 +122,9 @@
   transition: all var(--transition-fast);
   border: 1px solid transparent;
   background: transparent;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
 }
 
 .conversation-item:hover {
@@ -133,6 +136,16 @@
   background: rgba(255, 255, 255, 0.85);
   border-color: var(--color-burgundy);
   box-shadow: var(--shadow-subtle);
+}
+
+.conversation-item.deleting {
+  background: rgba(220, 53, 69, 0.1);
+  border-color: rgba(220, 53, 69, 0.3);
+}
+
+.conversation-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .conversation-title {
@@ -156,6 +169,105 @@
   color: var(--color-text-muted);
   font-size: 0.75rem;
   font-family: var(--font-mono);
+}
+
+/* Conversation Actions */
+.conversation-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.conversation-item:hover .conversation-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  transition: all var(--transition-fast);
+}
+
+.action-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.action-btn.action-delete:hover {
+  background: rgba(220, 53, 69, 0.15);
+}
+
+/* Rename Input */
+.rename-input {
+  width: 100%;
+  padding: var(--space-sm);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  border: 1px solid var(--color-burgundy);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  outline: none;
+}
+
+.rename-input:focus {
+  box-shadow: 0 0 0 2px rgba(134, 70, 88, 0.2);
+}
+
+/* Delete Confirmation */
+.delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--space-sm);
+}
+
+.delete-confirm-text {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #dc3545;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.confirm-btn {
+  padding: var(--space-xs) var(--space-sm);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.confirm-yes {
+  background: #dc3545;
+  color: #fff;
+}
+
+.confirm-yes:hover {
+  background: #c82333;
+}
+
+.confirm-no {
+  background: var(--color-sage);
+  color: var(--color-text-primary);
+}
+
+.confirm-no:hover {
+  background: var(--color-sage-light);
 }
 
 /* Council Config Section */
@@ -231,7 +343,13 @@
   padding-top: var(--space-sm);
 }
 
-/* Configure Button */
+/* Council Actions */
+.council-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.curate-btn,
 .configure-btn {
   padding: var(--space-sm);
   background: transparent;
@@ -241,12 +359,24 @@
   font-size: 0.875rem;
   opacity: 0.6;
   transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+.curate-btn:hover,
 .configure-btn:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.5);
   border-color: var(--color-border-light);
+}
+
+.curate-btn {
+  color: var(--color-burgundy);
+}
+
+.curate-btn:hover {
+  color: var(--color-burgundy);
 }
 
 /* Config Modal */
@@ -274,11 +404,14 @@
   background: var(--color-cream);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-elevated), 0 0 0 1px var(--color-border);
-  width: 90%;
-  max-width: 700px;
+  width: 95%;
+  max-width: 900px;
   max-height: 90vh;
+  min-height: 600px;
   overflow: hidden;
   animation: modalSlideIn 0.3s ease-out;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes modalSlideIn {

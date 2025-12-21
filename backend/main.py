@@ -28,7 +28,9 @@ from .config import (
     MIN_ARENA_ROUNDS,
     get_chairman_model,
     get_council_models,
+    get_curated_models,
     update_council_config,
+    update_curated_models,
 )
 from .council import (
     aggregate_metrics,
@@ -60,7 +62,8 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
-    pass
+    council_models: Optional[List[str]] = None
+    chairman_model: Optional[str] = None
 
 
 class ArenaConfig(BaseModel):
@@ -85,6 +88,11 @@ class UpdateConfigRequest(BaseModel):
     """Request to update council configuration."""
     council_models: List[str]
     chairman_model: str
+
+
+class UpdateConversationRequest(BaseModel):
+    """Request to update conversation metadata."""
+    title: Optional[str] = None
 
 
 class ConversationMetadata(BaseModel):
@@ -116,6 +124,7 @@ async def get_config():
         "web_search_available": is_web_search_available(),
         "council_models": get_council_models(),
         "chairman_model": get_chairman_model(),
+        "curated_models": get_curated_models(),
         "arena": {
             "default_rounds": DEFAULT_ARENA_ROUNDS,
             "min_rounds": MIN_ARENA_ROUNDS,
@@ -160,6 +169,24 @@ async def update_config(request: UpdateConfigRequest):
     }
 
 
+class UpdateCuratedModelsRequest(BaseModel):
+    """Request to update curated models list."""
+    model_ids: List[str] = Field(..., description="List of model IDs to curate")
+
+
+@app.get("/api/curated-models")
+async def get_curated_models_endpoint():
+    """Get user's curated model list."""
+    return {"curated_models": get_curated_models()}
+
+
+@app.post("/api/curated-models")
+async def update_curated_models_endpoint(request: UpdateCuratedModelsRequest):
+    """Update curated models list."""
+    curated = update_curated_models(request.model_ids)
+    return {"status": "ok", "curated_models": curated}
+
+
 @app.get("/api/models")
 async def get_available_models():
     """Get list of available models from OpenRouter."""
@@ -179,10 +206,15 @@ async def create_conversation(
     request: CreateConversationRequest,
     user: Optional[User] = Depends(get_optional_user),
 ):
-    """Create a new conversation."""
+    """Create a new conversation with optional model config."""
     user_id = user.username if user else None
     conversation_id = str(uuid.uuid4())
-    conversation = storage.create_conversation(conversation_id, user_id=user_id)
+    conversation = storage.create_conversation(
+        conversation_id,
+        user_id=user_id,
+        council_models=request.council_models,
+        chairman_model=request.chairman_model,
+    )
     return conversation
 
 
@@ -197,6 +229,89 @@ async def get_conversation(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
+
+
+@app.patch("/api/conversations/{conversation_id}")
+async def update_conversation(
+    conversation_id: str,
+    request: UpdateConversationRequest,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Update conversation metadata (title, etc.)."""
+    user_id = user.username if user else None
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if request.title is not None:
+        storage.update_conversation_title(conversation_id, request.title, user_id=user_id)
+
+    return {"status": "ok", "id": conversation_id, "title": request.title}
+
+
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Delete a conversation."""
+    user_id = user.username if user else None
+    deleted = storage.delete_conversation(conversation_id, user_id=user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "ok", "id": conversation_id}
+
+
+@app.get("/api/conversations/{conversation_id}/pending")
+async def get_pending_status(
+    conversation_id: str,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Get pending response status for a conversation."""
+    user_id = user.username if user else None
+
+    # Check if conversation exists
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    pending = storage.get_pending_message(conversation_id, user_id=user_id)
+    if not pending:
+        return {"pending": False}
+
+    is_stale = storage.is_pending_stale(pending)
+    has_error = bool(pending.get("partial_data", {}).get("error"))
+
+    return {
+        "pending": True,
+        "stale": is_stale,
+        "has_error": has_error,
+        "mode": pending.get("mode"),
+        "started_at": pending.get("started_at"),
+        "last_update": pending.get("last_update"),
+        "partial_data": pending.get("partial_data", {}),
+        "user_content": pending.get("user_content"),
+    }
+
+
+@app.delete("/api/conversations/{conversation_id}/pending")
+async def clear_pending_status(
+    conversation_id: str,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Clear pending status and optionally remove the last user message for retry."""
+    user_id = user.username if user else None
+
+    # Check if conversation exists
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Clear pending and remove the last user message
+    storage.clear_pending(conversation_id, user_id=user_id)
+    removed = storage.remove_last_user_message(conversation_id, user_id=user_id)
+
+    return {"status": "ok", "user_message_removed": removed}
 
 
 @app.post("/api/conversations/{conversation_id}/message")
@@ -274,8 +389,18 @@ async def send_message_stream(
     async def council_event_generator():
         """Generate events for council mode (3-stage process)."""
         try:
+            # Get per-conversation config (with global fallback)
+            council_models, chairman_model = storage.get_conversation_config(
+                conversation_id, user_id=user_id
+            )
+
             # Add user message
             storage.add_user_message(conversation_id, request.content, user_id=user_id)
+
+            # Mark as pending
+            storage.mark_response_pending(
+                conversation_id, "council", request.content, user_id=user_id
+            )
 
             # Start title generation in parallel (don't await yet)
             title_task = None
@@ -297,14 +422,19 @@ async def send_message_stream(
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
             stage1_results = await stage1_collect_responses(
-                request.content, web_search_context
+                request.content, web_search_context, council_models
             )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+
+            # Update pending progress
+            storage.update_pending_progress(
+                conversation_id, {"stage1": stage1_results}, user_id=user_id
+            )
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
             stage2_results, label_to_model = await stage2_collect_rankings(
-                request.content, stage1_results
+                request.content, stage1_results, council_models
             )
             aggregate_rankings = calculate_aggregate_rankings(
                 stage2_results, label_to_model
@@ -317,10 +447,17 @@ async def send_message_stream(
             }
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
 
+            # Update pending progress
+            storage.update_pending_progress(
+                conversation_id,
+                {"stage1": stage1_results, "stage2": stage2_results, "metadata": metadata},
+                user_id=user_id,
+            )
+
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
             stage3_result = await stage3_synthesize_final(
-                request.content, stage1_results, stage2_results
+                request.content, stage1_results, stage2_results, chairman_model
             )
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
@@ -346,18 +483,35 @@ async def send_message_stream(
                 user_id=user_id,
             )
 
+            # Clear pending on success
+            storage.clear_pending(conversation_id, user_id=user_id)
+
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
         except Exception as e:
+            # Update pending with error
+            storage.update_pending_progress(
+                conversation_id, {"error": str(e)}, user_id=user_id
+            )
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     async def arena_event_generator():
         """Generate events for arena mode (multi-round debate)."""
         try:
+            # Get per-conversation config (with global fallback)
+            council_models, chairman_model = storage.get_conversation_config(
+                conversation_id, user_id=user_id
+            )
+
             # Add user message
             storage.add_user_message(conversation_id, request.content, user_id=user_id)
+
+            # Mark as pending
+            storage.mark_response_pending(
+                conversation_id, "arena", request.content, user_id=user_id
+            )
 
             # Get arena configuration
             arena_config = request.arena_config or ArenaConfig()
@@ -381,7 +535,6 @@ async def send_message_stream(
                 yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
 
             # Create participant mapping
-            council_models = get_council_models()
             participant_mapping = create_participant_mapping(council_models)
 
             # Send arena start event
@@ -399,6 +552,13 @@ async def send_message_stream(
             rounds.append(round1)
             yield f"data: {json.dumps({'type': 'round_complete', 'data': round1.to_dict()})}\n\n"
 
+            # Update pending progress after round 1
+            storage.update_pending_progress(
+                conversation_id,
+                {"rounds": [round1.to_dict()]},
+                user_id=user_id,
+            )
+
             # Rounds 2-N: Deliberation
             for round_num in range(2, round_count + 1):
                 yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': round_num, 'round_type': 'deliberation'}})}\n\n"
@@ -408,9 +568,18 @@ async def send_message_stream(
                 rounds.append(deliberation_round)
                 yield f"data: {json.dumps({'type': 'round_complete', 'data': deliberation_round.to_dict()})}\n\n"
 
+                # Update pending progress after each round
+                storage.update_pending_progress(
+                    conversation_id,
+                    {"rounds": [r.to_dict() for r in rounds]},
+                    user_id=user_id,
+                )
+
             # Final synthesis
             yield f"data: {json.dumps({'type': 'synthesis_start'})}\n\n"
-            synthesis = await final_synthesis(request.content, rounds, participant_mapping)
+            synthesis = await final_synthesis(
+                request.content, rounds, participant_mapping, chairman_model
+            )
             yield f"data: {json.dumps({'type': 'synthesis_complete', 'data': synthesis, 'participant_mapping': participant_mapping})}\n\n"
 
             # Calculate and send metrics
@@ -436,6 +605,9 @@ async def send_message_stream(
                 user_id=user_id,
             )
 
+            # Clear pending on success
+            storage.clear_pending(conversation_id, user_id=user_id)
+
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
@@ -443,6 +615,10 @@ async def send_message_stream(
             import traceback
 
             traceback.print_exc()
+            # Update pending with error
+            storage.update_pending_progress(
+                conversation_id, {"error": str(e)}, user_id=user_id
+            )
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 

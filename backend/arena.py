@@ -247,6 +247,7 @@ async def final_synthesis(
     user_query: str,
     all_rounds: List[ArenaRound],
     participant_mapping: Dict[str, str],
+    chairman_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Synthesize the full debate into consensus, answer, and dissents.
@@ -255,6 +256,7 @@ async def final_synthesis(
         user_query: The original user query
         all_rounds: All rounds of debate
         participant_mapping: Map of participant labels to model IDs
+        chairman_model: Optional chairman model (uses global config if None)
 
     Returns:
         Dict with synthesis result
@@ -270,19 +272,19 @@ async def final_synthesis(
 
     messages = [{"role": "user", "content": prompt}]
 
-    # Use chairman model for synthesis
-    chairman_model = get_chairman_model()
-    response = await query_model(chairman_model, messages)
+    # Use chairman model for synthesis (use provided or fall back to global)
+    effective_chairman = chairman_model if chairman_model else get_chairman_model()
+    response = await query_model(effective_chairman, messages)
 
     if response is None:
         return {
-            "model": chairman_model,
+            "model": effective_chairman,
             "content": "Error: Unable to generate synthesis.",
             "metrics": {},
         }
 
     return {
-        "model": chairman_model,
+        "model": effective_chairman,
         "content": response.get("content", ""),
         "metrics": response.get("metrics", {}),
     }
@@ -375,6 +377,8 @@ async def run_arena_debate(
     user_query: str,
     round_count: int = 3,
     web_search_context: Optional[str] = None,
+    council_models: Optional[List[str]] = None,
+    chairman_model: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, str], Dict[str, Any]]:
     """
     Run a complete multi-round arena debate.
@@ -383,13 +387,15 @@ async def run_arena_debate(
         user_query: The user's question
         round_count: Number of debate rounds (minimum 1)
         web_search_context: Optional web search results
+        council_models: Optional list of models (uses global config if None)
+        chairman_model: Optional chairman model (uses global config if None)
 
     Returns:
         Tuple of (rounds_list, synthesis, participant_mapping, metrics)
     """
-    # Create participant mapping from council models
-    council_models = get_council_models()
-    participant_mapping = create_participant_mapping(council_models)
+    # Create participant mapping from council models (use provided or fall back to global)
+    effective_council = council_models if council_models else get_council_models()
+    participant_mapping = create_participant_mapping(effective_council)
 
     rounds: List[ArenaRound] = []
 
@@ -407,7 +413,7 @@ async def run_arena_debate(
         rounds.append(deliberation_round)
 
     # Final synthesis
-    synthesis = await final_synthesis(user_query, rounds, participant_mapping)
+    synthesis = await final_synthesis(user_query, rounds, participant_mapping, chairman_model)
 
     # Aggregate metrics
     metrics = aggregate_arena_metrics(rounds, synthesis)

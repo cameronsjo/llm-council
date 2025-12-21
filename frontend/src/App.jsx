@@ -74,7 +74,26 @@ function App() {
   const loadConversation = async (id) => {
     try {
       const conv = await api.getConversation(id);
-      setCurrentConversation(conv);
+
+      // Check for pending/interrupted responses
+      const pendingStatus = await api.getPendingStatus(id);
+
+      if (pendingStatus.pending) {
+        if (pendingStatus.stale || pendingStatus.has_error) {
+          // Show interrupted state with partial data
+          setCurrentConversation({
+            ...conv,
+            pendingInterrupted: true,
+            pendingInfo: pendingStatus,
+          });
+        } else {
+          // Still in progress - show loading
+          setIsLoading(true);
+          setCurrentConversation(conv);
+        }
+      } else {
+        setCurrentConversation(conv);
+      }
     } catch (error) {
       console.error('Failed to load conversation:', error);
     }
@@ -82,9 +101,10 @@ function App() {
 
   const handleNewConversation = async () => {
     try {
-      const newConv = await api.createConversation();
+      // Pass current council config to new conversation
+      const newConv = await api.createConversation(councilModels, chairmanModel);
       setConversations([
-        { id: newConv.id, created_at: newConv.created_at, message_count: 0 },
+        { id: newConv.id, created_at: newConv.created_at, title: newConv.title, message_count: 0 },
         ...conversations,
       ]);
       setCurrentConversationId(newConv.id);
@@ -106,6 +126,77 @@ function App() {
       console.error('Failed to update config:', error);
       throw error;
     }
+  };
+
+  const handleDeleteConversation = async (id) => {
+    try {
+      await api.deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (currentConversationId === id) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  };
+
+  const handleRenameConversation = async (id, newTitle) => {
+    try {
+      await api.renameConversation(id, newTitle);
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c))
+      );
+      if (currentConversation?.id === id) {
+        setCurrentConversation((prev) => ({ ...prev, title: newTitle }));
+      }
+    } catch (error) {
+      console.error('Failed to rename conversation:', error);
+    }
+  };
+
+  const handleRetry = async (content) => {
+    if (!currentConversationId || !currentConversation) return;
+
+    // Remove the last two messages (user + assistant) from UI
+    setCurrentConversation((prev) => ({
+      ...prev,
+      messages: prev.messages.slice(0, -2),
+    }));
+
+    // Re-send the message
+    await handleSendMessage(content);
+  };
+
+  const handleRetryInterrupted = async () => {
+    if (!currentConversationId || !currentConversation?.pendingInfo) return;
+
+    const userContent = currentConversation.pendingInfo.user_content;
+    const pendingMode = currentConversation.pendingInfo.mode || 'council';
+
+    // Clear pending state and orphaned message on backend
+    await api.clearPending(currentConversationId);
+
+    // Reload conversation to get clean state
+    const conv = await api.getConversation(currentConversationId);
+    setCurrentConversation(conv);
+
+    // Set mode to match the interrupted request
+    setMode(pendingMode);
+
+    // Re-send the message
+    await handleSendMessage(userContent);
+  };
+
+  const handleDismissInterrupted = async () => {
+    if (!currentConversationId) return;
+
+    // Clear pending state and orphaned message on backend
+    await api.clearPending(currentConversationId);
+
+    // Reload conversation
+    const conv = await api.getConversation(currentConversationId);
+    setCurrentConversation(conv);
   };
 
   const handleSendMessage = async (content) => {
@@ -355,6 +446,8 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onRenameConversation={handleRenameConversation}
         councilModels={councilModels}
         chairmanModel={chairmanModel}
         onConfigChange={handleConfigChange}
@@ -363,6 +456,9 @@ function App() {
       <ChatInterface
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
+        onRetry={handleRetry}
+        onRetryInterrupted={handleRetryInterrupted}
+        onDismissInterrupted={handleDismissInterrupted}
         isLoading={isLoading}
         webSearchAvailable={webSearchAvailable}
         useWebSearch={useWebSearch}

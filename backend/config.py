@@ -122,3 +122,30 @@ def update_council_config(
 
     save_user_config(config)
     return config
+
+
+def get_curated_models() -> List[str]:
+    """
+    Get user's curated model list.
+
+    Returns:
+        List of curated model identifiers, or empty list if none curated
+    """
+    user_config = load_user_config()
+    return user_config.get('curated_models', [])
+
+
+def update_curated_models(model_ids: List[str]) -> List[str]:
+    """
+    Update the curated models list.
+
+    Args:
+        model_ids: List of model identifiers to save as curated
+
+    Returns:
+        Updated curated models list
+    """
+    config = load_user_config()
+    config['curated_models'] = model_ids
+    save_user_config(config)
+    return model_ids

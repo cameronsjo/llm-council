@@ -21,4 +21,4 @@ frontend/dist/
 frontend/.vite/
 
 # Claude Code local settings
-.claude/
+.claude/.playwright-mcp/

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Copy, Check, RotateCcw, AlertTriangle, X } from 'lucide-react';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
@@ -9,6 +10,9 @@ import './ChatInterface.css';
 export default function ChatInterface({
   conversation,
   onSendMessage,
+  onRetry,
+  onRetryInterrupted,
+  onDismissInterrupted,
   isLoading,
   webSearchAvailable,
   useWebSearch,
@@ -20,7 +24,57 @@ export default function ChatInterface({
   arenaConfig,
 }) {
   const [input, setInput] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState(null);
   const messagesEndRef = useRef(null);
+
+  const handleCopy = async (text, index) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const getMessageText = (msg) => {
+    if (msg.role === 'user') {
+      return msg.content;
+    }
+    // For assistant messages, copy the final synthesis/stage3
+    if (msg.mode === 'arena' && msg.synthesis) {
+      return msg.synthesis.answer || '';
+    }
+    if (msg.stage3) {
+      return msg.stage3.response || '';
+    }
+    return '';
+  };
+
+  const canRetry = (index) => {
+    if (!conversation || isLoading) return false;
+    // Can retry if this is the last message pair and it's an assistant message
+    const messages = conversation.messages;
+    return (
+      index === messages.length - 1 &&
+      messages[index].role === 'assistant' &&
+      !messages[index].loading?.stage1 &&
+      !messages[index].loading?.stage2 &&
+      !messages[index].loading?.stage3 &&
+      !messages[index].loading?.round &&
+      !messages[index].loading?.synthesis
+    );
+  };
+
+  const handleRetry = () => {
+    if (onRetry && conversation && conversation.messages.length >= 2) {
+      // Get the last user message
+      const userMsgIndex = conversation.messages.length - 2;
+      if (conversation.messages[userMsgIndex]?.role === 'user') {
+        onRetry(conversation.messages[userMsgIndex].content);
+      }
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,6 +104,7 @@ export default function ChatInterface({
     return (
       <div className="chat-interface">
         <div className="empty-state">
+          <img src="/icon-source.png" alt="LLM Council" className="empty-state-icon" />
           <h2>Welcome to LLM Council</h2>
           <p>Create a new conversation to get started</p>
         </div>
@@ -60,8 +115,43 @@ export default function ChatInterface({
   return (
     <div className="chat-interface">
       <div className="messages-container">
-        {conversation.messages.length === 0 ? (
+        {/* Interrupted Response Banner */}
+        {conversation.pendingInterrupted && conversation.pendingInfo && (
+          <div className="interrupted-banner">
+            <div className="interrupted-content">
+              <AlertTriangle size={20} />
+              <div className="interrupted-text">
+                <strong>Response was interrupted</strong>
+                <span>
+                  {conversation.pendingInfo.mode === 'arena' ? 'Arena debate' : 'Council response'}
+                  {' '}was interrupted. Would you like to retry?
+                </span>
+              </div>
+            </div>
+            <div className="interrupted-actions">
+              <button
+                className="interrupted-btn retry"
+                onClick={onRetryInterrupted}
+                disabled={isLoading}
+              >
+                <RotateCcw size={14} />
+                Retry
+              </button>
+              <button
+                className="interrupted-btn dismiss"
+                onClick={onDismissInterrupted}
+                disabled={isLoading}
+              >
+                <X size={14} />
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {conversation.messages.length === 0 && !conversation.pendingInterrupted ? (
           <div className="empty-state">
+            <img src="/icon-source.png" alt="LLM Council" className="empty-state-icon" />
             <h2>Start a conversation</h2>
             <p>Ask a question to consult the LLM Council</p>
           </div>
@@ -70,7 +160,18 @@ export default function ChatInterface({
             <div key={index} className="message-group">
               {msg.role === 'user' ? (
                 <div className="user-message">
-                  <div className="message-label">You</div>
+                  <div className="message-header">
+                    <div className="message-label">You</div>
+                    <div className="message-actions">
+                      <button
+                        className="message-action-btn"
+                        onClick={() => handleCopy(msg.content, index)}
+                        title="Copy message"
+                      >
+                        {copiedIndex === index ? <Check size={14} /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                  </div>
                   <div className="message-content">
                     <div className="markdown-content">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -79,8 +180,30 @@ export default function ChatInterface({
                 </div>
               ) : (
                 <div className="assistant-message">
-                  <div className="message-label">
-                    {msg.mode === 'arena' ? 'Arena Debate' : 'LLM Council'}
+                  <div className="message-header">
+                    <div className="message-label">
+                      {msg.mode === 'arena' ? 'Arena Debate' : 'LLM Council'}
+                    </div>
+                    <div className="message-actions">
+                      {getMessageText(msg) && (
+                        <button
+                          className="message-action-btn"
+                          onClick={() => handleCopy(getMessageText(msg), index)}
+                          title="Copy final answer"
+                        >
+                          {copiedIndex === index ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      )}
+                      {canRetry(index) && (
+                        <button
+                          className="message-action-btn retry-btn"
+                          onClick={handleRetry}
+                          title="Retry this question"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Web Search */}

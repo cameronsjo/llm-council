@@ -1,25 +1,23 @@
 import { useState } from 'react';
 import './Sidebar.css';
+import { ConversationItem, CouncilDisplay } from './sidebar/index.js';
 import ModelSelector from './ModelSelector';
-
-// Extract short model name from full identifier (e.g., "openai/gpt-5.1" -> "GPT-5.1")
-function getShortModelName(model) {
-  const name = model.split('/').pop();
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
+import ModelCuration from './ModelCuration';
 
 export default function Sidebar({
   conversations,
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  onDeleteConversation,
+  onRenameConversation,
   councilModels = [],
   chairmanModel = '',
   onConfigChange,
   userInfo = null,
 }) {
-  const [showModels, setShowModels] = useState(false);
   const [showConfigUI, setShowConfigUI] = useState(false);
+  const [showCuration, setShowCuration] = useState(false);
   const [pendingCouncil, setPendingCouncil] = useState(councilModels);
   const [pendingChairman, setPendingChairman] = useState(chairmanModel);
 
@@ -64,66 +62,24 @@ export default function Sidebar({
           <div className="no-conversations">No conversations yet</div>
         ) : (
           conversations.map((conv) => (
-            <div
+            <ConversationItem
               key={conv.id}
-              className={`conversation-item ${
-                conv.id === currentConversationId ? 'active' : ''
-              }`}
-              onClick={() => onSelectConversation(conv.id)}
-            >
-              <div className="conversation-title">
-                {conv.title || 'New Conversation'}
-              </div>
-              <div className="conversation-meta">
-                {conv.message_count} messages
-              </div>
-            </div>
+              conversation={conv}
+              isActive={conv.id === currentConversationId}
+              onSelect={onSelectConversation}
+              onRename={onRenameConversation}
+              onDelete={onDeleteConversation}
+            />
           ))
         )}
       </div>
 
-      {councilModels.length > 0 && (
-        <div className="council-config">
-          <div className="council-header">
-            <button
-              className="council-toggle"
-              onClick={() => setShowModels(!showModels)}
-            >
-              <span>Council Members</span>
-              <span className="toggle-icon">{showModels ? '▼' : '▶'}</span>
-            </button>
-            <button
-              className="configure-btn"
-              onClick={handleOpenConfig}
-              title="Configure models"
-            >
-              ⚙️
-            </button>
-          </div>
-          {showModels && (
-            <div className="council-models">
-              {councilModels.map((model, idx) => (
-                <div key={idx} className="model-item">
-                  <span className="model-badge">
-                    {model === chairmanModel ? '👑' : ''}
-                  </span>
-                  <span className="model-name" title={model}>
-                    {getShortModelName(model)}
-                  </span>
-                </div>
-              ))}
-              {chairmanModel && !councilModels.includes(chairmanModel) && (
-                <div className="model-item chairman">
-                  <span className="model-badge">👑</span>
-                  <span className="model-name" title={chairmanModel}>
-                    {getShortModelName(chairmanModel)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      <CouncilDisplay
+        councilModels={councilModels}
+        chairmanModel={chairmanModel}
+        onOpenConfig={handleOpenConfig}
+        onOpenCuration={() => setShowCuration(true)}
+      />
 
       {showConfigUI && (
         <div className="config-modal-overlay" onClick={handleCancelConfig}>
@@ -141,6 +97,13 @@ export default function Sidebar({
             />
           </div>
         </div>
+      )}
+
+      {showCuration && (
+        <ModelCuration
+          onClose={() => setShowCuration(false)}
+          onSave={() => setShowCuration(false)}
+        />
       )}
     </div>
   );

@@ -2,10 +2,13 @@
 
 import json
 import os
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
-from .config import DATA_DIR, DATA_BASE_DIR
+from .config import DATA_DIR, DATA_BASE_DIR, get_council_models, get_chairman_model
+
+# Timeout for stale pending responses (10 minutes)
+PENDING_STALE_TIMEOUT_SECONDS = 600
 
 
 def get_user_data_dir(user_id: str) -> str:
@@ -57,23 +60,34 @@ def get_conversation_path(conversation_id: str, user_id: Optional[str] = None) -
 
 
 def create_conversation(
-    conversation_id: str, user_id: Optional[str] = None
+    conversation_id: str,
+    user_id: Optional[str] = None,
+    council_models: Optional[List[str]] = None,
+    chairman_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create a new conversation.
 
     Args:
         conversation_id: Unique identifier for the conversation
         user_id: Optional username for user-scoped storage
+        council_models: Optional list of council models (inherits global if None)
+        chairman_model: Optional chairman model (inherits global if None)
 
     Returns:
         New conversation dict
     """
     ensure_data_dir(user_id)
 
+    # Inherit from global config if not specified
+    effective_council = council_models if council_models else get_council_models()
+    effective_chairman = chairman_model if chairman_model else get_chairman_model()
+
     conversation = {
         "id": conversation_id,
         "created_at": datetime.utcnow().isoformat(),
         "title": "New Conversation",
+        "council_models": effective_council,
+        "chairman_model": effective_chairman,
         "messages": [],
     }
 
@@ -83,6 +97,31 @@ def create_conversation(
         json.dump(conversation, f, indent=2)
 
     return conversation
+
+
+def get_conversation_config(
+    conversation_id: str, user_id: Optional[str] = None
+) -> Tuple[List[str], str]:
+    """Get council configuration for a conversation with fallback to global.
+
+    Args:
+        conversation_id: Conversation identifier
+        user_id: Optional username for user-scoped storage
+
+    Returns:
+        Tuple of (council_models, chairman_model)
+    """
+    conversation = get_conversation(conversation_id, user_id)
+    if conversation:
+        council = conversation.get("council_models")
+        chairman = conversation.get("chairman_model")
+        # Fall back to global if not set in conversation
+        if council is None:
+            council = get_council_models()
+        if chairman is None:
+            chairman = get_chairman_model()
+        return council, chairman
+    return get_council_models(), get_chairman_model()
 
 
 def get_conversation(
@@ -229,6 +268,27 @@ def update_conversation_title(
     save_conversation(conversation, user_id)
 
 
+def delete_conversation(
+    conversation_id: str, user_id: Optional[str] = None
+) -> bool:
+    """Delete a conversation from storage.
+
+    Args:
+        conversation_id: Conversation identifier
+        user_id: Optional username for user-scoped storage
+
+    Returns:
+        True if deleted, False if not found
+    """
+    path = get_conversation_path(conversation_id, user_id)
+
+    if not os.path.exists(path):
+        return False
+
+    os.remove(path)
+    return True
+
+
 def add_arena_message(
     conversation_id: str,
     rounds: List[Dict[str, Any]],
@@ -264,3 +324,182 @@ def add_arena_message(
 
     conversation["messages"].append(message)
     save_conversation(conversation, user_id)
+
+
+# =============================================================================
+# Pending Message Tracking
+# =============================================================================
+
+
+def get_pending_file_path(user_id: Optional[str] = None) -> str:
+    """Get the path to the pending messages file.
+
+    Args:
+        user_id: Optional username for user-scoped storage
+
+    Returns:
+        Path to pending.json
+    """
+    if user_id:
+        base_dir = os.path.join(DATA_BASE_DIR, "users", user_id)
+    else:
+        base_dir = DATA_BASE_DIR
+    return os.path.join(base_dir, "pending.json")
+
+
+def load_pending_messages(user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Load all pending messages from file.
+
+    Args:
+        user_id: Optional username for user-scoped storage
+
+    Returns:
+        Dict of conversation_id -> pending message info
+    """
+    path = get_pending_file_path(user_id)
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+
+def save_pending_messages(
+    pending: Dict[str, Any], user_id: Optional[str] = None
+) -> None:
+    """Save pending messages to file.
+
+    Args:
+        pending: Dict of pending messages
+        user_id: Optional username for user-scoped storage
+    """
+    path = get_pending_file_path(user_id)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(pending, f, indent=2)
+
+
+def mark_response_pending(
+    conversation_id: str,
+    mode: str,
+    user_content: str,
+    user_id: Optional[str] = None,
+) -> None:
+    """Mark a response as pending (in-progress).
+
+    Args:
+        conversation_id: Conversation identifier
+        mode: "council" or "arena"
+        user_content: The user's original question
+        user_id: Optional username for user-scoped storage
+    """
+    pending = load_pending_messages(user_id)
+    pending[conversation_id] = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "mode": mode,
+        "user_content": user_content,
+        "partial_data": {},
+        "last_update": datetime.now(timezone.utc).isoformat(),
+    }
+    save_pending_messages(pending, user_id)
+
+
+def update_pending_progress(
+    conversation_id: str,
+    partial_data: Dict[str, Any],
+    user_id: Optional[str] = None,
+) -> None:
+    """Update the progress of a pending response.
+
+    Args:
+        conversation_id: Conversation identifier
+        partial_data: Partial results to store
+        user_id: Optional username for user-scoped storage
+    """
+    pending = load_pending_messages(user_id)
+    if conversation_id in pending:
+        pending[conversation_id]["partial_data"] = partial_data
+        pending[conversation_id]["last_update"] = datetime.now(timezone.utc).isoformat()
+        save_pending_messages(pending, user_id)
+
+
+def clear_pending(
+    conversation_id: str, user_id: Optional[str] = None
+) -> None:
+    """Clear a pending response marker (on success).
+
+    Args:
+        conversation_id: Conversation identifier
+        user_id: Optional username for user-scoped storage
+    """
+    pending = load_pending_messages(user_id)
+    if conversation_id in pending:
+        del pending[conversation_id]
+        save_pending_messages(pending, user_id)
+
+
+def get_pending_message(
+    conversation_id: str, user_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Get pending message info for a conversation.
+
+    Args:
+        conversation_id: Conversation identifier
+        user_id: Optional username for user-scoped storage
+
+    Returns:
+        Pending message info or None
+    """
+    pending = load_pending_messages(user_id)
+    return pending.get(conversation_id)
+
+
+def is_pending_stale(
+    pending_info: Dict[str, Any],
+    timeout_seconds: int = PENDING_STALE_TIMEOUT_SECONDS,
+) -> bool:
+    """Check if a pending response is stale (timed out).
+
+    Args:
+        pending_info: Pending message info dict
+        timeout_seconds: Timeout threshold in seconds
+
+    Returns:
+        True if stale, False otherwise
+    """
+    last_update_str = pending_info.get("last_update") or pending_info.get("started_at")
+    if not last_update_str:
+        return True
+
+    try:
+        last_update = datetime.fromisoformat(last_update_str.replace("Z", "+00:00"))
+        if last_update.tzinfo is None:
+            last_update = last_update.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        elapsed = (now - last_update).total_seconds()
+        return elapsed > timeout_seconds
+    except (ValueError, TypeError):
+        return True
+
+
+def remove_last_user_message(
+    conversation_id: str, user_id: Optional[str] = None
+) -> bool:
+    """Remove the last user message from a conversation (for retry cleanup).
+
+    Args:
+        conversation_id: Conversation identifier
+        user_id: Optional username for user-scoped storage
+
+    Returns:
+        True if message was removed, False otherwise
+    """
+    conversation = get_conversation(conversation_id, user_id)
+    if conversation and conversation["messages"]:
+        if conversation["messages"][-1].get("role") == "user":
+            conversation["messages"] = conversation["messages"][:-1]
+            save_conversation(conversation, user_id)
+            return True
+    return False
