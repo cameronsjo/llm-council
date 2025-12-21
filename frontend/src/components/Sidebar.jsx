@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Moon, Sun, Monitor } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Moon, Sun, Monitor, X } from 'lucide-react';
 import './Sidebar.css';
 import { ConversationItem, CouncilDisplay } from './sidebar/index.js';
 import ModelSelector from './ModelSelector';
@@ -18,12 +18,49 @@ export default function Sidebar({
   chairmanModel = '',
   onConfigChange,
   userInfo = null,
+  isOpen = true,
+  onClose,
 }) {
   const [showConfigUI, setShowConfigUI] = useState(false);
   const [showCuration, setShowCuration] = useState(false);
   const [pendingCouncil, setPendingCouncil] = useState(councilModels);
   const [pendingChairman, setPendingChairman] = useState(chairmanModel);
   const { theme, cycleTheme } = useTheme();
+  const modalRef = useRef(null);
+
+  // Focus trap and keyboard handling for modal
+  useEffect(() => {
+    if (!showConfigUI || !modalRef.current) return;
+
+    const modal = modalRef.current;
+    const focusableElements = modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    // Focus first element
+    firstElement?.focus();
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleCancelConfig();
+        return;
+      }
+      if (e.key === 'Tab') {
+        if (e.shiftKey && document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showConfigUI]);
 
   const themeIcon = {
     system: <Monitor size={16} />,
@@ -57,7 +94,18 @@ export default function Sidebar({
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h1>LLM Council</h1>
+        <div className="sidebar-title-row">
+          <h1>LLM Council</h1>
+          {onClose && (
+            <button
+              className="sidebar-close-btn"
+              onClick={onClose}
+              aria-label="Close sidebar"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
         {userInfo?.authenticated && (
           <div className="user-info">
             <span className="user-avatar">
@@ -110,10 +158,28 @@ export default function Sidebar({
       </div>
 
       {showConfigUI && (
-        <div className="config-modal-overlay" onClick={handleCancelConfig}>
-          <div className="config-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="config-modal-overlay"
+          onClick={handleCancelConfig}
+          role="presentation"
+        >
+          <div
+            className="config-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="config-modal-title"
+            ref={modalRef}
+          >
             <div className="config-modal-header">
-              <h3>Configure Council</h3>
+              <h3 id="config-modal-title">Configure Council</h3>
+              <button
+                className="modal-close-btn"
+                onClick={handleCancelConfig}
+                aria-label="Close configuration dialog"
+              >
+                <X size={20} aria-hidden="true" />
+              </button>
             </div>
             <ModelSelector
               selectedCouncil={pendingCouncil}

@@ -209,8 +209,66 @@ export default function ChatInterface({
         {conversation.messages.length === 0 && !conversation.pendingInterrupted ? (
           <div className="empty-state">
             <img src="/icon-source.png" alt="LLM Council" className="empty-state-icon" />
-            <h2>Start a conversation</h2>
-            <p>Ask a question to consult the LLM Council</p>
+            <h2>{mode === 'arena' ? 'Start a Debate' : 'Consult the Council'}</h2>
+            <p>
+              {mode === 'arena'
+                ? 'Watch AI models debate and deliberate on controversial topics.'
+                : 'Get synthesized answers from multiple AI models with peer review.'}
+            </p>
+            <div className="prompt-suggestions">
+              <span className="suggestions-label">Try asking about:</span>
+              <div className="prompt-chips">
+                {mode === 'arena' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="prompt-chip"
+                      onClick={() => setInput('Is remote work better than office work for software teams?')}
+                    >
+                      Remote vs Office
+                    </button>
+                    <button
+                      type="button"
+                      className="prompt-chip"
+                      onClick={() => setInput('Should AI development be regulated by governments?')}
+                    >
+                      AI Regulation
+                    </button>
+                    <button
+                      type="button"
+                      className="prompt-chip"
+                      onClick={() => setInput('Is social media a net positive or negative for society?')}
+                    >
+                      Social Media Impact
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="prompt-chip"
+                      onClick={() => setInput('What are the trade-offs between monolith and microservices architectures?')}
+                    >
+                      Architecture Decisions
+                    </button>
+                    <button
+                      type="button"
+                      className="prompt-chip"
+                      onClick={() => setInput('How should I approach learning a new programming language effectively?')}
+                    >
+                      Learning Strategies
+                    </button>
+                    <button
+                      type="button"
+                      className="prompt-chip"
+                      onClick={() => setInput('What factors should I consider when choosing between job offers?')}
+                    >
+                      Career Advice
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           conversation.messages.map((msg, index) => (
@@ -223,9 +281,9 @@ export default function ChatInterface({
                       <button
                         className="message-action-btn"
                         onClick={() => handleCopy(msg.content, index)}
-                        title="Copy message"
+                        aria-label={copiedIndex === index ? 'Copied' : 'Copy message'}
                       >
-                        {copiedIndex === index ? <Check size={14} /> : <Copy size={14} />}
+                        {copiedIndex === index ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
                       </button>
                     </div>
                   </div>
@@ -247,18 +305,18 @@ export default function ChatInterface({
                         <button
                           className="message-action-btn"
                           onClick={() => handleCopy(getMessageText(msg), index)}
-                          title="Copy final answer"
+                          aria-label={copiedIndex === index ? 'Copied' : 'Copy final answer'}
                         >
-                          {copiedIndex === index ? <Check size={14} /> : <Copy size={14} />}
+                          {copiedIndex === index ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
                         </button>
                       )}
                       {canRetry(index) && (
                         <button
                           className="message-action-btn retry-btn"
                           onClick={handleRetry}
-                          title="Retry this question"
+                          aria-label="Retry this question"
                         >
-                          <RotateCcw size={14} />
+                          <RotateCcw size={14} aria-hidden="true" />
                         </button>
                       )}
                     </div>
@@ -266,8 +324,8 @@ export default function ChatInterface({
 
                   {/* Web Search */}
                   {msg.loading?.webSearch && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
+                    <div className="stage-loading" role="status" aria-live="polite">
+                      <div className="spinner" aria-hidden="true"></div>
                       <span>Searching the web...</span>
                     </div>
                   )}
@@ -292,10 +350,30 @@ export default function ChatInterface({
                     />
                   ) : (
                     <>
+                      {/* Progress Stepper */}
+                      {(msg.loading?.stage1 || msg.loading?.stage2 || msg.loading?.stage3 || msg.stage1) && (
+                        <div className="council-progress" role="progressbar" aria-label="Council deliberation progress">
+                          <div className={`progress-step ${msg.stage1 ? 'complete' : ''} ${msg.loading?.stage1 ? 'active' : ''}`}>
+                            <div className="step-indicator">{msg.stage1 ? '✓' : '1'}</div>
+                            <span className="step-label">Responses</span>
+                          </div>
+                          <div className="step-connector"></div>
+                          <div className={`progress-step ${msg.stage2 ? 'complete' : ''} ${msg.loading?.stage2 ? 'active' : ''}`}>
+                            <div className="step-indicator">{msg.stage2 ? '✓' : '2'}</div>
+                            <span className="step-label">Rankings</span>
+                          </div>
+                          <div className="step-connector"></div>
+                          <div className={`progress-step ${msg.stage3 ? 'complete' : ''} ${msg.loading?.stage3 ? 'active' : ''}`}>
+                            <div className="step-indicator">{msg.stage3 ? '✓' : '3'}</div>
+                            <span className="step-label">Synthesis</span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Stage 1 */}
                       {msg.loading?.stage1 && (
-                        <div className="stage-loading">
-                          <div className="spinner"></div>
+                        <div className="stage-loading" role="status" aria-live="polite">
+                          <div className="spinner" aria-hidden="true"></div>
                           <span>Running Stage 1: Collecting individual responses...</span>
                         </div>
                       )}
@@ -303,8 +381,8 @@ export default function ChatInterface({
 
                       {/* Stage 2 */}
                       {msg.loading?.stage2 && (
-                        <div className="stage-loading">
-                          <div className="spinner"></div>
+                        <div className="stage-loading" role="status" aria-live="polite">
+                          <div className="spinner" aria-hidden="true"></div>
                           <span>Running Stage 2: Peer rankings...</span>
                         </div>
                       )}
@@ -319,8 +397,8 @@ export default function ChatInterface({
 
                       {/* Stage 3 */}
                       {msg.loading?.stage3 && (
-                        <div className="stage-loading">
-                          <div className="spinner"></div>
+                        <div className="stage-loading" role="status" aria-live="polite">
+                          <div className="spinner" aria-hidden="true"></div>
                           <span>Running Stage 3: Final synthesis...</span>
                         </div>
                       )}
@@ -343,8 +421,7 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {conversation.messages.length === 0 && (
-        <form className="input-form" onSubmit={handleSubmit}>
+      <form className="input-form" onSubmit={handleSubmit}>
           <textarea
             className="message-input"
             placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
@@ -356,9 +433,11 @@ export default function ChatInterface({
           />
 
           {/* Mode Toggle */}
-          <div className="mode-toggle">
+          <div className={`mode-toggle ${mode === 'arena' ? 'arena-mode' : ''}`} role="radiogroup" aria-label="Response mode">
             <button
               type="button"
+              role="radio"
+              aria-checked={mode === 'council'}
               className={`mode-btn ${mode === 'council' ? 'active' : ''}`}
               onClick={() => onModeChange('council')}
               disabled={isLoading}
@@ -367,6 +446,8 @@ export default function ChatInterface({
             </button>
             <button
               type="button"
+              role="radio"
+              aria-checked={mode === 'arena'}
               className={`mode-btn ${mode === 'arena' ? 'active' : ''}`}
               onClick={() => onModeChange('arena')}
               disabled={isLoading}
@@ -408,8 +489,9 @@ export default function ChatInterface({
                     className="attachment-remove"
                     onClick={() => handleRemoveAttachment(att.id)}
                     disabled={isLoading}
+                    aria-label={`Remove ${att.filename}`}
                   >
-                    <X size={12} />
+                    <X size={12} aria-hidden="true" />
                   </button>
                 </div>
               ))}
@@ -432,10 +514,10 @@ export default function ChatInterface({
               className="attach-btn"
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading || uploadingFile}
-              title="Attach files (PDF, images, text)"
+              aria-label="Attach files (PDF, images, text)"
             >
-              <Paperclip size={18} />
-              {uploadingFile && <span className="uploading-indicator">...</span>}
+              <Paperclip size={18} aria-hidden="true" />
+              {uploadingFile && <span className="uploading-indicator" aria-live="polite">Uploading...</span>}
             </button>
 
             {webSearchAvailable && (
@@ -461,7 +543,6 @@ export default function ChatInterface({
             </button>
           </div>
         </form>
-      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import { api } from './api';
@@ -15,6 +16,7 @@ function App() {
   const [councilModels, setCouncilModels] = useState([]);
   const [chairmanModel, setChairmanModel] = useState('');
   const [userInfo, setUserInfo] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
 
   // Arena mode state
   const [mode, setMode] = useState('council'); // 'council' or 'arena'
@@ -30,6 +32,17 @@ function App() {
     loadConversations();
     loadConfig();
     loadUserInfo();
+  }, []);
+
+  // Handle window resize for responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setSidebarOpen(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const loadConfig = async () => {
@@ -515,12 +528,39 @@ function App() {
     }
   };
 
+  // Close sidebar on mobile when selecting a conversation
+  const handleSelectConversationMobile = (id) => {
+    handleSelectConversation(id);
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
+  };
+
   return (
-    <div className="app">
+    <div className={`app ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+      {/* Mobile menu toggle */}
+      <button
+        className="mobile-menu-toggle"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={sidebarOpen}
+      >
+        <Menu size={24} />
+      </button>
+
+      {/* Backdrop for mobile */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <Sidebar
         conversations={conversations}
         currentConversationId={currentConversationId}
-        onSelectConversation={handleSelectConversation}
+        onSelectConversation={handleSelectConversationMobile}
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
         onRenameConversation={handleRenameConversation}
@@ -529,6 +569,8 @@ function App() {
         chairmanModel={chairmanModel}
         onConfigChange={handleConfigChange}
         userInfo={userInfo}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
       <ChatInterface
         conversation={currentConversation}

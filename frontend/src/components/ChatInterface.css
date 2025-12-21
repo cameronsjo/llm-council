@@ -34,10 +34,66 @@
 }
 
 .empty-state p {
-  margin: 0;
+  margin: 0 0 var(--space-xl) 0;
   font-size: 1.0625rem;
   color: var(--color-text-secondary);
   max-width: 400px;
+  line-height: 1.6;
+}
+
+/* Prompt Suggestions */
+.prompt-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding-top: var(--space-lg);
+  border-top: 1px dashed var(--color-border);
+  max-width: 500px;
+}
+
+.suggestions-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.prompt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.prompt-chip {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.prompt-chip:hover {
+  background: var(--color-ivory);
+  border-color: var(--color-burgundy);
+  color: var(--color-burgundy);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-subtle);
+}
+
+.prompt-chip:active {
+  transform: translateY(0);
+}
+
+.prompt-chip:focus-visible {
+  outline: 2px solid var(--color-burgundy);
+  outline-offset: 2px;
 }
 
 .empty-state-icon {
@@ -683,6 +739,150 @@
   cursor: not-allowed;
 }
 
+/* Council Progress Stepper */
+.council-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-md);
+  background: linear-gradient(135deg, var(--color-ivory) 0%, var(--color-parchment) 100%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 70px;
+}
+
+.step-indicator {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  transition: all var(--transition-medium);
+}
+
+.step-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.step-connector {
+  width: 40px;
+  height: 2px;
+  background: var(--color-border);
+  margin-bottom: var(--space-lg);
+  transition: background var(--transition-medium);
+}
+
+.progress-step.active .step-indicator {
+  background: var(--color-burgundy);
+  border-color: var(--color-burgundy);
+  color: white;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.progress-step.active .step-label {
+  color: var(--color-burgundy);
+  font-weight: 600;
+}
+
+.progress-step.complete .step-indicator {
+  background: var(--color-stage3-accent);
+  border-color: var(--color-stage3-accent);
+  color: white;
+}
+
+.progress-step.complete .step-label {
+  color: var(--color-stage3-accent);
+}
+
+.progress-step.complete + .step-connector {
+  background: var(--color-stage3-accent);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(139, 38, 53, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(139, 38, 53, 0);
+  }
+}
+
+/* Mode Toggle Slide Animation */
+.mode-toggle {
+  position: relative;
+}
+
+.mode-toggle::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  background: var(--color-burgundy);
+  border-radius: calc(var(--radius-lg) - 4px);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+
+.mode-toggle.arena-mode::before {
+  transform: translateX(100%);
+}
+
+.mode-btn {
+  position: relative;
+  z-index: 1;
+}
+
+/* Message Actions Reveal Animation */
+.message-actions {
+  transform: translateX(8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.message-group:hover .message-actions,
+.message-group:focus-within .message-actions {
+  transform: translateX(0);
+}
+
+.message-action-btn {
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.message-action-btn:hover {
+  transform: scale(1.05);
+}
+
+.message-action-btn:active {
+  transform: scale(0.95);
+}
+
 /* Responsive adjustments for input form */
 @media (max-width: 768px) {
   .input-form {
@@ -702,5 +902,28 @@
 
   .arena-config {
     width: 100%;
+  }
+
+  .council-progress {
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+  }
+
+  .progress-step {
+    min-width: 50px;
+  }
+
+  .step-indicator {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+
+  .step-label {
+    font-size: 0.5625rem;
+  }
+
+  .step-connector {
+    width: 20px;
   }
 }

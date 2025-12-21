@@ -61,20 +61,37 @@ export default function Stage1({ responses }) {
         <h3 className="stage-title">Stage 1: Individual Responses</h3>
       </div>
 
-      <div className="tabs">
+      <div className="tabs" role="tablist" aria-label="Model responses">
         {responses.map((resp, index) => (
           <button
             key={index}
+            role="tab"
+            id={`stage1-tab-${index}`}
+            aria-selected={activeTab === index}
+            aria-controls={`stage1-panel-${index}`}
+            tabIndex={activeTab === index ? 0 : -1}
             className={`tab ${activeTab === index ? 'active' : ''}`}
             onClick={() => setActiveTab(index)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight') {
+                setActiveTab((activeTab + 1) % responses.length);
+              } else if (e.key === 'ArrowLeft') {
+                setActiveTab((activeTab - 1 + responses.length) % responses.length);
+              }
+            }}
           >
             {resp.model.split('/')[1] || resp.model}
-            {resp.reasoning_details && <Brain size={12} className="reasoning-indicator" />}
+            {resp.reasoning_details && <Brain size={12} className="reasoning-indicator" aria-hidden="true" />}
           </button>
         ))}
       </div>
 
-      <div className="tab-content">
+      <div
+        className="tab-content"
+        role="tabpanel"
+        id={`stage1-panel-${activeTab}`}
+        aria-labelledby={`stage1-tab-${activeTab}`}
+      >
         <div className="tab-content-header">
           <div className="model-name">{currentResponse.model}</div>
           <button className="copy-btn" onClick={handleCopy} title="Copy response">
