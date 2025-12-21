@@ -1,9 +1,14 @@
 """Multi-round arena debate orchestration for LLM Council."""
 
-from typing import List, Dict, Any, Tuple, Optional
-from dataclasses import dataclass, asdict
-from .openrouter import query_models_parallel, query_model
-from .config import get_council_models, get_chairman_model
+import logging
+from dataclasses import asdict, dataclass
+from typing import Any
+
+from .config import get_chairman_model, get_council_models
+from .openrouter import query_model, query_models_parallel
+from .telemetry import get_tracer, is_telemetry_enabled
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -12,9 +17,9 @@ class ArenaRound:
 
     round_number: int
     round_type: str  # "initial" | "deliberation"
-    responses: List[Dict[str, Any]]
+    responses: list[dict[str, Any]]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
@@ -78,7 +83,7 @@ Points of genuine disagreement that remain after deliberation. Why do these disa
 Provide a comprehensive, well-structured response:"""
 
 
-def create_participant_mapping(models: List[str]) -> Dict[str, str]:
+def create_participant_mapping(models: list[str]) -> dict[str, str]:
     """
     Create anonymous participant labels for models.
 
@@ -93,7 +98,7 @@ def create_participant_mapping(models: List[str]) -> Dict[str, str]:
     return {f"Participant {label}": model for label, model in zip(labels, models)}
 
 
-def get_participant_label(model: str, mapping: Dict[str, str]) -> str:
+def get_participant_label(model: str, mapping: dict[str, str]) -> str:
     """Get the participant label for a given model."""
     for label, m in mapping.items():
         if m == model:
@@ -101,7 +106,7 @@ def get_participant_label(model: str, mapping: Dict[str, str]) -> str:
     return "Unknown Participant"
 
 
-def format_previous_rounds(rounds: List[ArenaRound]) -> str:
+def format_previous_rounds(rounds: list[ArenaRound]) -> str:
     """Format previous rounds for inclusion in deliberation prompt."""
     formatted_parts = []
     for arena_round in rounds:
@@ -116,7 +121,7 @@ def format_previous_rounds(rounds: List[ArenaRound]) -> str:
     return "\n".join(formatted_parts)
 
 
-def format_identity_reveal(mapping: Dict[str, str]) -> str:
+def format_identity_reveal(mapping: dict[str, str]) -> str:
     """Format participant identity mapping for synthesis."""
     lines = []
     for label, model in mapping.items():
@@ -128,9 +133,9 @@ def format_identity_reveal(mapping: Dict[str, str]) -> str:
 
 async def round1_initial_positions(
     user_query: str,
-    participant_mapping: Dict[str, str],
+    participant_mapping: dict[str, str],
     total_rounds: int,
-    web_search_context: Optional[str] = None,
+    web_search_context: str | None = None,
 ) -> ArenaRound:
     """
     Collect initial positions from all participants (Round 1).
@@ -144,52 +149,66 @@ async def round1_initial_positions(
     Returns:
         ArenaRound with all participant responses
     """
-    web_section = ""
-    if web_search_context:
-        web_section = f"\nThe following web search results may be helpful:\n{web_search_context}\n"
+    tracer = get_tracer()
+    span_attributes = {
+        "arena.round": 1,
+        "arena.round_type": "initial",
+        "arena.participant_count": len(participant_mapping),
+        "arena.total_rounds": total_rounds,
+        "arena.has_web_context": web_search_context is not None,
+    }
 
-    # Build prompts for each participant
-    model_prompts = {}
-    for label, model in participant_mapping.items():
-        prompt = ROUND1_PROMPT.format(
-            participant_label=label,
-            user_query=user_query,
-            web_context_section=web_section,
-            total_rounds=total_rounds,
-        )
-        model_prompts[model] = [{"role": "user", "content": prompt}]
+    with tracer.start_as_current_span("arena.round1_initial_positions", attributes=span_attributes) as span:
+        web_section = ""
+        if web_search_context:
+            web_section = f"\nThe following web search results may be helpful:\n{web_search_context}\n"
 
-    # Query all models in parallel
-    models = list(participant_mapping.values())
-    responses = await query_models_parallel(
-        models, None, custom_messages=model_prompts
-    )
-
-    # Format results
-    round_responses = []
-    for label, model in participant_mapping.items():
-        response = responses.get(model)
-        if response is not None:
-            round_responses.append(
-                {
-                    "participant": label,
-                    "model": model,
-                    "response": response.get("content", ""),
-                    "metrics": response.get("metrics", {}),
-                }
+        # Build prompts for each participant
+        model_prompts = {}
+        for label, model in participant_mapping.items():
+            prompt = ROUND1_PROMPT.format(
+                participant_label=label,
+                user_query=user_query,
+                web_context_section=web_section,
+                total_rounds=total_rounds,
             )
+            model_prompts[model] = [{"role": "user", "content": prompt}]
 
-    return ArenaRound(
-        round_number=1, round_type="initial", responses=round_responses
-    )
+        # Query all models in parallel
+        models = list(participant_mapping.values())
+        responses = await query_models_parallel(
+            models, None, custom_messages=model_prompts
+        )
+
+        # Format results
+        round_responses = []
+        for label, model in participant_mapping.items():
+            response = responses.get(model)
+            if response is not None:
+                round_responses.append(
+                    {
+                        "participant": label,
+                        "model": model,
+                        "response": response.get("content", ""),
+                        "metrics": response.get("metrics", {}),
+                    }
+                )
+
+        # Record response count in span
+        if is_telemetry_enabled():
+            span.set_attribute("arena.response_count", len(round_responses))
+
+        return ArenaRound(
+            round_number=1, round_type="initial", responses=round_responses
+        )
 
 
 async def round_n_deliberation(
     user_query: str,
     round_number: int,
     total_rounds: int,
-    previous_rounds: List[ArenaRound],
-    participant_mapping: Dict[str, str],
+    previous_rounds: list[ArenaRound],
+    participant_mapping: dict[str, str],
 ) -> ArenaRound:
     """
     Conduct a deliberation round where participants respond to previous arguments.
@@ -204,51 +223,65 @@ async def round_n_deliberation(
     Returns:
         ArenaRound with deliberation responses
     """
-    formatted_history = format_previous_rounds(previous_rounds)
+    tracer = get_tracer()
+    span_attributes = {
+        "arena.round": round_number,
+        "arena.round_type": "deliberation",
+        "arena.participant_count": len(participant_mapping),
+        "arena.total_rounds": total_rounds,
+        "arena.previous_rounds": len(previous_rounds),
+    }
 
-    # Build prompts for each participant
-    model_prompts = {}
-    for label, model in participant_mapping.items():
-        prompt = DELIBERATION_PROMPT.format(
-            participant_label=label,
-            round_number=round_number,
-            total_rounds=total_rounds,
-            user_query=user_query,
-            formatted_previous_rounds=formatted_history,
-        )
-        model_prompts[model] = [{"role": "user", "content": prompt}]
+    with tracer.start_as_current_span("arena.round_n_deliberation", attributes=span_attributes) as span:
+        formatted_history = format_previous_rounds(previous_rounds)
 
-    # Query all models in parallel
-    models = list(participant_mapping.values())
-    responses = await query_models_parallel(
-        models, None, custom_messages=model_prompts
-    )
-
-    # Format results
-    round_responses = []
-    for label, model in participant_mapping.items():
-        response = responses.get(model)
-        if response is not None:
-            round_responses.append(
-                {
-                    "participant": label,
-                    "model": model,
-                    "response": response.get("content", ""),
-                    "metrics": response.get("metrics", {}),
-                }
+        # Build prompts for each participant
+        model_prompts = {}
+        for label, model in participant_mapping.items():
+            prompt = DELIBERATION_PROMPT.format(
+                participant_label=label,
+                round_number=round_number,
+                total_rounds=total_rounds,
+                user_query=user_query,
+                formatted_previous_rounds=formatted_history,
             )
+            model_prompts[model] = [{"role": "user", "content": prompt}]
 
-    return ArenaRound(
-        round_number=round_number, round_type="deliberation", responses=round_responses
-    )
+        # Query all models in parallel
+        models = list(participant_mapping.values())
+        responses = await query_models_parallel(
+            models, None, custom_messages=model_prompts
+        )
+
+        # Format results
+        round_responses = []
+        for label, model in participant_mapping.items():
+            response = responses.get(model)
+            if response is not None:
+                round_responses.append(
+                    {
+                        "participant": label,
+                        "model": model,
+                        "response": response.get("content", ""),
+                        "metrics": response.get("metrics", {}),
+                    }
+                )
+
+        # Record response count in span
+        if is_telemetry_enabled():
+            span.set_attribute("arena.response_count", len(round_responses))
+
+        return ArenaRound(
+            round_number=round_number, round_type="deliberation", responses=round_responses
+        )
 
 
 async def final_synthesis(
     user_query: str,
-    all_rounds: List[ArenaRound],
-    participant_mapping: Dict[str, str],
-    chairman_model: Optional[str] = None,
-) -> Dict[str, Any]:
+    all_rounds: list[ArenaRound],
+    participant_mapping: dict[str, str],
+    chairman_model: str | None = None,
+) -> dict[str, Any]:
     """
     Synthesize the full debate into consensus, answer, and dissents.
 
@@ -261,38 +294,51 @@ async def final_synthesis(
     Returns:
         Dict with synthesis result
     """
-    formatted_rounds = format_previous_rounds(all_rounds)
-    identity_reveal = format_identity_reveal(participant_mapping)
-
-    prompt = SYNTHESIS_PROMPT.format(
-        user_query=user_query,
-        all_rounds_formatted=formatted_rounds,
-        identity_reveal=identity_reveal,
-    )
-
-    messages = [{"role": "user", "content": prompt}]
-
-    # Use chairman model for synthesis (use provided or fall back to global)
+    tracer = get_tracer()
     effective_chairman = chairman_model if chairman_model else get_chairman_model()
-    response = await query_model(effective_chairman, messages)
 
-    if response is None:
+    span_attributes = {
+        "arena.operation": "final_synthesis",
+        "arena.chairman_model": effective_chairman,
+        "arena.round_count": len(all_rounds),
+        "arena.participant_count": len(participant_mapping),
+    }
+
+    with tracer.start_as_current_span("arena.final_synthesis", attributes=span_attributes) as span:
+        formatted_rounds = format_previous_rounds(all_rounds)
+        identity_reveal = format_identity_reveal(participant_mapping)
+
+        prompt = SYNTHESIS_PROMPT.format(
+            user_query=user_query,
+            all_rounds_formatted=formatted_rounds,
+            identity_reveal=identity_reveal,
+        )
+
+        messages = [{"role": "user", "content": prompt}]
+
+        # Use chairman model for synthesis
+        response = await query_model(effective_chairman, messages)
+
+        if response is None:
+            if is_telemetry_enabled():
+                from opentelemetry.trace import Status, StatusCode
+                span.set_status(Status(StatusCode.ERROR, "Chairman model failed"))
+            return {
+                "model": effective_chairman,
+                "content": "Error: Unable to generate synthesis.",
+                "metrics": {},
+            }
+
         return {
             "model": effective_chairman,
-            "content": "Error: Unable to generate synthesis.",
-            "metrics": {},
+            "content": response.get("content", ""),
+            "metrics": response.get("metrics", {}),
         }
-
-    return {
-        "model": effective_chairman,
-        "content": response.get("content", ""),
-        "metrics": response.get("metrics", {}),
-    }
 
 
 def aggregate_arena_metrics(
-    rounds: List[ArenaRound], synthesis: Dict[str, Any]
-) -> Dict[str, Any]:
+    rounds: list[ArenaRound], synthesis: dict[str, Any]
+) -> dict[str, Any]:
     """
     Aggregate metrics across all arena rounds and synthesis.
 
@@ -376,10 +422,10 @@ def aggregate_arena_metrics(
 async def run_arena_debate(
     user_query: str,
     round_count: int = 3,
-    web_search_context: Optional[str] = None,
-    council_models: Optional[List[str]] = None,
-    chairman_model: Optional[str] = None,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, str], Dict[str, Any]]:
+    web_search_context: str | None = None,
+    council_models: list[str] | None = None,
+    chairman_model: str | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, str], dict[str, Any]]:
     """
     Run a complete multi-round arena debate.
 
@@ -397,7 +443,7 @@ async def run_arena_debate(
     effective_council = council_models if council_models else get_council_models()
     participant_mapping = create_participant_mapping(effective_council)
 
-    rounds: List[ArenaRound] = []
+    rounds: list[ArenaRound] = []
 
     # Round 1: Initial positions
     round1 = await round1_initial_positions(

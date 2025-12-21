@@ -2,9 +2,10 @@
 
 import asyncio
 import json
+import logging
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,21 +14,37 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import storage
-from .attachments import (
-    get_file_type,
-    process_attachments,
-    save_attachment,
-    validate_file,
+from .logging_config import (
+    set_correlation_id,
+    set_current_user,
+    setup_logging,
 )
+from .telemetry import (
+    instrument_fastapi,
+    instrument_httpx,
+    setup_telemetry,
+)
+
+# Configure structured logging (must happen before any logging calls)
+setup_logging()
+logger = logging.getLogger(__name__)
+
+# Initialize OpenTelemetry (must happen before creating FastAPI app for best results)
+setup_telemetry()
+instrument_httpx()
 from .arena import (
     aggregate_arena_metrics,
     create_participant_mapping,
     final_synthesis,
     round1_initial_positions,
     round_n_deliberation,
-    run_arena_debate,
 )
-from .auth import AUTH_ENABLED, User, get_current_user, get_optional_user
+from .attachments import (
+    process_attachments,
+    save_attachment,
+    validate_file,
+)
+from .auth import AUTH_ENABLED, User, get_optional_user
 from .config import (
     DEFAULT_ARENA_ROUNDS,
     MAX_ARENA_ROUNDS,
@@ -55,6 +72,9 @@ from .websearch import get_search_provider, is_web_search_available
 
 app = FastAPI(title="LLM Council API")
 
+# Instrument FastAPI with OpenTelemetry (after app creation)
+instrument_fastapi(app)
+
 # Enable CORS for local development (when running frontend separately)
 app.add_middleware(
     CORSMiddleware,
@@ -64,14 +84,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def logging_context_middleware(request: Request, call_next):
+    """Middleware to set logging context from request headers."""
+    # Extract correlation ID from header or generate one
+    correlation_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    set_correlation_id(correlation_id)
+
+    # Extract user from auth headers (if present)
+    remote_user = request.headers.get("Remote-User")
+    if remote_user:
+        set_current_user(remote_user)
+
+    try:
+        response = await call_next(request)
+        # Add correlation ID to response headers for traceability
+        response.headers["X-Request-ID"] = correlation_id
+        return response
+    finally:
+        # Clear context after request
+        set_correlation_id(None)
+        set_current_user(None)
+
 # Static files directory (built frontend)
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
-    council_models: Optional[List[str]] = None
-    chairman_model: Optional[str] = None
+    council_models: list[str] | None = None
+    chairman_model: str | None = None
 
 
 class ArenaConfig(BaseModel):
@@ -96,20 +139,20 @@ class SendMessageRequest(BaseModel):
     content: str
     use_web_search: bool = False
     mode: str = Field(default="council", pattern="^(council|arena)$")
-    arena_config: Optional[ArenaConfig] = None
-    attachments: List[AttachmentRef] = Field(default_factory=list)
+    arena_config: ArenaConfig | None = None
+    attachments: list[AttachmentRef] = Field(default_factory=list)
     resume: bool = Field(default=False, description="Resume from partial results if available")
 
 
 class UpdateConfigRequest(BaseModel):
     """Request to update council configuration."""
-    council_models: List[str]
+    council_models: list[str]
     chairman_model: str
 
 
 class UpdateConversationRequest(BaseModel):
     """Request to update conversation metadata."""
-    title: Optional[str] = None
+    title: str | None = None
 
 
 class ConversationMetadata(BaseModel):
@@ -125,7 +168,7 @@ class Conversation(BaseModel):
     id: str
     created_at: str
     title: str
-    messages: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
 
 
 @app.get("/api/health")
@@ -153,7 +196,7 @@ async def get_config():
 
 
 @app.get("/api/user")
-async def get_user_info(user: Optional[User] = Depends(get_optional_user)):
+async def get_user_info(user: User | None = Depends(get_optional_user)):
     """Get current user information from auth headers."""
     if not user:
         return {"authenticated": False}
@@ -202,7 +245,7 @@ async def reload_config_endpoint():
 
 class UpdateCuratedModelsRequest(BaseModel):
     """Request to update curated models list."""
-    model_ids: List[str] = Field(..., description="List of model IDs to curate")
+    model_ids: list[str] = Field(..., description="List of model IDs to curate")
 
 
 @app.get("/api/curated-models")
@@ -228,7 +271,7 @@ async def get_available_models():
 @app.post("/api/attachments")
 async def upload_attachment(
     file: UploadFile = File(...),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Upload a file attachment.
 
@@ -254,8 +297,8 @@ async def upload_attachment(
     return attachment
 
 
-@app.get("/api/conversations", response_model=List[ConversationMetadata])
-async def list_conversations(user: Optional[User] = Depends(get_optional_user)):
+@app.get("/api/conversations", response_model=list[ConversationMetadata])
+async def list_conversations(user: User | None = Depends(get_optional_user)):
     """List all conversations (metadata only)."""
     user_id = user.username if user else None
     return storage.list_conversations(user_id=user_id)
@@ -264,7 +307,7 @@ async def list_conversations(user: Optional[User] = Depends(get_optional_user)):
 @app.post("/api/conversations", response_model=Conversation)
 async def create_conversation(
     request: CreateConversationRequest,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Create a new conversation with optional model config."""
     user_id = user.username if user else None
@@ -281,7 +324,7 @@ async def create_conversation(
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
 async def get_conversation(
     conversation_id: str,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Get a specific conversation with all its messages."""
     user_id = user.username if user else None
@@ -295,7 +338,7 @@ async def get_conversation(
 async def update_conversation(
     conversation_id: str,
     request: UpdateConversationRequest,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Update conversation metadata (title, etc.)."""
     user_id = user.username if user else None
@@ -312,7 +355,7 @@ async def update_conversation(
 @app.delete("/api/conversations/{conversation_id}")
 async def delete_conversation(
     conversation_id: str,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Delete a conversation."""
     user_id = user.username if user else None
@@ -325,7 +368,7 @@ async def delete_conversation(
 @app.get("/api/conversations/{conversation_id}/export/markdown")
 async def export_conversation_markdown(
     conversation_id: str,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Export a conversation as Markdown."""
     user_id = user.username if user else None
@@ -347,7 +390,7 @@ async def export_conversation_markdown(
 @app.get("/api/conversations/{conversation_id}/export/json")
 async def export_conversation_json(
     conversation_id: str,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Export a conversation as JSON."""
     user_id = user.username if user else None
@@ -369,7 +412,7 @@ async def export_conversation_json(
 @app.get("/api/conversations/{conversation_id}/pending")
 async def get_pending_status(
     conversation_id: str,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Get pending response status for a conversation."""
     user_id = user.username if user else None
@@ -401,7 +444,7 @@ async def get_pending_status(
 @app.delete("/api/conversations/{conversation_id}/pending")
 async def clear_pending_status(
     conversation_id: str,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Clear pending status and optionally remove the last user message for retry."""
     user_id = user.username if user else None
@@ -422,7 +465,7 @@ async def clear_pending_status(
 async def send_message(
     conversation_id: str,
     request: SendMessageRequest,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Send a message and run the 3-stage council process.
 
@@ -474,7 +517,7 @@ async def send_message(
 async def send_message_stream(
     conversation_id: str,
     request: SendMessageRequest,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User | None = Depends(get_optional_user),
 ):
     """Send a message and stream the council or arena process.
 
@@ -688,7 +731,7 @@ async def send_message_stream(
 
             from .arena import ArenaRound
 
-            rounds: List[ArenaRound] = []
+            rounds: list[ArenaRound] = []
 
             # Round 1: Initial positions
             yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': 1, 'round_type': 'initial'}})}\n\n"

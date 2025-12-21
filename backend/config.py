@@ -1,10 +1,11 @@
 """Configuration for the LLM Council."""
 
-import os
 import json
 import logging
+import os
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ DATA_DIR = os.path.join(DATA_BASE_DIR, "conversations")
 USER_CONFIG_FILE = os.path.join(DATA_BASE_DIR, "user_config.json")
 
 
-def load_user_config() -> Dict[str, Any]:
+def load_user_config() -> dict[str, Any]:
     """
     Load user configuration from file.
 
@@ -60,14 +61,14 @@ def load_user_config() -> Dict[str, Any]:
     config_path = Path(USER_CONFIG_FILE)
     if config_path.exists():
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return {}
     return {}
 
 
-def save_user_config(config: Dict[str, Any]) -> None:
+def save_user_config(config: dict[str, Any]) -> None:
     """
     Save user configuration to file.
 
@@ -80,7 +81,7 @@ def save_user_config(config: Dict[str, Any]) -> None:
         json.dump(config, f, indent=2)
 
 
-def get_council_models() -> List[str]:
+def get_council_models() -> list[str]:
     """
     Get effective council models (user config or defaults).
 
@@ -103,9 +104,9 @@ def get_chairman_model() -> str:
 
 
 def update_council_config(
-    council_models: Optional[List[str]] = None,
-    chairman_model: Optional[str] = None
-) -> Dict[str, Any]:
+    council_models: list[str] | None = None,
+    chairman_model: str | None = None
+) -> dict[str, Any]:
     """
     Update council configuration.
 
@@ -127,7 +128,7 @@ def update_council_config(
     return config
 
 
-def get_curated_models() -> List[str]:
+def get_curated_models() -> list[str]:
     """
     Get user's curated model list.
 
@@ -138,7 +139,7 @@ def get_curated_models() -> List[str]:
     return user_config.get('curated_models', [])
 
 
-def update_curated_models(model_ids: List[str]) -> List[str]:
+def update_curated_models(model_ids: list[str]) -> list[str]:
     """
     Update the curated models list.
 
@@ -154,7 +155,7 @@ def update_curated_models(model_ids: List[str]) -> List[str]:
     return model_ids
 
 
-def reload_config() -> Dict[str, Any]:
+def reload_config() -> dict[str, Any]:
     """
     Reload configuration from .env and user config files.
 

@@ -1,16 +1,21 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple, Optional
-from .openrouter import query_models_parallel, query_model
-from .config import get_council_models, get_chairman_model
-from .websearch import search_web, format_search_results, is_web_search_available
+import logging
+from typing import Any
+
+from .config import get_chairman_model, get_council_models
+from .openrouter import query_model, query_models_parallel
+from .telemetry import get_tracer, is_telemetry_enabled
+from .websearch import format_search_results, is_web_search_available, search_web
+
+logger = logging.getLogger(__name__)
 
 
 async def stage1_collect_responses(
     user_query: str,
-    web_search_context: Optional[str] = None,
-    council_models: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
+    web_search_context: str | None = None,
+    council_models: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
@@ -22,9 +27,20 @@ async def stage1_collect_responses(
     Returns:
         List of dicts with 'model' and 'response' keys
     """
-    # Build the prompt with optional web search context
-    if web_search_context:
-        prompt = f"""The following web search results have been gathered to help answer the user's question:
+    tracer = get_tracer()
+    effective_council = council_models if council_models else get_council_models()
+
+    span_attributes = {
+        "council.stage": 1,
+        "council.stage_name": "collect_responses",
+        "council.model_count": len(effective_council),
+        "council.has_web_context": web_search_context is not None,
+    }
+
+    with tracer.start_as_current_span("council.stage1_collect_responses", attributes=span_attributes) as span:
+        # Build the prompt with optional web search context
+        if web_search_context:
+            prompt = f"""The following web search results have been gathered to help answer the user's question:
 
 {web_search_context}
 
@@ -33,37 +49,40 @@ async def stage1_collect_responses(
 User's Question: {user_query}
 
 Please use the web search results above as reference when answering. Cite sources where appropriate."""
-    else:
-        prompt = user_query
+        else:
+            prompt = user_query
 
-    messages = [{"role": "user", "content": prompt}]
+        messages = [{"role": "user", "content": prompt}]
 
-    # Query all models in parallel (use provided or fall back to global)
-    effective_council = council_models if council_models else get_council_models()
-    responses = await query_models_parallel(effective_council, messages)
+        # Query all models in parallel
+        responses = await query_models_parallel(effective_council, messages)
 
-    # Format results
-    stage1_results = []
-    for model, response in responses.items():
-        if response is not None:  # Only include successful responses
-            result = {
-                "model": model,
-                "response": response.get('content', ''),
-                "metrics": response.get('metrics', {})
-            }
-            # Include reasoning details if present (for o1/o3 models)
-            if response.get('reasoning_details'):
-                result['reasoning_details'] = response['reasoning_details']
-            stage1_results.append(result)
+        # Format results
+        stage1_results = []
+        for model, response in responses.items():
+            if response is not None:  # Only include successful responses
+                result = {
+                    "model": model,
+                    "response": response.get('content', ''),
+                    "metrics": response.get('metrics', {})
+                }
+                # Include reasoning details if present (for o1/o3 models)
+                if response.get('reasoning_details'):
+                    result['reasoning_details'] = response['reasoning_details']
+                stage1_results.append(result)
 
-    return stage1_results
+        # Record response count in span
+        if is_telemetry_enabled():
+            span.set_attribute("council.response_count", len(stage1_results))
+
+        return stage1_results
 
 
 async def stage2_collect_rankings(
     user_query: str,
-    stage1_results: List[Dict[str, Any]],
-    council_models: Optional[List[str]] = None,
-) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    stage1_results: list[dict[str, Any]],
+    council_models: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
 
@@ -75,22 +94,33 @@ async def stage2_collect_rankings(
     Returns:
         Tuple of (rankings list, label_to_model mapping)
     """
-    # Create anonymized labels for responses (Response A, Response B, etc.)
-    labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
+    tracer = get_tracer()
+    effective_council = council_models if council_models else get_council_models()
 
-    # Create mapping from label to model name
-    label_to_model = {
-        f"Response {label}": result['model']
-        for label, result in zip(labels, stage1_results)
+    span_attributes = {
+        "council.stage": 2,
+        "council.stage_name": "collect_rankings",
+        "council.model_count": len(effective_council),
+        "council.response_count": len(stage1_results),
     }
 
-    # Build the ranking prompt
-    responses_text = "\n\n".join([
-        f"Response {label}:\n{result['response']}"
-        for label, result in zip(labels, stage1_results)
-    ])
+    with tracer.start_as_current_span("council.stage2_collect_rankings", attributes=span_attributes) as span:
+        # Create anonymized labels for responses (Response A, Response B, etc.)
+        labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
 
-    ranking_prompt = f"""You are evaluating different responses to the following question:
+        # Create mapping from label to model name
+        label_to_model = {
+            f"Response {label}": result['model']
+            for label, result in zip(labels, stage1_results)
+        }
+
+        # Build the ranking prompt
+        responses_text = "\n\n".join([
+            f"Response {label}:\n{result['response']}"
+            for label, result in zip(labels, stage1_results)
+        ])
+
+        ranking_prompt = f"""You are evaluating different responses to the following question:
 
 Question: {user_query}
 
@@ -121,38 +151,41 @@ FINAL RANKING:
 
 Now provide your evaluation and ranking:"""
 
-    messages = [{"role": "user", "content": ranking_prompt}]
+        messages = [{"role": "user", "content": ranking_prompt}]
 
-    # Get rankings from all council models in parallel (use provided or fall back to global)
-    effective_council = council_models if council_models else get_council_models()
-    responses = await query_models_parallel(effective_council, messages)
+        # Get rankings from all council models in parallel
+        responses = await query_models_parallel(effective_council, messages)
 
-    # Format results
-    stage2_results = []
-    for model, response in responses.items():
-        if response is not None:
-            full_text = response.get('content', '')
-            parsed = parse_ranking_from_text(full_text)
-            result = {
-                "model": model,
-                "ranking": full_text,
-                "parsed_ranking": parsed,
-                "metrics": response.get('metrics', {})
-            }
-            # Include reasoning details if present (for o1/o3 models)
-            if response.get('reasoning_details'):
-                result['reasoning_details'] = response['reasoning_details']
-            stage2_results.append(result)
+        # Format results
+        stage2_results = []
+        for model, response in responses.items():
+            if response is not None:
+                full_text = response.get('content', '')
+                parsed = parse_ranking_from_text(full_text)
+                result = {
+                    "model": model,
+                    "ranking": full_text,
+                    "parsed_ranking": parsed,
+                    "metrics": response.get('metrics', {})
+                }
+                # Include reasoning details if present (for o1/o3 models)
+                if response.get('reasoning_details'):
+                    result['reasoning_details'] = response['reasoning_details']
+                stage2_results.append(result)
 
-    return stage2_results, label_to_model
+        # Record ranking count in span
+        if is_telemetry_enabled():
+            span.set_attribute("council.ranking_count", len(stage2_results))
+
+        return stage2_results, label_to_model
 
 
 async def stage3_synthesize_final(
     user_query: str,
-    stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]],
-    chairman_model: Optional[str] = None,
-) -> Dict[str, Any]:
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    chairman_model: str | None = None,
+) -> dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
 
@@ -165,18 +198,30 @@ async def stage3_synthesize_final(
     Returns:
         Dict with 'model' and 'response' keys
     """
-    # Build comprehensive context for chairman
-    stage1_text = "\n\n".join([
-        f"Model: {result['model']}\nResponse: {result['response']}"
-        for result in stage1_results
-    ])
+    tracer = get_tracer()
+    effective_chairman = chairman_model if chairman_model else get_chairman_model()
 
-    stage2_text = "\n\n".join([
-        f"Model: {result['model']}\nRanking: {result['ranking']}"
-        for result in stage2_results
-    ])
+    span_attributes = {
+        "council.stage": 3,
+        "council.stage_name": "synthesize_final",
+        "council.chairman_model": effective_chairman,
+        "council.stage1_count": len(stage1_results),
+        "council.stage2_count": len(stage2_results),
+    }
 
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+    with tracer.start_as_current_span("council.stage3_synthesize_final", attributes=span_attributes) as span:
+        # Build comprehensive context for chairman
+        stage1_text = "\n\n".join([
+            f"Model: {result['model']}\nResponse: {result['response']}"
+            for result in stage1_results
+        ])
+
+        stage2_text = "\n\n".join([
+            f"Model: {result['model']}\nRanking: {result['ranking']}"
+            for result in stage2_results
+        ])
+
+        chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
 
 Original Question: {user_query}
 
@@ -193,33 +238,35 @@ Your task as Chairman is to synthesize all of this information into a single, co
 
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
 
-    messages = [{"role": "user", "content": chairman_prompt}]
+        messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model (use provided or fall back to global)
-    effective_chairman = chairman_model if chairman_model else get_chairman_model()
-    response = await query_model(effective_chairman, messages)
+        # Query the chairman model
+        response = await query_model(effective_chairman, messages)
 
-    if response is None:
-        # Fallback if chairman fails
-        return {
+        if response is None:
+            # Fallback if chairman fails
+            if is_telemetry_enabled():
+                from opentelemetry.trace import Status, StatusCode
+                span.set_status(Status(StatusCode.ERROR, "Chairman model failed"))
+            return {
+                "model": effective_chairman,
+                "response": "Error: Unable to generate final synthesis.",
+                "metrics": {}
+            }
+
+        result = {
             "model": effective_chairman,
-            "response": "Error: Unable to generate final synthesis.",
-            "metrics": {}
+            "response": response.get('content', ''),
+            "metrics": response.get('metrics', {})
         }
+        # Include reasoning details if present (for o1/o3 models)
+        if response.get('reasoning_details'):
+            result['reasoning_details'] = response['reasoning_details']
 
-    result = {
-        "model": effective_chairman,
-        "response": response.get('content', ''),
-        "metrics": response.get('metrics', {})
-    }
-    # Include reasoning details if present (for o1/o3 models)
-    if response.get('reasoning_details'):
-        result['reasoning_details'] = response['reasoning_details']
-
-    return result
+        return result
 
 
-def parse_ranking_from_text(ranking_text: str) -> List[str]:
+def parse_ranking_from_text(ranking_text: str) -> list[str]:
     """
     Parse the FINAL RANKING section from the model's response.
 
@@ -254,10 +301,10 @@ def parse_ranking_from_text(ranking_text: str) -> List[str]:
 
 
 def aggregate_metrics(
-    stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]],
-    stage3_result: Dict[str, Any]
-) -> Dict[str, Any]:
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    stage3_result: dict[str, Any]
+) -> dict[str, Any]:
     """
     Aggregate metrics across all stages.
 
@@ -354,9 +401,9 @@ def aggregate_metrics(
 
 
 def calculate_aggregate_rankings(
-    stage2_results: List[Dict[str, Any]],
-    label_to_model: Dict[str, str]
-) -> List[Dict[str, Any]]:
+    stage2_results: list[dict[str, Any]],
+    label_to_model: dict[str, str]
+) -> list[dict[str, Any]]:
     """
     Calculate aggregate rankings across all models.
 
@@ -438,7 +485,7 @@ Title:"""
     return title
 
 
-async def perform_web_search(query: str) -> Tuple[Optional[str], Optional[str]]:
+async def perform_web_search(query: str) -> tuple[str | None, str | None]:
     """
     Perform web search and return formatted results.
 
@@ -464,9 +511,9 @@ async def perform_web_search(query: str) -> Tuple[Optional[str], Optional[str]]:
 async def run_full_council(
     user_query: str,
     use_web_search: bool = False,
-    council_models: Optional[List[str]] = None,
-    chairman_model: Optional[str] = None,
-) -> Tuple[List, List, Dict, Dict]:
+    council_models: list[str] | None = None,
+    chairman_model: str | None = None,
+) -> tuple[list, list, dict, dict]:
     """
     Run the complete 3-stage council process.
 

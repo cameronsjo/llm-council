@@ -3,9 +3,10 @@
 import json
 import os
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
-from .config import DATA_DIR, DATA_BASE_DIR, get_council_models, get_chairman_model
+from typing import Any
+
+from .config import DATA_BASE_DIR, DATA_DIR, get_chairman_model, get_council_models
 
 # Timeout for stale pending responses (10 minutes)
 PENDING_STALE_TIMEOUT_SECONDS = 600
@@ -23,7 +24,7 @@ def get_user_data_dir(user_id: str) -> str:
     return os.path.join(DATA_BASE_DIR, "users", user_id, "conversations")
 
 
-def get_data_dir(user_id: Optional[str] = None) -> str:
+def get_data_dir(user_id: str | None = None) -> str:
     """Get the appropriate data directory.
 
     Args:
@@ -37,7 +38,7 @@ def get_data_dir(user_id: Optional[str] = None) -> str:
     return DATA_DIR
 
 
-def ensure_data_dir(user_id: Optional[str] = None) -> None:
+def ensure_data_dir(user_id: str | None = None) -> None:
     """Ensure the data directory exists.
 
     Args:
@@ -46,7 +47,7 @@ def ensure_data_dir(user_id: Optional[str] = None) -> None:
     Path(get_data_dir(user_id)).mkdir(parents=True, exist_ok=True)
 
 
-def get_conversation_path(conversation_id: str, user_id: Optional[str] = None) -> str:
+def get_conversation_path(conversation_id: str, user_id: str | None = None) -> str:
     """Get the file path for a conversation.
 
     Args:
@@ -61,10 +62,10 @@ def get_conversation_path(conversation_id: str, user_id: Optional[str] = None) -
 
 def create_conversation(
     conversation_id: str,
-    user_id: Optional[str] = None,
-    council_models: Optional[List[str]] = None,
-    chairman_model: Optional[str] = None,
-) -> Dict[str, Any]:
+    user_id: str | None = None,
+    council_models: list[str] | None = None,
+    chairman_model: str | None = None,
+) -> dict[str, Any]:
     """Create a new conversation.
 
     Args:
@@ -100,8 +101,8 @@ def create_conversation(
 
 
 def get_conversation_config(
-    conversation_id: str, user_id: Optional[str] = None
-) -> Tuple[List[str], str]:
+    conversation_id: str, user_id: str | None = None
+) -> tuple[list[str], str]:
     """Get council configuration for a conversation with fallback to global.
 
     Args:
@@ -125,8 +126,8 @@ def get_conversation_config(
 
 
 def get_conversation(
-    conversation_id: str, user_id: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    conversation_id: str, user_id: str | None = None
+) -> dict[str, Any] | None:
     """Load a conversation from storage.
 
     Args:
@@ -141,12 +142,12 @@ def get_conversation(
     if not os.path.exists(path):
         return None
 
-    with open(path, "r") as f:
+    with open(path) as f:
         return json.load(f)
 
 
 def save_conversation(
-    conversation: Dict[str, Any], user_id: Optional[str] = None
+    conversation: dict[str, Any], user_id: str | None = None
 ) -> None:
     """Save a conversation to storage.
 
@@ -161,7 +162,7 @@ def save_conversation(
         json.dump(conversation, f, indent=2)
 
 
-def list_conversations(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_conversations(user_id: str | None = None) -> list[dict[str, Any]]:
     """List all conversations (metadata only).
 
     Args:
@@ -177,7 +178,7 @@ def list_conversations(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     for filename in os.listdir(data_dir):
         if filename.endswith(".json"):
             path = os.path.join(data_dir, filename)
-            with open(path, "r") as f:
+            with open(path) as f:
                 data = json.load(f)
                 # Return metadata only
                 conversations.append(
@@ -196,7 +197,7 @@ def list_conversations(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def add_user_message(
-    conversation_id: str, content: str, user_id: Optional[str] = None
+    conversation_id: str, content: str, user_id: str | None = None
 ) -> None:
     """Add a user message to a conversation.
 
@@ -216,11 +217,11 @@ def add_user_message(
 
 def add_assistant_message(
     conversation_id: str,
-    stage1: List[Dict[str, Any]],
-    stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any],
-    metrics: Optional[Dict[str, Any]] = None,
-    user_id: Optional[str] = None,
+    stage1: list[dict[str, Any]],
+    stage2: list[dict[str, Any]],
+    stage3: dict[str, Any],
+    metrics: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> None:
     """Add an assistant message with all 3 stages to a conversation.
 
@@ -251,7 +252,7 @@ def add_assistant_message(
 
 
 def update_conversation_title(
-    conversation_id: str, title: str, user_id: Optional[str] = None
+    conversation_id: str, title: str, user_id: str | None = None
 ) -> None:
     """Update the title of a conversation.
 
@@ -269,7 +270,7 @@ def update_conversation_title(
 
 
 def delete_conversation(
-    conversation_id: str, user_id: Optional[str] = None
+    conversation_id: str, user_id: str | None = None
 ) -> bool:
     """Delete a conversation from storage.
 
@@ -291,11 +292,11 @@ def delete_conversation(
 
 def add_arena_message(
     conversation_id: str,
-    rounds: List[Dict[str, Any]],
-    synthesis: Dict[str, Any],
-    participant_mapping: Dict[str, str],
-    metrics: Optional[Dict[str, Any]] = None,
-    user_id: Optional[str] = None,
+    rounds: list[dict[str, Any]],
+    synthesis: dict[str, Any],
+    participant_mapping: dict[str, str],
+    metrics: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> None:
     """Add an arena debate result as an assistant message.
 
@@ -331,7 +332,7 @@ def add_arena_message(
 # =============================================================================
 
 
-def get_pending_file_path(user_id: Optional[str] = None) -> str:
+def get_pending_file_path(user_id: str | None = None) -> str:
     """Get the path to the pending messages file.
 
     Args:
@@ -347,7 +348,7 @@ def get_pending_file_path(user_id: Optional[str] = None) -> str:
     return os.path.join(base_dir, "pending.json")
 
 
-def load_pending_messages(user_id: Optional[str] = None) -> Dict[str, Any]:
+def load_pending_messages(user_id: str | None = None) -> dict[str, Any]:
     """Load all pending messages from file.
 
     Args:
@@ -359,15 +360,15 @@ def load_pending_messages(user_id: Optional[str] = None) -> Dict[str, Any]:
     path = get_pending_file_path(user_id)
     if os.path.exists(path):
         try:
-            with open(path, "r") as f:
+            with open(path) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return {}
     return {}
 
 
 def save_pending_messages(
-    pending: Dict[str, Any], user_id: Optional[str] = None
+    pending: dict[str, Any], user_id: str | None = None
 ) -> None:
     """Save pending messages to file.
 
@@ -385,7 +386,7 @@ def mark_response_pending(
     conversation_id: str,
     mode: str,
     user_content: str,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
 ) -> None:
     """Mark a response as pending (in-progress).
 
@@ -408,8 +409,8 @@ def mark_response_pending(
 
 def update_pending_progress(
     conversation_id: str,
-    partial_data: Dict[str, Any],
-    user_id: Optional[str] = None,
+    partial_data: dict[str, Any],
+    user_id: str | None = None,
 ) -> None:
     """Update the progress of a pending response.
 
@@ -426,7 +427,7 @@ def update_pending_progress(
 
 
 def clear_pending(
-    conversation_id: str, user_id: Optional[str] = None
+    conversation_id: str, user_id: str | None = None
 ) -> None:
     """Clear a pending response marker (on success).
 
@@ -441,8 +442,8 @@ def clear_pending(
 
 
 def get_pending_message(
-    conversation_id: str, user_id: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    conversation_id: str, user_id: str | None = None
+) -> dict[str, Any] | None:
     """Get pending message info for a conversation.
 
     Args:
@@ -457,7 +458,7 @@ def get_pending_message(
 
 
 def is_pending_stale(
-    pending_info: Dict[str, Any],
+    pending_info: dict[str, Any],
     timeout_seconds: int = PENDING_STALE_TIMEOUT_SECONDS,
 ) -> bool:
     """Check if a pending response is stale (timed out).
@@ -485,7 +486,7 @@ def is_pending_stale(
 
 
 def remove_last_user_message(
-    conversation_id: str, user_id: Optional[str] = None
+    conversation_id: str, user_id: str | None = None
 ) -> bool:
     """Remove the last user message from a conversation (for retry cleanup).
 

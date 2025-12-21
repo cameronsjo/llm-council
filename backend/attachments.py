@@ -6,7 +6,7 @@ import logging
 import mimetypes
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .config import DATA_BASE_DIR
 
@@ -26,7 +26,7 @@ MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 ATTACHMENTS_DIR = os.path.join(DATA_BASE_DIR, "attachments")
 
 
-def get_attachments_dir(user_id: Optional[str] = None) -> str:
+def get_attachments_dir(user_id: str | None = None) -> str:
     """Get the attachments directory for a user.
 
     Args:
@@ -40,7 +40,7 @@ def get_attachments_dir(user_id: Optional[str] = None) -> str:
     return ATTACHMENTS_DIR
 
 
-def ensure_attachments_dir(user_id: Optional[str] = None) -> None:
+def ensure_attachments_dir(user_id: str | None = None) -> None:
     """Ensure the attachments directory exists."""
     Path(get_attachments_dir(user_id)).mkdir(parents=True, exist_ok=True)
 
@@ -50,7 +50,7 @@ def get_file_extension(filename: str) -> str:
     return Path(filename).suffix.lower()
 
 
-def get_file_type(filename: str) -> Optional[str]:
+def get_file_type(filename: str) -> str | None:
     """Determine the type of file based on extension.
 
     Returns:
@@ -68,7 +68,7 @@ def get_file_type(filename: str) -> Optional[str]:
 
 def validate_file(
     filename: str, content: bytes
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Validate a file for upload.
 
     Args:
@@ -97,8 +97,8 @@ def validate_file(
 def save_attachment(
     filename: str,
     content: bytes,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    user_id: str | None = None,
+) -> dict[str, Any]:
     """Save an attachment to disk.
 
     Args:
@@ -139,8 +139,8 @@ def save_attachment(
 def get_attachment_path(
     attachment_id: str,
     ext: str,
-    user_id: Optional[str] = None,
-) -> Optional[str]:
+    user_id: str | None = None,
+) -> str | None:
     """Get the file path for an attachment.
 
     Args:
@@ -168,8 +168,8 @@ def extract_text_from_pdf(content: bytes) -> str:
         Extracted text as markdown
     """
     try:
-        import pymupdf4llm
         import fitz  # PyMuPDF
+        import pymupdf4llm
 
         # Open PDF from bytes
         doc = fitz.open(stream=content, filetype="pdf")
@@ -200,7 +200,7 @@ def extract_text_from_pdf(content: bytes) -> str:
 def extract_text_from_file(
     filename: str,
     content: bytes,
-) -> Optional[str]:
+) -> str | None:
     """Extract text content from a file.
 
     Args:
@@ -231,7 +231,7 @@ def extract_text_from_file(
 def encode_image_for_vision(
     filename: str,
     content: bytes,
-) -> Optional[Dict[str, str]]:
+) -> dict[str, str] | None:
     """Encode an image for vision model input.
 
     Args:
@@ -269,9 +269,9 @@ def encode_image_for_vision(
 
 
 def process_attachments(
-    attachments: List[Dict[str, Any]],
-    user_id: Optional[str] = None,
-) -> Tuple[str, List[Dict[str, Any]]]:
+    attachments: list[dict[str, Any]],
+    user_id: str | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
     """Process attachments and return context for LLM.
 
     Args:
@@ -283,8 +283,8 @@ def process_attachments(
         - text_context: Extracted text from documents
         - image_parts: List of image objects for vision models
     """
-    text_parts: List[str] = []
-    image_parts: List[Dict[str, Any]] = []
+    text_parts: list[str] = []
+    image_parts: list[dict[str, Any]] = []
 
     for attachment in attachments:
         file_path = get_attachment_path(

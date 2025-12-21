@@ -7,8 +7,7 @@ systems that pass user identity via trusted headers.
 import logging
 import os
 from dataclasses import dataclass, field
-from ipaddress import ip_address, ip_network
-from typing import List, Optional
+from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 
 from fastapi import HTTPException, Request, status
 
@@ -36,12 +35,12 @@ class User:
     """Authenticated user from reverse proxy headers."""
 
     username: str
-    email: Optional[str] = None
-    groups: List[str] = field(default_factory=list)
-    display_name: Optional[str] = None
+    email: str | None = None
+    groups: list[str] = field(default_factory=list)
+    display_name: str | None = None
 
 
-def _parse_trusted_ips() -> List:
+def _parse_trusted_ips() -> list:
     """Parse trusted proxy IPs from environment variable.
 
     Returns:
@@ -80,12 +79,12 @@ def _is_trusted_ip(client_ip: str) -> bool:
         return False
 
     for trusted in trusted_list:
-        if hasattr(trusted, "network_address"):
-            # It's a network
+        if isinstance(trusted, (IPv4Network, IPv6Network)):
             if client in trusted:
                 return True
-        elif client == trusted:
-            return True
+        elif isinstance(trusted, (IPv4Address, IPv6Address)):
+            if client == trusted:
+                return True
 
     return False
 
@@ -114,7 +113,7 @@ def _get_client_ip(request: Request) -> str:
     return ""
 
 
-async def get_current_user(request: Request) -> Optional[User]:
+async def get_current_user(request: Request) -> User | None:
     """Extract user from trusted proxy headers.
 
     Only returns a User if:
@@ -181,7 +180,7 @@ async def require_auth(request: Request) -> User:
     return user
 
 
-async def get_optional_user(request: Request) -> Optional[User]:
+async def get_optional_user(request: Request) -> User | None:
     """Dependency for optional authentication.
 
     Returns User if auth is enabled and user is authenticated,

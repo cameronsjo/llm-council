@@ -1,7 +1,7 @@
 """Export conversations to various formats."""
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 
 def format_model_name(model_id: str) -> str:
@@ -18,7 +18,7 @@ def format_model_name(model_id: str) -> str:
     return model_id
 
 
-def export_to_markdown(conversation: Dict[str, Any]) -> str:
+def export_to_markdown(conversation: dict[str, Any]) -> str:
     """Export a conversation to Markdown format.
 
     Args:
@@ -27,7 +27,7 @@ def export_to_markdown(conversation: Dict[str, Any]) -> str:
     Returns:
         Markdown-formatted string
     """
-    lines: List[str] = []
+    lines: list[str] = []
 
     # Header
     title = conversation.get("title", "Untitled Conversation")
@@ -166,7 +166,7 @@ def export_to_markdown(conversation: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def export_to_json(conversation: Dict[str, Any]) -> Dict[str, Any]:
+def export_to_json(conversation: dict[str, Any]) -> dict[str, Any]:
     """Export a conversation to clean JSON format.
 
     This returns the conversation as-is but can be extended

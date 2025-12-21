@@ -1,19 +1,24 @@
 """Model management for OpenRouter integration."""
 
-import httpx
-from typing import List, Dict, Any, Optional
+import logging
 from datetime import datetime, timedelta
+from typing import Any
+
+import httpx
+
 from .config import OPENROUTER_API_KEY
+
+logger = logging.getLogger(__name__)
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 
 # In-memory cache
-_models_cache: Optional[Dict[str, Any]] = None
-_cache_timestamp: Optional[datetime] = None
+_models_cache: dict[str, Any] | None = None
+_cache_timestamp: datetime | None = None
 CACHE_DURATION = timedelta(hours=1)
 
 
-async def fetch_available_models() -> List[Dict[str, Any]]:
+async def fetch_available_models() -> list[dict[str, Any]]:
     """
     Fetch available models from OpenRouter API.
 
@@ -64,14 +69,14 @@ async def fetch_available_models() -> List[Dict[str, Any]]:
             return models
 
     except Exception as e:
-        print(f"Error fetching models: {e}")
+        logger.warning("Error fetching models: %s", e)
         # Return cached data even if stale, or empty list
         if _models_cache:
             return _models_cache['data']
         return []
 
 
-def _is_text_model(model: Dict[str, Any]) -> bool:
+def _is_text_model(model: dict[str, Any]) -> bool:
     """
     Check if model supports text-to-text generation.
 

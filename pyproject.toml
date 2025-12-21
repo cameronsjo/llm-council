@@ -13,4 +13,61 @@ dependencies = [
     "duckduckgo-search>=7.0.0",
     "pymupdf4llm>=0.0.17",
     "python-multipart>=0.0.9",
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "opentelemetry-instrumentation-httpx>=0.49b0",
+    "opentelemetry-exporter-otlp>=1.28.0",
+    "python-json-logger>=2.0.0",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["backend"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "LOG",    # flake8-logging
+    "G",      # flake8-logging-format
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function call in default argument (standard FastAPI Depends pattern)
+    "B905",   # zip without strict (not always needed)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/main.py" = ["E402"]  # imports after setup_telemetry() call is intentional
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [".venv"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
+exclude = [".venv"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
 ]

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import httpx
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 TAVILY_API_URL = "https://api.tavily.com/search"
 
 
-def _get_tavily_key() -> Optional[str]:
+def _get_tavily_key() -> str | None:
     """Get Tavily API key from config (allows hot reload)."""
     return config.TAVILY_API_KEY
 
@@ -23,7 +23,7 @@ async def search_tavily(
     max_results: int = 5,
     search_depth: str = "basic",
     include_answer: bool = True,
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+) -> tuple[dict[str, Any] | None, str | None]:
     """
     Perform a web search using Tavily API.
 
@@ -65,7 +65,7 @@ async def search_tavily(
 async def search_duckduckgo(
     query: str,
     max_results: int = 5,
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+) -> tuple[dict[str, Any] | None, str | None]:
     """
     Perform a web search using DuckDuckGo (free, no API key required).
 
@@ -115,7 +115,7 @@ async def search_web(
     max_results: int = 5,
     search_depth: str = "basic",
     include_answer: bool = True,
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+) -> tuple[dict[str, Any] | None, str | None]:
     """
     Perform a web search using Tavily (if configured) or DuckDuckGo fallback.
 
@@ -144,7 +144,7 @@ async def search_web(
     return await search_duckduckgo(query, max_results)
 
 
-def format_search_results(search_response: Dict[str, Any]) -> str:
+def format_search_results(search_response: dict[str, Any]) -> str:
     """
     Format search results into a readable string for LLM context.
 
