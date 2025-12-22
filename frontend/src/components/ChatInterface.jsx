@@ -14,6 +14,7 @@ export default function ChatInterface({
   onRetry,
   onRetryInterrupted,
   onDismissInterrupted,
+  onForkConversation,
   isLoading,
   webSearchAvailable,
   searchProvider,
@@ -24,6 +25,7 @@ export default function ChatInterface({
   arenaRoundCount,
   onArenaRoundCountChange,
   arenaConfig,
+  hasPendingForkContext,
 }) {
   const [input, setInput] = useState('');
   const [copiedIndex, setCopiedIndex] = useState(null);
@@ -402,7 +404,14 @@ export default function ChatInterface({
                           <span>Running Stage 3: Final synthesis...</span>
                         </div>
                       )}
-                      {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+                      {msg.stage3 && (
+                        <Stage3
+                          finalResponse={msg.stage3}
+                          originalQuestion={conversation?.messages[index - 1]?.content}
+                          conversationId={conversation?.id}
+                          onForkConversation={onForkConversation}
+                        />
+                      )}
                     </>
                   )}
                 </div>

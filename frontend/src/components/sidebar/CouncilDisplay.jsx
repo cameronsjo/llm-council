@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Star } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Star, Settings, ChevronDown, Crown, Users } from 'lucide-react';
+import './CouncilDisplay.css';
 
 /**
  * Extract short model name from full identifier.
@@ -11,7 +12,15 @@ function getShortModelName(model) {
 }
 
 /**
- * Council members display with expand/collapse and action buttons.
+ * Get provider from model identifier for visual grouping.
+ */
+function getProvider(model) {
+  const provider = model.split('/')[0];
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+/**
+ * Council members display - Distinguished roster panel.
  */
 export function CouncilDisplay({
   councilModels,
@@ -19,62 +28,127 @@ export function CouncilDisplay({
   onOpenConfig,
   onOpenCuration,
 }) {
-  const [showModels, setShowModels] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const contentRef = useRef(null);
+
+  // Handle expand/collapse animation
+  useEffect(() => {
+    if (contentRef.current) {
+      if (isExpanded) {
+        contentRef.current.style.maxHeight = `${contentRef.current.scrollHeight}px`;
+      } else {
+        contentRef.current.style.maxHeight = '0px';
+      }
+    }
+  }, [isExpanded, councilModels]);
+
+  const handleToggle = () => {
+    setIsAnimating(true);
+    setIsExpanded(!isExpanded);
+    setTimeout(() => setIsAnimating(false), 300);
+  };
 
   if (councilModels.length === 0) {
     return null;
   }
 
+  // Separate chairman from regular members
+  const regularMembers = councilModels.filter((m) => m !== chairmanModel);
+  const chairmanInCouncil = councilModels.includes(chairmanModel);
+
   return (
-    <div className="council-config">
-      <div className="council-header">
+    <div className="council-panel">
+      {/* Decorative top border */}
+      <div className="council-panel-accent" />
+
+      {/* Header */}
+      <div className="council-panel-header">
         <button
-          className="council-toggle"
-          onClick={() => setShowModels(!showModels)}
+          className="council-panel-toggle"
+          onClick={handleToggle}
+          aria-expanded={isExpanded}
         >
-          <span>Council Members</span>
-          <span className="toggle-icon">{showModels ? '▼' : '▶'}</span>
+          <div className="council-panel-title">
+            <Users size={14} className="council-icon" />
+            <span>The Council</span>
+            <span className="council-count">{councilModels.length}</span>
+          </div>
+          <ChevronDown
+            size={16}
+            className={`council-chevron ${isExpanded ? 'expanded' : ''}`}
+          />
         </button>
-        <div className="council-actions">
+
+        <div className="council-panel-actions">
           <button
-            className="curate-btn"
+            className="council-action-btn curate"
             onClick={onOpenCuration}
-            title="Curate models"
+            title="Curate favorites"
           >
             <Star size={14} />
           </button>
           <button
-            className="configure-btn"
+            className="council-action-btn configure"
             onClick={onOpenConfig}
             title="Configure council"
           >
-            ⚙️
+            <Settings size={14} />
           </button>
         </div>
       </div>
 
-      {showModels && (
-        <div className="council-models">
-          {councilModels.map((model, idx) => (
-            <div key={idx} className="model-item">
-              <span className="model-badge">
-                {model === chairmanModel ? '👑' : ''}
-              </span>
-              <span className="model-name" title={model}>
-                {getShortModelName(model)}
-              </span>
+      {/* Members List */}
+      <div
+        ref={contentRef}
+        className={`council-panel-content ${isAnimating ? 'animating' : ''}`}
+      >
+        {/* Chairman Section */}
+        {chairmanModel && (
+          <div className="council-chairman-section">
+            <div className="council-section-label">
+              <Crown size={12} />
+              <span>Chairman</span>
             </div>
-          ))}
-          {chairmanModel && !councilModels.includes(chairmanModel) && (
-            <div className="model-item chairman">
-              <span className="model-badge">👑</span>
-              <span className="model-name" title={chairmanModel}>
-                {getShortModelName(chairmanModel)}
-              </span>
+            <div className="council-member chairman" title={chairmanModel}>
+              <div className="member-indicator chairman" />
+              <span className="member-name">{getShortModelName(chairmanModel)}</span>
+              <span className="member-provider">{getProvider(chairmanModel)}</span>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+        {/* Regular Members Section */}
+        {regularMembers.length > 0 && (
+          <div className="council-members-section">
+            <div className="council-section-label">
+              <Users size={12} />
+              <span>Members</span>
+            </div>
+            <div className="council-members-list">
+              {regularMembers.map((model, idx) => (
+                <div
+                  key={model}
+                  className="council-member"
+                  title={model}
+                  style={{ animationDelay: `${idx * 50}ms` }}
+                >
+                  <div className="member-indicator" />
+                  <span className="member-name">{getShortModelName(model)}</span>
+                  <span className="member-provider">{getProvider(model)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chairman also as member indicator */}
+        {chairmanInCouncil && regularMembers.length > 0 && (
+          <div className="council-footnote">
+            Chairman also participates as council member
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,65 +1,60 @@
-/* Stage 3 - Final Synthesis Chamber */
+/* Stage 3 - Final Synthesis
+   Extends base stage styling from Stage1.css
+*/
+
 .stage3 {
-  background: var(--color-stage3);
-  border-color: var(--color-stage3-border);
+  --stage-accent: var(--color-stage3-accent);
+  --stage-numeral: 'III';
 }
 
-.stage3::before {
-  background: var(--color-stage3-accent);
-}
-
-.stage3 .stage-title {
-  color: var(--color-stage3-accent);
-}
-
-.stage3 .stage-title::before {
-  content: 'III';
-  background: var(--color-stage3-accent);
-  font-size: 0.75rem;
-}
-
+/* Final Response Container */
 .final-response {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
-  padding: var(--space-xl);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-stage3-border);
-  box-shadow: var(--shadow-medium);
+  margin: 0 var(--space-lg) var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--color-surface-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
   position: relative;
 }
 
-/* Decorative flourish for final answer */
+/* Subtle top accent */
 .final-response::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg,
-    transparent 0%,
-    var(--color-stage3-accent) 20%,
-    var(--color-stage3-accent) 80%,
-    transparent 100%
-  );
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  left: var(--space-lg);
+  right: var(--space-lg);
+  height: 2px;
+  background: var(--color-stage3-accent);
+  border-radius: 2px;
 }
 
 .chairman-label {
-  color: var(--color-stage3-accent);
-  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
   font-family: var(--font-mono);
   margin-bottom: var(--space-md);
-  font-weight: 600;
+  font-weight: 500;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  padding-top: var(--space-sm);
 }
 
 .chairman-label::before {
-  content: '👑';
-  font-size: 0.875rem;
+  content: '';
+  width: 16px;
+  height: 16px;
+  background: var(--color-gold);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chairman-model {
+  color: var(--color-text-secondary);
+  font-weight: 600;
 }
 
 .final-text {
@@ -69,20 +64,10 @@
   font-family: var(--font-body);
 }
 
-.final-text p:first-child {
-  font-size: 1.0625rem;
-}
-
-/* Reasoning indicator */
-.stage3 .reasoning-indicator {
-  margin-left: var(--space-xs);
-  opacity: 0.8;
-}
-
-/* Reasoning section */
+/* Reasoning section - Stage 3 specific */
 .stage3 .reasoning-section {
   margin-bottom: var(--space-md);
-  border: 1px solid var(--color-stage3-border);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -93,33 +78,35 @@
   gap: var(--space-sm);
   width: 100%;
   padding: var(--space-sm) var(--space-md);
-  background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+  background: var(--color-parchment);
   border: none;
   cursor: pointer;
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   font-weight: 500;
-  color: #2E7D32;
+  color: var(--color-text-secondary);
   text-align: left;
-  transition: background var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .stage3 .reasoning-toggle:hover {
-  background: linear-gradient(135deg, #C8E6C9 0%, #A5D6A7 100%);
+  background: var(--color-ivory);
+  color: var(--color-text-primary);
 }
 
 .stage3 .reasoning-toggle svg {
   flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .stage3 .reasoning-content {
   padding: var(--space-md);
-  background: #FAFFFE;
-  border-top: 1px solid #C8E6C9;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
   font-size: 0.875rem;
   color: var(--color-text-secondary);
-  line-height: 1.6;
-  max-height: 400px;
+  line-height: 1.65;
+  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -129,4 +116,39 @@
 
 .stage3 .reasoning-content p:last-child {
   margin-bottom: 0;
+}
+
+/* Continue Discussion */
+.continue-discussion {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px dashed var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.continue-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.continue-btn:hover {
+  background: var(--color-ivory);
+  border-color: var(--color-stage3-accent);
+  color: var(--color-stage3-accent);
+}
+
+.continue-btn:active {
+  transform: scale(0.98);
 }

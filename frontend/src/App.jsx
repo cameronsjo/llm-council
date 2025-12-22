@@ -27,6 +27,9 @@ function App() {
     max_rounds: 10,
   });
 
+  // Fork conversation state - context to include when starting a new conversation
+  const [pendingForkContext, setPendingForkContext] = useState(null);
+
   // Load conversations, config, and user info on mount
   useEffect(() => {
     loadConversations();
@@ -286,6 +289,27 @@ function App() {
     setCurrentConversation(conv);
   };
 
+  const handleForkConversation = async (originalQuestion, synthesis, sourceConversationId) => {
+    // Create a new conversation with the fork context
+    try {
+      const newConv = await api.createConversation(councilModels, chairmanModel);
+      setConversations([
+        { id: newConv.id, created_at: newConv.created_at, title: 'Follow-up Discussion', message_count: 0 },
+        ...conversations,
+      ]);
+      setCurrentConversationId(newConv.id);
+
+      // Store the fork context to be used with the first message
+      setPendingForkContext({
+        original_question: originalQuestion,
+        synthesis: synthesis,
+        source_conversation_id: sourceConversationId,
+      });
+    } catch (error) {
+      console.error('Failed to fork conversation:', error);
+    }
+  };
+
   const handleSendMessage = async (content, attachments = [], resume = false) => {
     if (!currentConversationId) return;
 
@@ -340,6 +364,12 @@ function App() {
       // Prepare arena config if in arena mode
       const arenaConfigParam =
         mode === 'arena' ? { round_count: arenaRoundCount } : null;
+
+      // Check for fork context (used for first message in forked conversation)
+      const priorContext = pendingForkContext;
+      if (pendingForkContext) {
+        setPendingForkContext(null); // Clear after use
+      }
 
       // Send message with streaming
       await api.sendMessageStream(
@@ -515,7 +545,8 @@ function App() {
               console.log('Unknown event type:', eventType);
           }
         },
-        resume
+        resume,
+        priorContext
       );
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -578,6 +609,7 @@ function App() {
         onRetry={handleRetry}
         onRetryInterrupted={handleRetryInterrupted}
         onDismissInterrupted={handleDismissInterrupted}
+        onForkConversation={handleForkConversation}
         isLoading={isLoading}
         webSearchAvailable={webSearchAvailable}
         searchProvider={searchProvider}
@@ -588,6 +620,7 @@ function App() {
         arenaRoundCount={arenaRoundCount}
         onArenaRoundCountChange={setArenaRoundCount}
         arenaConfig={arenaConfig}
+        hasPendingForkContext={!!pendingForkContext}
       />
     </div>
   );

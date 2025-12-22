@@ -152,9 +152,9 @@ export default function Sidebar({
           className="theme-toggle"
           onClick={cycleTheme}
           title={`Theme: ${themeLabel}`}
+          aria-label={`Theme: ${themeLabel}`}
         >
           {themeIcon}
-          <span>{themeLabel}</span>
         </button>
         <VersionInfo />
       </div>

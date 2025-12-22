@@ -1,110 +1,77 @@
-/* Stage 2 - Peer Rankings Chamber */
+/* Stage 2 - Peer Rankings
+   Extends base stage styling from Stage1.css
+*/
+
 .stage2 {
-  /* Override stage-specific accent colors */
-  --tab-accent-color: var(--color-stage2-accent);
-  --tab-border-color: var(--color-stage2-border);
-
-  background: var(--color-stage2);
-  border-color: var(--color-stage2-border);
+  --stage-accent: var(--color-gold-dark);
+  --stage-numeral: 'II';
 }
 
-.stage2::before {
-  background: var(--color-stage2-accent);
-}
-
-.stage2 .stage-title {
-  color: var(--color-stage2-accent);
-}
-
-.stage2 .stage-title::before {
-  content: 'II';
-  background: var(--color-stage2-accent);
-}
-
-.stage2 h4 {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 600;
-  margin: var(--space-lg) 0 var(--space-sm) 0;
-  color: var(--color-text-primary);
-}
-
-.stage2 h4:first-of-type {
-  margin-top: 0;
-}
-
+/* Description text */
 .stage-description {
   margin: 0 0 var(--space-md) 0;
+  padding: 0 var(--space-lg);
   color: var(--color-text-secondary);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1.6;
   font-style: italic;
 }
 
-/* Aggregate Rankings - Premium Card */
+/* Aggregate Rankings - Featured results card */
 .aggregate-rankings {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+  margin: var(--space-md) var(--space-lg) var(--space-lg);
   padding: var(--space-lg);
-  border-radius: var(--radius-lg);
-  margin-bottom: var(--space-lg);
-  border: 2px solid var(--color-stage2-border);
-  box-shadow: var(--shadow-medium);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Decorative corner */
-.aggregate-rankings::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, transparent 50%, var(--color-gold-light) 50%);
-  opacity: 0.5;
+  background: var(--color-surface-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
 }
 
 .aggregate-rankings h4 {
   margin: 0 0 var(--space-md) 0;
-  color: var(--color-stage2-accent);
   font-family: var(--font-display);
-  font-size: 1.0625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
 }
 
 .aggregate-rankings h4::before {
-  content: '★';
-  font-size: 1rem;
+  content: '';
+  width: 16px;
+  height: 16px;
+  background: var(--color-gold);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .aggregate-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
 }
 
 .aggregate-item {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  padding: var(--space-md);
-  background: white;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-stage2-border);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-light);
   transition: all var(--transition-fast);
 }
 
 .aggregate-item:hover {
   border-color: var(--color-gold);
-  box-shadow: var(--shadow-subtle);
 }
 
-/* Gold medal for #1 */
+/* Gold highlight for #1 */
 .aggregate-item:first-child {
-  background: linear-gradient(135deg, #FFFDF5 0%, #FFF9E6 100%);
+  background: linear-gradient(135deg, var(--color-gold-light) 0%, var(--color-surface) 100%);
   border-color: var(--color-gold);
 }
 
@@ -114,11 +81,11 @@
 }
 
 .rank-position {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.875rem;
-  min-width: 32px;
-  height: 32px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.75rem;
+  min-width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -131,43 +98,37 @@
   flex: 1;
   color: var(--color-text-primary);
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
 }
 
 .rank-score {
   color: var(--color-text-secondary);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-family: var(--font-mono);
 }
 
 .rank-count {
   color: var(--color-text-muted);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-family: var(--font-mono);
 }
 
-/* Stage 2 tab-content gets margin-bottom for spacing before aggregate rankings */
+/* Stage 2 specific tab content spacing */
 .stage2 .tab-content {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
 }
 
 .ranking-model {
   color: var(--color-text-muted);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-family: var(--font-mono);
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .ranking-model::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  background: var(--color-stage2-accent);
-  border-radius: 50%;
-  opacity: 0.6;
+  display: none;
 }
 
 .ranking-content {
@@ -179,16 +140,18 @@
 
 /* Parsed Ranking */
 .parsed-ranking {
-  margin-top: var(--space-lg);
-  padding-top: var(--space-lg);
-  border-top: 2px dashed var(--color-stage2-border);
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px dashed var(--color-border);
 }
 
 .parsed-ranking strong {
-  color: var(--color-stage2-accent);
-  font-family: var(--font-display);
-  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .parsed-ranking ol {
@@ -205,6 +168,6 @@
 }
 
 .parsed-ranking li::marker {
-  color: var(--color-stage2-accent);
+  color: var(--color-gold-dark);
   font-weight: 600;
 }

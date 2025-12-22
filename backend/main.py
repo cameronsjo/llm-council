@@ -134,14 +134,28 @@ class AttachmentRef(BaseModel):
     file_type: str
 
 
+class PriorContext(BaseModel):
+    """Context from a previous conversation to continue discussion."""
+
+    original_question: str = Field(description="The original question from the prior conversation")
+    synthesis: str = Field(description="The chairman's synthesis/conclusion from the prior conversation")
+    source_conversation_id: str | None = Field(
+        default=None, description="ID of the source conversation (for reference)"
+    )
+
+
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
+
     content: str
     use_web_search: bool = False
     mode: str = Field(default="council", pattern="^(council|arena)$")
     arena_config: ArenaConfig | None = None
     attachments: list[AttachmentRef] = Field(default_factory=list)
     resume: bool = Field(default=False, description="Resume from partial results if available")
+    prior_context: PriorContext | None = Field(
+        default=None, description="Context from a previous conversation to continue"
+    )
 
 
 class UpdateConfigRequest(BaseModel):
@@ -583,6 +597,18 @@ async def send_message_stream(
                     conversation_id, "council", request.content, user_id=user_id
                 )
 
+                # Build prior context if continuing from a previous conversation
+                prior_context_text = ""
+                if request.prior_context:
+                    prior_context_text = (
+                        "## Prior Discussion Context\n\n"
+                        f"**Original Question:** {request.prior_context.original_question}\n\n"
+                        f"**Council's Previous Conclusion:**\n{request.prior_context.synthesis}\n\n"
+                        "---\n\n"
+                        "The user now has a follow-up question based on this prior discussion:\n\n"
+                    )
+                    yield f"data: {json.dumps({'type': 'prior_context', 'data': {'source_id': request.prior_context.source_conversation_id}})}\n\n"
+
                 # Process attachments if any
                 attachment_context = ""
                 if request.attachments:
@@ -603,8 +629,8 @@ async def send_message_stream(
 
                 # Stage 1: Collect responses
                 yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-                # Combine attachment and web search context
-                combined_context = attachment_context
+                # Combine all context: prior + attachment + web search
+                combined_context = prior_context_text + attachment_context
                 if web_search_context:
                     combined_context += web_search_context
                 stage1_results = await stage1_collect_responses(

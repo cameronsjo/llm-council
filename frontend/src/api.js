@@ -294,6 +294,8 @@ export const api = {
    * @param {object|null} arenaConfig - Arena configuration (e.g., { round_count: 3 })
    * @param {Array} attachments - Array of attachment objects from upload
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
+   * @param {boolean} resume - Whether to resume from partial results
+   * @param {object|null} priorContext - Context from previous conversation {original_question, synthesis, source_conversation_id}
    * @returns {Promise<void>}
    */
   async sendMessageStream(
@@ -304,7 +306,8 @@ export const api = {
     arenaConfig = null,
     attachments = [],
     onEvent,
-    resume = false
+    resume = false,
+    priorContext = null
   ) {
     const body = {
       content,
@@ -319,6 +322,10 @@ export const api = {
 
     if (attachments && attachments.length > 0) {
       body.attachments = attachments;
+    }
+
+    if (priorContext) {
+      body.prior_context = priorContext;
     }
 
     const response = await fetch(

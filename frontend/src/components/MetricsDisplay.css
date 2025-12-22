@@ -89,7 +89,7 @@
 .metrics-details {
   border-top: 1px solid var(--color-gold-light);
   padding: var(--space-lg);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--color-surface);
   animation: slideDown 0.2s ease-out;
 }
 
@@ -117,7 +117,7 @@
   align-items: center;
   font-size: 0.8125rem;
   padding: var(--space-sm) var(--space-md);
-  background: white;
+  background: var(--color-surface);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light);
 }

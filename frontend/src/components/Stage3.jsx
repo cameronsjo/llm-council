@@ -1,9 +1,14 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronRight, Brain } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, MessageSquarePlus } from 'lucide-react';
 import './Stage3.css';
 
-export default function Stage3({ finalResponse }) {
+export default function Stage3({
+  finalResponse,
+  originalQuestion,
+  conversationId,
+  onForkConversation,
+}) {
   const [reasoningExpanded, setReasoningExpanded] = useState(false);
 
   if (!finalResponse) {
@@ -11,6 +16,12 @@ export default function Stage3({ finalResponse }) {
   }
 
   const hasReasoning = finalResponse.reasoning_details;
+
+  const handleContinueDiscussion = () => {
+    if (onForkConversation && originalQuestion && finalResponse.response) {
+      onForkConversation(originalQuestion, finalResponse.response, conversationId);
+    }
+  };
 
   return (
     <div className="stage stage3">
@@ -42,6 +53,19 @@ export default function Stage3({ finalResponse }) {
         <div className="final-text markdown-content">
           <ReactMarkdown>{finalResponse.response}</ReactMarkdown>
         </div>
+
+        {onForkConversation && originalQuestion && (
+          <div className="continue-discussion">
+            <button
+              className="continue-btn"
+              onClick={handleContinueDiscussion}
+              title="Start a new conversation with this context"
+            >
+              <MessageSquarePlus size={16} />
+              Continue Discussion
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
