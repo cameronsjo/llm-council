@@ -177,6 +177,23 @@ async def health_check():
     return {"status": "ok", "service": "LLM Council API"}
 
 
+@app.get("/api/version")
+async def get_version():
+    """Get application version information."""
+    from .version import get_version_info
+
+    info = get_version_info()
+    return {
+        "version": info.version,
+        "git_commit": info.git_commit,
+        "git_commit_short": info.git_commit_short,
+        "build_time": info.build_time,
+        "repo_url": info.repo_url,
+        "commit_url": info.commit_url,
+        "release_url": info.release_url,
+    }
+
+
 @app.get("/api/config")
 async def get_config():
     """Get API configuration and feature availability."""

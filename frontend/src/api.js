@@ -19,6 +19,17 @@ export const api = {
   },
 
   /**
+   * Get application version information.
+   */
+  async getVersion() {
+    const response = await fetch(`${API_BASE}/api/version`);
+    if (!response.ok) {
+      throw new Error('Failed to get version');
+    }
+    return response.json();
+  },
+
+  /**
    * Get current user information (from reverse proxy auth headers).
    */
   async getUserInfo() {

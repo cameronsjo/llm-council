@@ -4,6 +4,7 @@ import './Sidebar.css';
 import { ConversationItem, CouncilDisplay } from './sidebar/index.js';
 import ModelSelector from './ModelSelector';
 import ModelCuration from './ModelCuration';
+import VersionInfo from './VersionInfo';
 import { useTheme } from '../hooks';
 
 export default function Sidebar({
@@ -155,6 +156,7 @@ export default function Sidebar({
           {themeIcon}
           <span>{themeLabel}</span>
         </button>
+        <VersionInfo />
       </div>
 
       {showConfigUI && (

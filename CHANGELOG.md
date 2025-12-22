@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2024-12-21
+
 ### Added
 
+- Version info modal showing version, git commit, and links to GitHub
+- OpenTelemetry tracing for council stages, arena rounds, and LLM queries
+- Structured JSON logging with correlation IDs (LOG_FORMAT=json)
+- Request context middleware for distributed tracing
+- CONTRIBUTING.md with development setup and guidelines
+- ruff, mypy, and pyright configuration for Python linting
+- Prettier + ESLint integration for frontend code formatting
 - Mobile responsive sidebar with hamburger menu and drawer pattern
 - Progress stepper showing council deliberation stages
 - Skeleton loading component with shimmer animation
@@ -24,11 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Unified tab styling across stages using CSS custom properties
 - Added aria-labels to all icon-only buttons
+- Docker build now includes version and git commit info
+- Updated all dependencies to latest stable versions
+- Modernized Python type hints (Dict -> dict, List -> list)
 
 ### Fixed
 
 - Input form disappearing after first message
 - Removed duplicated CSS, consolidated shared styles in index.css
+- Replaced print() statements with proper logging
+- Replaced hasattr() with isinstance() for type checking
 
 ## [0.6.0] - 2024-12-20
 
