@@ -78,3 +78,12 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+      - name: Trigger Watchtower deployment
+        if: success()
+        env:
+          WATCHTOWER_TOKEN: ${{ secrets.WATCHTOWER_TOKEN }}
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer $WATCHTOWER_TOKEN" \
+            "https://gateway.tail89e340.ts.net/watchtower/v1/update?images=ghcr.io/cameronsjo/llm-council"
