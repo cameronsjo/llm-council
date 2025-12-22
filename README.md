@@ -42,21 +42,43 @@ This fork significantly extends the original project (~60% new/rewritten code):
 
 ### Docker (Recommended)
 
+Pull the pre-built image from GitHub Container Registry:
+
 ```bash
-# Clone and configure
+# Pull and run
+docker pull ghcr.io/cameronsjo/llm-council:latest
+docker run -d -p 3000:8001 \
+  -e OPENROUTER_API_KEY=your-key-here \
+  -v llm-council-data:/app/data \
+  ghcr.io/cameronsjo/llm-council:latest
+```
+
+Or use docker-compose:
+
+```bash
 git clone https://github.com/cameronsjo/llm-council.git
 cd llm-council
 cp .env.example .env
 # Edit .env with your OPENROUTER_API_KEY
 
-# Start
 docker compose up -d
-
-# View logs
-docker compose logs -f
 ```
 
 Open http://localhost:3000
+
+#### Verify Image Signatures
+
+Images are signed with [Cosign](https://github.com/sigstore/cosign) and include SLSA build provenance:
+
+```bash
+# Verify signature (requires cosign)
+cosign verify ghcr.io/cameronsjo/llm-council:latest \
+  --certificate-identity-regexp="github.com/cameronsjo/llm-council" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+
+# Verify provenance (requires gh CLI)
+gh attestation verify oci://ghcr.io/cameronsjo/llm-council:latest --owner cameronsjo
+```
 
 ### Manual Setup
 
@@ -136,7 +158,20 @@ See [docs/auth-setup.md](docs/auth-setup.md) for detailed configuration.
 - **Backend**: FastAPI, Python 3.12, async httpx, OpenRouter API
 - **Frontend**: React 18, Vite, react-markdown
 - **Storage**: JSON files (conversation persistence)
+- **Registry**: [ghcr.io/cameronsjo/llm-council](https://ghcr.io/cameronsjo/llm-council) (signed with Cosign + SLSA provenance)
 - **Deployment**: Docker, nginx (optional reverse proxy)
+
+### Why GHCR over Docker Hub?
+
+| Feature | GHCR | Docker Hub |
+|---------|------|------------|
+| **Integration** | Native GitHub (same auth, linked to repos) | Separate account/auth |
+| **Rate Limits** | Generous (tied to GitHub plan) | 100 pulls/6hrs anonymous |
+| **Signing** | Native Cosign + GitHub attestations | Requires separate setup |
+| **Cost** | Free for public repos | Free tier with limits |
+| **Default** | Requires explicit registry prefix | Default registry (implicit) |
+
+Docker Hub remains the home for official images and has broader reach, but GHCR provides tighter CI/CD integration for GitHub-hosted projects.
 
 ## License
 

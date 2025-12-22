@@ -82,8 +82,9 @@ jobs:
       - name: Trigger Watchtower deployment
         if: success()
         env:
+          WATCHTOWER_URL: ${{ secrets.WATCHTOWER_URL }}
           WATCHTOWER_TOKEN: ${{ secrets.WATCHTOWER_TOKEN }}
         run: |
           curl -sf -X POST \
             -H "Authorization: Bearer $WATCHTOWER_TOKEN" \
-            "https://gateway.tail89e340.ts.net/watchtower/v1/update?images=ghcr.io/cameronsjo/llm-council"
+            "${WATCHTOWER_URL}?images=ghcr.io/cameronsjo/llm-council"
