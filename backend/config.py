@@ -133,10 +133,11 @@ def get_curated_models() -> list[str]:
     Get user's curated model list.
 
     Returns:
-        List of curated model identifiers, or empty list if none curated
+        List of curated model identifiers. Defaults to DEFAULT_COUNCIL_MODELS
+        if user hasn't curated any models yet.
     """
     user_config = load_user_config()
-    return user_config.get('curated_models', [])
+    return user_config.get('curated_models', DEFAULT_COUNCIL_MODELS.copy())
 
 
 def update_curated_models(model_ids: list[str]) -> list[str]:
