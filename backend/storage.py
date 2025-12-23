@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_BASE_DIR, DATA_DIR, get_chairman_model, get_council_models
+from .models.deliberation import DeliberationResult
 
 # Timeout for stale pending responses (10 minutes)
 PENDING_STALE_TIMEOUT_SECONDS = 600
@@ -126,13 +127,16 @@ def get_conversation_config(
 
 
 def get_conversation(
-    conversation_id: str, user_id: str | None = None
+    conversation_id: str,
+    user_id: str | None = None,
+    migrate_messages: bool = True,
 ) -> dict[str, Any] | None:
     """Load a conversation from storage.
 
     Args:
         conversation_id: Unique identifier for the conversation
         user_id: Optional username for user-scoped storage
+        migrate_messages: Whether to convert legacy messages to unified format
 
     Returns:
         Conversation dict or None if not found
@@ -143,7 +147,44 @@ def get_conversation(
         return None
 
     with open(path) as f:
-        return json.load(f)
+        conversation = json.load(f)
+
+    # Optionally migrate legacy messages to unified format
+    if migrate_messages:
+        conversation = migrate_legacy_messages(conversation)
+
+    return conversation
+
+
+def migrate_legacy_messages(conversation: dict[str, Any]) -> dict[str, Any]:
+    """Migrate legacy messages to unified format in-memory.
+
+    This converts old stage1/stage2/stage3 format to the unified rounds format
+    without modifying the stored file (lazy migration).
+
+    Args:
+        conversation: Conversation dict
+
+    Returns:
+        Conversation with migrated messages
+    """
+    from .council import convert_legacy_message_to_unified
+
+    messages = conversation.get("messages", [])
+    migrated_messages = []
+
+    for msg in messages:
+        if msg.get("role") == "assistant":
+            # Check if it's legacy council format (has stage1 but no rounds)
+            if "stage1" in msg and "rounds" not in msg:
+                migrated_messages.append(convert_legacy_message_to_unified(msg))
+            else:
+                migrated_messages.append(msg)
+        else:
+            migrated_messages.append(msg)
+
+    conversation["messages"] = migrated_messages
+    return conversation
 
 
 def save_conversation(
@@ -206,7 +247,7 @@ def add_user_message(
         content: User message content
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id)
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
@@ -225,6 +266,8 @@ def add_assistant_message(
 ) -> None:
     """Add an assistant message with all 3 stages to a conversation.
 
+    Note: This is the legacy format. New code should use add_unified_message().
+
     Args:
         conversation_id: Conversation identifier
         stage1: List of individual model responses
@@ -233,7 +276,7 @@ def add_assistant_message(
         metrics: Optional aggregated metrics for this response
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id)
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
@@ -308,7 +351,7 @@ def add_arena_message(
         metrics: Optional aggregated metrics for this debate
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id)
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
@@ -322,6 +365,31 @@ def add_arena_message(
 
     if metrics:
         message["metrics"] = metrics
+
+    conversation["messages"].append(message)
+    save_conversation(conversation, user_id)
+
+
+def add_unified_message(
+    conversation_id: str,
+    result: DeliberationResult,
+    user_id: str | None = None,
+) -> None:
+    """Add a unified deliberation result as an assistant message.
+
+    This is the preferred method for storing new messages in the unified format.
+
+    Args:
+        conversation_id: Conversation identifier
+        result: DeliberationResult from either council or arena mode
+        user_id: Optional username for user-scoped storage
+    """
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    message = result.to_dict()
+    message["role"] = "assistant"
 
     conversation["messages"].append(message)
     save_conversation(conversation, user_id)

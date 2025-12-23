@@ -4,6 +4,14 @@ import logging
 from typing import Any
 
 from .config import get_chairman_model, get_council_models
+from .models.deliberation import (
+    DeliberationResult,
+    Metrics,
+    ParticipantResponse,
+    Round,
+    RoundType,
+    Synthesis,
+)
 from .openrouter import query_model, query_models_parallel
 from .telemetry import get_tracer, is_telemetry_enabled
 from .websearch import format_search_results, is_web_search_available, search_web
@@ -610,3 +618,144 @@ async def run_full_council(
     }
 
     return stage1_results, stage2_results, stage3_result, metadata
+
+
+def convert_to_unified_result(
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    stage3_result: dict[str, Any],
+    label_to_model: dict[str, str],
+    aggregate_rankings: list[dict[str, Any]],
+    metrics: dict[str, Any],
+) -> DeliberationResult:
+    """
+    Convert legacy stage-based results to unified DeliberationResult.
+
+    This bridges the gap between the existing stage functions and the
+    new unified data model, allowing incremental migration.
+    """
+    # Convert Stage 1 to Round 1 (responses)
+    round1_responses = []
+    for i, result in enumerate(stage1_results):
+        label = f"Response {chr(65 + i)}"  # Response A, B, C...
+        response_metrics = None
+        if result.get("metrics"):
+            response_metrics = Metrics.from_dict(result["metrics"])
+
+        round1_responses.append(ParticipantResponse(
+            participant=label,
+            model=result["model"],
+            content=result.get("response", ""),
+            metrics=response_metrics,
+            reasoning_details=result.get("reasoning_details"),
+        ))
+
+    round1 = Round(
+        round_number=1,
+        round_type=RoundType.RESPONSES,
+        responses=round1_responses,
+    )
+
+    # Convert Stage 2 to Round 2 (rankings)
+    round2_responses = []
+    for result in stage2_results:
+        response_metrics = None
+        if result.get("metrics"):
+            response_metrics = Metrics.from_dict(result["metrics"])
+
+        # For rankings, participant is the evaluator model
+        round2_responses.append(ParticipantResponse(
+            participant=result["model"],  # Evaluator identified by model
+            model=result["model"],
+            content=result.get("ranking", ""),
+            metrics=response_metrics,
+            reasoning_details=result.get("reasoning_details"),
+            parsed_ranking=result.get("parsed_ranking"),
+        ))
+
+    round2 = Round(
+        round_number=2,
+        round_type=RoundType.RANKINGS,
+        responses=round2_responses,
+        metadata={
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate_rankings,
+        },
+    )
+
+    # Convert Stage 3 to Synthesis
+    synthesis_metrics = None
+    if stage3_result.get("metrics"):
+        synthesis_metrics = Metrics.from_dict(stage3_result["metrics"])
+
+    synthesis = Synthesis(
+        model=stage3_result.get("model", ""),
+        content=stage3_result.get("response", ""),
+        metrics=synthesis_metrics,
+        reasoning_details=stage3_result.get("reasoning_details"),
+    )
+
+    # Build unified result
+    return DeliberationResult(
+        mode="council",
+        rounds=[round1, round2],
+        synthesis=synthesis,
+        participant_mapping=label_to_model,
+        metrics=metrics,
+    )
+
+
+def convert_legacy_message_to_unified(message: dict[str, Any]) -> dict[str, Any]:
+    """
+    Convert a legacy stored message (stage1/stage2/stage3) to unified format.
+
+    Used for backward compatibility when reading old conversations.
+    """
+    if message.get("role") != "assistant":
+        return message
+
+    # Already in unified format
+    if "rounds" in message:
+        return message
+
+    # Check for arena format (already has rounds-like structure)
+    if message.get("mode") == "arena":
+        return message
+
+    # Convert legacy council format
+    stage1 = message.get("stage1", [])
+    stage2 = message.get("stage2", [])
+    stage3 = message.get("stage3", {})
+
+    if not stage1:
+        return message  # Not a council message
+
+    # Build label_to_model mapping
+    label_to_model = {}
+    for i, result in enumerate(stage1):
+        label = f"Response {chr(65 + i)}"
+        label_to_model[label] = result.get("model", "")
+
+    # Calculate aggregate rankings if we have stage2
+    aggregate_rankings = []
+    if stage2:
+        aggregate_rankings = calculate_aggregate_rankings(stage2, label_to_model)
+
+    # Get metrics if available
+    metrics = message.get("metrics", {})
+
+    # Convert to unified
+    result = convert_to_unified_result(
+        stage1, stage2, stage3, label_to_model, aggregate_rankings, metrics
+    )
+
+    # Return as dict, preserving any extra fields
+    unified = result.to_dict()
+    unified["role"] = "assistant"
+
+    # Copy over any other fields that might exist
+    for key in message:
+        if key not in ("role", "stage1", "stage2", "stage3", "metrics"):
+            unified[key] = message[key]
+
+    return unified

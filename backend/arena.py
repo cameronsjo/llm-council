@@ -5,6 +5,14 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .config import get_chairman_model, get_council_models
+from .models.deliberation import (
+    DeliberationResult,
+    Metrics,
+    ParticipantResponse,
+    Round,
+    RoundType,
+    Synthesis,
+)
 from .openrouter import query_model, query_models_parallel
 from .telemetry import get_tracer, is_telemetry_enabled
 
@@ -13,15 +21,50 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ArenaRound:
-    """Represents a single round of arena debate."""
+    """Represents a single round of arena debate.
+
+    Note: This is kept for backward compatibility during streaming.
+    New code should use the unified Round class from models.deliberation.
+    """
 
     round_number: int
-    round_type: str  # "initial" | "deliberation"
+    round_type: str  # "opening" | "rebuttal" | "closing"
     responses: list[dict[str, Any]]
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
+
+    def to_unified_round(self) -> Round:
+        """Convert to unified Round model."""
+        # Map arena round types to unified RoundType
+        type_mapping = {
+            "initial": RoundType.OPENING,
+            "opening": RoundType.OPENING,
+            "deliberation": RoundType.REBUTTAL,
+            "rebuttal": RoundType.REBUTTAL,
+            "closing": RoundType.CLOSING,
+        }
+        round_type = type_mapping.get(self.round_type, self.round_type)
+
+        unified_responses = []
+        for resp in self.responses:
+            metrics = None
+            if resp.get("metrics"):
+                metrics = Metrics.from_dict(resp["metrics"])
+
+            unified_responses.append(ParticipantResponse(
+                participant=resp.get("participant", ""),
+                model=resp.get("model", ""),
+                content=resp.get("response", ""),
+                metrics=metrics,
+            ))
+
+        return Round(
+            round_number=self.round_number,
+            round_type=round_type,
+            responses=unified_responses,
+        )
 
 
 # Prompt Templates
@@ -468,3 +511,111 @@ async def run_arena_debate(
     rounds_as_dicts = [r.to_dict() for r in rounds]
 
     return rounds_as_dicts, synthesis, participant_mapping, metrics
+
+
+def convert_arena_to_unified_result(
+    rounds: list[dict[str, Any]],
+    synthesis: dict[str, Any],
+    participant_mapping: dict[str, str],
+    metrics: dict[str, Any],
+) -> DeliberationResult:
+    """
+    Convert arena debate results to unified DeliberationResult.
+
+    This bridges the gap between the existing arena functions and the
+    new unified data model.
+    """
+    unified_rounds = []
+
+    for round_dict in rounds:
+        # Map arena round types to unified
+        round_type = round_dict.get("round_type", "opening")
+        type_mapping = {
+            "initial": RoundType.OPENING,
+            "opening": RoundType.OPENING,
+            "deliberation": RoundType.REBUTTAL,
+            "rebuttal": RoundType.REBUTTAL,
+            "closing": RoundType.CLOSING,
+        }
+        unified_type = type_mapping.get(round_type, round_type)
+
+        # Convert responses
+        responses = []
+        for resp in round_dict.get("responses", []):
+            resp_metrics = None
+            if resp.get("metrics"):
+                resp_metrics = Metrics.from_dict(resp["metrics"])
+
+            responses.append(ParticipantResponse(
+                participant=resp.get("participant", ""),
+                model=resp.get("model", ""),
+                content=resp.get("response", ""),
+                metrics=resp_metrics,
+            ))
+
+        unified_rounds.append(Round(
+            round_number=round_dict.get("round_number", 1),
+            round_type=unified_type,
+            responses=responses,
+        ))
+
+    # Convert synthesis
+    synthesis_metrics = None
+    if synthesis.get("metrics"):
+        synthesis_metrics = Metrics.from_dict(synthesis["metrics"])
+
+    unified_synthesis = Synthesis(
+        model=synthesis.get("model", ""),
+        content=synthesis.get("content", ""),
+        metrics=synthesis_metrics,
+    )
+
+    return DeliberationResult(
+        mode="arena",
+        rounds=unified_rounds,
+        synthesis=unified_synthesis,
+        participant_mapping=participant_mapping,
+        metrics=metrics,
+    )
+
+
+def convert_legacy_arena_message_to_unified(message: dict[str, Any]) -> dict[str, Any]:
+    """
+    Convert a legacy arena message to unified format.
+
+    Arena messages are already close to unified format, but this ensures
+    consistency with the new structure.
+    """
+    if message.get("role") != "assistant":
+        return message
+
+    # Already in unified format
+    if "rounds" in message and all(
+        isinstance(r.get("responses", [{}])[0].get("content"), str)
+        for r in message.get("rounds", [{}])
+        if r.get("responses")
+    ):
+        return message
+
+    # Check if this is an arena message
+    if message.get("mode") != "arena":
+        return message
+
+    rounds = message.get("rounds", [])
+    synthesis = message.get("synthesis", {})
+    participant_mapping = message.get("participant_mapping", {})
+    metrics = message.get("metrics", {})
+
+    if not rounds:
+        return message
+
+    # Convert to unified
+    result = convert_arena_to_unified_result(
+        rounds, synthesis, participant_mapping, metrics
+    )
+
+    # Return as dict
+    unified = result.to_dict()
+    unified["role"] = "assistant"
+
+    return unified
