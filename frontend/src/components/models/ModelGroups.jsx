@@ -1,5 +1,6 @@
 import { Star, Check } from 'lucide-react';
 import { formatPrice, getDisplayName, formatContextLength } from '../../lib/models';
+import './ModelGroups.css';
 
 /**
  * Single model item - supports checkbox (selector) and star (curation) variants.
@@ -73,11 +74,7 @@ export function ModelGroupHeader({
 }) {
   return (
     <div className="group-header">
-      <button
-        className="group-toggle-btn"
-        onClick={onToggle}
-        style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '16px 18px' }}
-      >
+      <button className="group-toggle-btn" onClick={onToggle}>
         <span className="group-toggle">{isExpanded ? '▼' : '▶'}</span>
         <span className="group-name">{provider}</span>
         <span className="group-count">

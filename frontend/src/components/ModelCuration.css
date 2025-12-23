@@ -1,4 +1,5 @@
-/* Model Curation Modal */
+/* Model Curation Modal - Modal-specific styles only */
+/* Shared model group styles are in models/ModelGroups.css */
 
 /* Overlay */
 .curation-overlay {
@@ -124,197 +125,11 @@
   font-weight: 500;
 }
 
-/* Model Groups - Match ModelSelector */
+/* Override model-groups height for modal context */
 .curation-body .model-groups {
   flex: 1;
   min-height: 300px;
   max-height: none;
-  overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-md);
-  background: var(--color-ivory);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.curation-body .model-group {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: visible;
-  background: var(--color-surface);
-}
-
-.curation-body .group-header {
-  display: flex;
-  align-items: center;
-  background: var(--color-parchment);
-  border: none;
-  width: 100%;
-  min-height: 54px;
-  color: var(--color-text-primary);
-}
-
-.curation-body .group-toggle-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  font-size: 1.125rem;
-  font-weight: 600;
-  font-family: var(--font-body);
-  color: var(--color-text-primary);
-}
-
-.curation-body .group-header:hover {
-  background: var(--color-border-light);
-}
-
-.curation-body .group-toggle {
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-  width: 16px;
-  flex-shrink: 0;
-}
-
-.curation-body .group-name {
-  flex: 1;
-  text-transform: capitalize;
-  color: var(--color-text-primary);
-}
-
-.curation-body .group-count {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.curation-body .selected-badge {
-  background: var(--color-burgundy);
-  color: white;
-  font-size: 0.75rem;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-family: var(--font-mono);
-}
-
-.curation-body .total-count {
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-  font-family: var(--font-mono);
-  background: var(--color-border);
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
-.curation-body .bulk-action-btn {
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.6875rem;
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  transition: all 0.15s ease;
-}
-
-.curation-body .bulk-action-btn:hover {
-  background: var(--color-ivory);
-  border-color: var(--color-burgundy);
-  color: var(--color-burgundy);
-}
-
-.curation-body .group-models {
-  border-top: 1px solid var(--color-border);
-  max-height: 40vh;
-  overflow-y: auto;
-}
-
-.curation-body .model-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  cursor: pointer;
-  border-bottom: 1px solid var(--color-border-light);
-  transition: background 0.15s ease;
-  background: var(--color-surface);
-}
-
-.curation-body .model-option:last-child {
-  border-bottom: none;
-}
-
-.curation-body .model-option:hover {
-  background: var(--color-ivory);
-}
-
-.curation-body .model-option.selected {
-  background: rgba(139, 38, 53, 0.05);
-}
-
-.curation-body .model-option.selected:hover {
-  background: rgba(139, 38, 53, 0.1);
-}
-
-.curation-body .star-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: var(--color-border);
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.curation-body .star-btn:hover {
-  color: var(--color-gold);
-}
-
-.curation-body .star-btn.active {
-  color: var(--color-burgundy);
-}
-
-.curation-body .model-info {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  min-width: 0;
-}
-
-.curation-body .model-name {
-  font-size: 0.875rem;
-  color: var(--color-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.curation-body .model-price {
-  font-size: 0.75rem;
-  color: var(--color-gold-dark);
-  font-family: var(--font-mono);
-  background: var(--color-stage2);
-  border: 1px solid var(--color-stage2-border);
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.curation-body .model-context {
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
 }
 
 /* Footer */
@@ -373,7 +188,7 @@
   color: var(--color-text-secondary);
 }
 
-/* Search and Filter - inherit from ModelSelector */
+/* Search and Filter - inherit from shared styles */
 .curation-body .search-box {
   position: relative;
 }
