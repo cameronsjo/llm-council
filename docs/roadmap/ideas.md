@@ -6,6 +6,7 @@ Feature ideas and enhancements for LLM Council.
 
 | Item | Priority | Effort | Notes |
 |------|----------|--------|-------|
+| Unify Council stages with Arena rounds | p2 | large | Council uses hardcoded stage1/2/3 while Arena uses flexible rounds[]. Refactor to shared data model: rounds-based structure for both modes. Benefits: reduced code duplication, consistent UI components, easier to add new deliberation patterns |
 | Ollama integration | p4 | small | Local model execution with zero API cost. Privacy-conscious deployment. Same async pattern as OpenRouter. Config: OLLAMA_HOST, OLLAMA_ENABLED |
 | File attachments | p1 | medium | PDF, TXT, MD, image upload support. Uses pymupdf4llm for PDF→markdown. Base64 data URIs for vision models. Opens document analysis use case |
 | Built-in tools | p2 | medium | Calculator (AST-based safe eval), Wikipedia, ArXiv, Yahoo Finance. Research capabilities for council. Consider LangChain dependency |

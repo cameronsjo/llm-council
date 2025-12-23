@@ -38,6 +38,19 @@ async def stage1_collect_responses(
     }
 
     with tracer.start_as_current_span("council.stage1_collect_responses", attributes=span_attributes) as span:
+        # System prompt to encourage critical, honest responses
+        system_prompt = """You are a council member providing your honest assessment. Your role is to give a direct, accurate answer - not to please or validate the user.
+
+GUIDELINES:
+- If the question contains a flawed premise, point it out before answering
+- If you're uncertain, say so explicitly rather than bluffing
+- If the answer is "it depends" or "we don't know," explain why
+- Push back on bad ideas, incorrect assumptions, or poor reasoning
+- Be specific about tradeoffs, limitations, and edge cases
+- Avoid generic, hedging, or diplomatic non-answers
+
+Your response will be evaluated by your peers. Quality and honesty matter more than agreeableness."""
+
         # Build the prompt with optional web search context
         if web_search_context:
             prompt = f"""The following web search results have been gathered to help answer the user's question:
@@ -52,7 +65,10 @@ Please use the web search results above as reference when answering. Cite source
         else:
             prompt = user_query
 
-        messages = [{"role": "user", "content": prompt}]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
 
         # Query all models in parallel
         responses = await query_models_parallel(effective_council, messages)
@@ -120,7 +136,7 @@ async def stage2_collect_rankings(
             for label, result in zip(labels, stage1_results)
         ])
 
-        ranking_prompt = f"""You are evaluating different responses to the following question:
+        ranking_prompt = f"""You are a rigorous evaluator assessing responses to the following question:
 
 Question: {user_query}
 
@@ -128,9 +144,17 @@ Here are the responses from different models (anonymized):
 
 {responses_text}
 
+EVALUATION CRITERIA - Be ruthlessly honest:
+- Accuracy: Are there factual errors, unsupported claims, or logical fallacies?
+- Completeness: Does it actually answer the question, or dodge/deflect?
+- Depth: Is the reasoning superficial or substantive?
+- Honesty: Does it acknowledge uncertainty, or pretend to know what it doesn't?
+- Usefulness: Would this actually help someone, or is it generic filler?
+
 Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
+1. Critically evaluate each response. Call out specific flaws, errors, and weaknesses. Don't be kind - be accurate.
+2. Note what each response does well, if anything.
+3. Provide a final ranking based on actual quality, not politeness.
 
 IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 - Start with the line "FINAL RANKING:" (all caps, with colon)
@@ -138,18 +162,18 @@ IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 - Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
 - Do not add any other text or explanations in the ranking section
 
-Example of the correct format for your ENTIRE response:
+Example format:
 
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
+Response A contains a factual error about X and fails to address Y...
+Response B provides accurate information but is too vague on Z...
+Response C is the most thorough but overstates confidence in its claims...
 
 FINAL RANKING:
 1. Response C
-2. Response A
-3. Response B
+2. Response B
+3. Response A
 
-Now provide your evaluation and ranking:"""
+Now provide your critical evaluation and ranking:"""
 
         messages = [{"role": "user", "content": ranking_prompt}]
 
@@ -221,7 +245,7 @@ async def stage3_synthesize_final(
             for result in stage2_results
         ])
 
-        chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+        chairman_prompt = f"""You are the Chairman of an LLM Council tasked with delivering the TRUTH, not consensus.
 
 Original Question: {user_query}
 
@@ -231,12 +255,25 @@ STAGE 1 - Individual Responses:
 STAGE 2 - Peer Rankings:
 {stage2_text}
 
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
+YOUR MANDATE AS CHAIRMAN:
+You are not here to please the user or validate their assumptions. You are here to provide the most accurate, honest answer possible.
 
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+CRITICAL EVALUATION:
+1. Identify where the council AGREES - but agreement doesn't mean correctness. Consensus around a wrong answer is still wrong.
+2. Identify where the council DISAGREES - genuine disagreement often reveals important nuance or uncertainty.
+3. Look for ERRORS - factual mistakes, logical fallacies, unsupported claims, or wishful thinking.
+4. Consider what's MISSING - what did the models fail to address or conveniently ignore?
+
+YOUR RESPONSE MUST:
+- Correct any errors in the council's responses, even if highly-ranked models made them
+- Push back on flawed reasoning, bad ideas, or incorrect assumptions - including from the user's original question
+- Acknowledge genuine uncertainty rather than pretending to know things you don't
+- Be direct and honest, not diplomatic and evasive
+- Prioritize accuracy over being agreeable
+
+If the user's premise is flawed, say so. If a popular answer is wrong, explain why. If there's no good answer, admit it.
+
+Now provide your synthesis - the truth as best you can determine it:"""
 
         messages = [{"role": "user", "content": chairman_prompt}]
 
