@@ -46,7 +46,7 @@ class Synthesis:
 
 ### Phase 1: Backend Models
 
-1. **Create `backend/models/deliberation.py`** with unified dataclasses
+1. **Create `backend/deliberation/deliberation.py`** with unified dataclasses
 2. **Update `council.py`** to return unified structure
 3. **Update `arena.py`** to use same structure (already close)
 4. **Update `main.py`** SSE events to use consistent event types
@@ -78,10 +78,11 @@ synthesis_complete -> {model, content}
 ## Files to Modify
 
 ### Backend
+- `backend/deliberation/` - New unified data models package
 - `backend/council.py` - Return unified structure
 - `backend/arena.py` - Align with unified structure
-- `backend/main.py` - Unified SSE events
-- `backend/storage.py` - New format + migration
+- `backend/main.py` - Store in unified format
+- `backend/storage.py` - New format + lazy migration on read
 
 ### Frontend
 - `frontend/src/App.jsx` - Use unified components

@@ -34,6 +34,7 @@ setup_telemetry()
 instrument_httpx()
 from .arena import (
     aggregate_arena_metrics,
+    convert_arena_to_unified_result,
     create_participant_mapping,
     final_synthesis,
     round1_initial_positions,
@@ -59,6 +60,7 @@ from .config import (
 from .council import (
     aggregate_metrics,
     calculate_aggregate_rankings,
+    convert_to_unified_result,
     generate_conversation_title,
     perform_web_search,
     run_full_council,
@@ -692,13 +694,18 @@ async def send_message_stream(
                 )
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
-            # Save complete assistant message with metrics
-            storage.add_assistant_message(
-                conversation_id,
+            # Convert to unified format and save
+            unified_result = convert_to_unified_result(
                 stage1_results,
                 stage2_results,
                 stage3_result,
-                metrics=metrics,
+                label_to_model,
+                aggregate_rankings,
+                metrics,
+            )
+            storage.add_unified_message(
+                conversation_id,
+                unified_result,
                 user_id=user_id,
             )
 
@@ -827,13 +834,16 @@ async def send_message_stream(
                 )
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
-            # Save arena message
-            storage.add_arena_message(
-                conversation_id,
+            # Convert to unified format and save
+            unified_result = convert_arena_to_unified_result(
                 rounds_as_dicts,
                 synthesis,
                 participant_mapping,
-                metrics=metrics,
+                metrics,
+            )
+            storage.add_unified_message(
+                conversation_id,
+                unified_result,
                 user_id=user_id,
             )
 

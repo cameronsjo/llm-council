@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_BASE_DIR, DATA_DIR, get_chairman_model, get_council_models
-from .models.deliberation import DeliberationResult
+from .deliberation import DeliberationResult
 
 # Timeout for stale pending responses (10 minutes)
 PENDING_STALE_TIMEOUT_SECONDS = 600

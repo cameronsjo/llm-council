@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .config import get_chairman_model, get_council_models
-from .models.deliberation import (
+from .deliberation import (
     DeliberationResult,
     Metrics,
     ParticipantResponse,
@@ -24,7 +24,7 @@ class ArenaRound:
     """Represents a single round of arena debate.
 
     Note: This is kept for backward compatibility during streaming.
-    New code should use the unified Round class from models.deliberation.
+    New code should use the unified Round class from deliberation module.
     """
 
     round_number: int

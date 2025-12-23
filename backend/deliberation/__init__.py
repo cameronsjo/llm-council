@@ -1,6 +1,7 @@
-"""Backend data models."""
+"""Unified deliberation data models for Council and Arena modes."""
 
 from .deliberation import (
+    DeliberationResult,
     Metrics,
     ParticipantResponse,
     Round,
@@ -9,6 +10,7 @@ from .deliberation import (
 )
 
 __all__ = [
+    "DeliberationResult",
     "Metrics",
     "ParticipantResponse",
     "Round",

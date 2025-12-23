@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from .config import get_chairman_model, get_council_models
-from .models.deliberation import (
+from .deliberation import (
     DeliberationResult,
     Metrics,
     ParticipantResponse,
