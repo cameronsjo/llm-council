@@ -1,12 +1,91 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Check, RotateCcw, AlertTriangle, X, Paperclip, FileText, Image, Play } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  RotateCcw,
+  AlertTriangle,
+  X,
+  Paperclip,
+  FileText,
+  Image,
+  Play,
+} from 'lucide-react';
 import { api } from '../api';
-import Stage1 from './Stage1';
-import Stage2 from './Stage2';
-import Stage3 from './Stage3';
-import ArenaMode from './ArenaMode';
+import Round from './Round';
+import Synthesis from './Synthesis';
 import './ChatInterface.css';
+
+// Convert legacy Council stage data to unified rounds format
+function convertCouncilToRounds(msg) {
+  const rounds = [];
+
+  // Stage 1 → Round with type "responses"
+  if (msg.stage1) {
+    rounds.push({
+      round_number: 1,
+      round_type: 'responses',
+      responses: msg.stage1.map((r) => ({
+        model: r.model,
+        content: r.response,
+        reasoning_details: r.reasoning_details,
+      })),
+    });
+  }
+
+  // Stage 2 → Round with type "rankings"
+  if (msg.stage2) {
+    rounds.push({
+      round_number: 2,
+      round_type: 'rankings',
+      responses: msg.stage2.map((r) => ({
+        model: r.model,
+        content: r.ranking,
+        reasoning_details: r.reasoning_details,
+        parsed_ranking: r.parsed_ranking,
+      })),
+      metadata: {
+        label_to_model: msg.metadata?.label_to_model,
+        aggregate_rankings: msg.metadata?.aggregate_rankings,
+      },
+    });
+  }
+
+  return rounds;
+}
+
+// Convert legacy synthesis format to unified format
+function convertSynthesis(msg) {
+  if (msg.stage3) {
+    return {
+      model: msg.stage3.model,
+      content: msg.stage3.response,
+      reasoning_details: msg.stage3.reasoning_details,
+    };
+  }
+  return msg.synthesis;
+}
+
+// Get participant mapping for de-anonymization
+function getParticipantMapping(msg) {
+  // For unified format
+  if (msg.participant_mapping) {
+    return msg.participant_mapping;
+  }
+  // For Council mode, use label_to_model from metadata
+  if (msg.metadata?.label_to_model) {
+    return msg.metadata.label_to_model;
+  }
+  // Check rounds for metadata
+  if (msg.rounds) {
+    for (const round of msg.rounds) {
+      if (round.metadata?.label_to_model) {
+        return round.metadata.label_to_model;
+      }
+    }
+  }
+  return null;
+}
 
 export default function ChatInterface({
   conversation,
@@ -158,55 +237,59 @@ export default function ChatInterface({
     <div className="chat-interface">
       <div className="messages-container">
         {/* Interrupted Response Banner */}
-        {conversation.pendingInterrupted && conversation.pendingInfo && (() => {
-          const hasStage1 = conversation.pendingInfo.partial_data?.stage1?.length > 0;
-          const canResume = hasStage1 && conversation.pendingInfo.mode === 'council';
-          return (
-            <div className="interrupted-banner">
-              <div className="interrupted-content">
-                <AlertTriangle size={20} />
-                <div className="interrupted-text">
-                  <strong>Response was interrupted</strong>
-                  <span>
-                    {conversation.pendingInfo.mode === 'arena' ? 'Arena debate' : 'Council response'}
-                    {' '}was interrupted.
-                    {canResume
-                      ? ' Stage 1 completed - you can resume from Stage 2.'
-                      : ' Would you like to retry?'}
-                  </span>
+        {conversation.pendingInterrupted &&
+          conversation.pendingInfo &&
+          (() => {
+            const hasStage1 = conversation.pendingInfo.partial_data?.stage1?.length > 0;
+            const canResume = hasStage1 && conversation.pendingInfo.mode === 'council';
+            return (
+              <div className="interrupted-banner">
+                <div className="interrupted-content">
+                  <AlertTriangle size={20} />
+                  <div className="interrupted-text">
+                    <strong>Response was interrupted</strong>
+                    <span>
+                      {conversation.pendingInfo.mode === 'arena'
+                        ? 'Arena debate'
+                        : 'Council response'}{' '}
+                      was interrupted.
+                      {canResume
+                        ? ' Stage 1 completed - you can resume from Stage 2.'
+                        : ' Would you like to retry?'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="interrupted-actions">
-                {canResume && (
+                <div className="interrupted-actions">
+                  {canResume && (
+                    <button
+                      className="interrupted-btn resume"
+                      onClick={() => onRetryInterrupted(true)}
+                      disabled={isLoading}
+                    >
+                      <Play size={14} />
+                      Resume
+                    </button>
+                  )}
                   <button
-                    className="interrupted-btn resume"
-                    onClick={() => onRetryInterrupted(true)}
+                    className="interrupted-btn retry"
+                    onClick={() => onRetryInterrupted(false)}
                     disabled={isLoading}
                   >
-                    <Play size={14} />
-                    Resume
+                    <RotateCcw size={14} />
+                    Retry
                   </button>
-                )}
-                <button
-                  className="interrupted-btn retry"
-                  onClick={() => onRetryInterrupted(false)}
-                  disabled={isLoading}
-                >
-                  <RotateCcw size={14} />
-                  Retry
-                </button>
-                <button
-                  className="interrupted-btn dismiss"
-                  onClick={onDismissInterrupted}
-                  disabled={isLoading}
-                >
-                  <X size={14} />
-                  Dismiss
-                </button>
+                  <button
+                    className="interrupted-btn dismiss"
+                    onClick={onDismissInterrupted}
+                    disabled={isLoading}
+                  >
+                    <X size={14} />
+                    Dismiss
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })()}
+            );
+          })()}
 
         {conversation.messages.length === 0 && !conversation.pendingInterrupted ? (
           <div className="empty-state">
@@ -225,7 +308,9 @@ export default function ChatInterface({
                     <button
                       type="button"
                       className="prompt-chip"
-                      onClick={() => setInput('Is remote work better than office work for software teams?')}
+                      onClick={() =>
+                        setInput('Is remote work better than office work for software teams?')
+                      }
                     >
                       Remote vs Office
                     </button>
@@ -239,7 +324,9 @@ export default function ChatInterface({
                     <button
                       type="button"
                       className="prompt-chip"
-                      onClick={() => setInput('Is social media a net positive or negative for society?')}
+                      onClick={() =>
+                        setInput('Is social media a net positive or negative for society?')
+                      }
                     >
                       Social Media Impact
                     </button>
@@ -249,21 +336,31 @@ export default function ChatInterface({
                     <button
                       type="button"
                       className="prompt-chip"
-                      onClick={() => setInput('What are the trade-offs between monolith and microservices architectures?')}
+                      onClick={() =>
+                        setInput(
+                          'What are the trade-offs between monolith and microservices architectures?'
+                        )
+                      }
                     >
                       Architecture Decisions
                     </button>
                     <button
                       type="button"
                       className="prompt-chip"
-                      onClick={() => setInput('How should I approach learning a new programming language effectively?')}
+                      onClick={() =>
+                        setInput(
+                          'How should I approach learning a new programming language effectively?'
+                        )
+                      }
                     >
                       Learning Strategies
                     </button>
                     <button
                       type="button"
                       className="prompt-chip"
-                      onClick={() => setInput('What factors should I consider when choosing between job offers?')}
+                      onClick={() =>
+                        setInput('What factors should I consider when choosing between job offers?')
+                      }
                     >
                       Career Advice
                     </button>
@@ -285,7 +382,11 @@ export default function ChatInterface({
                         onClick={() => handleCopy(msg.content, index)}
                         aria-label={copiedIndex === index ? 'Copied' : 'Copy message'}
                       >
-                        {copiedIndex === index ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+                        {copiedIndex === index ? (
+                          <Check size={14} aria-hidden="true" />
+                        ) : (
+                          <Copy size={14} aria-hidden="true" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -309,7 +410,11 @@ export default function ChatInterface({
                           onClick={() => handleCopy(getMessageText(msg), index)}
                           aria-label={copiedIndex === index ? 'Copied' : 'Copy final answer'}
                         >
-                          {copiedIndex === index ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+                          {copiedIndex === index ? (
+                            <Check size={14} aria-hidden="true" />
+                          ) : (
+                            <Copy size={14} aria-hidden="true" />
+                          )}
                         </button>
                       )}
                       {canRetry(index) && (
@@ -342,78 +447,112 @@ export default function ChatInterface({
                     </div>
                   )}
 
-                  {/* Arena Mode */}
-                  {msg.mode === 'arena' ? (
-                    <ArenaMode
-                      rounds={msg.rounds}
-                      synthesis={msg.synthesis}
-                      participantMapping={msg.participant_mapping}
-                      loading={msg.loading}
-                    />
-                  ) : (
-                    <>
-                      {/* Progress Stepper */}
-                      {(msg.loading?.stage1 || msg.loading?.stage2 || msg.loading?.stage3 || msg.stage1) && (
-                        <div className="council-progress" role="progressbar" aria-label="Council deliberation progress">
-                          <div className={`progress-step ${msg.stage1 ? 'complete' : ''} ${msg.loading?.stage1 ? 'active' : ''}`}>
-                            <div className="step-indicator">{msg.stage1 ? '✓' : '1'}</div>
-                            <span className="step-label">Responses</span>
-                          </div>
-                          <div className="step-connector"></div>
-                          <div className={`progress-step ${msg.stage2 ? 'complete' : ''} ${msg.loading?.stage2 ? 'active' : ''}`}>
-                            <div className="step-indicator">{msg.stage2 ? '✓' : '2'}</div>
-                            <span className="step-label">Rankings</span>
-                          </div>
-                          <div className="step-connector"></div>
-                          <div className={`progress-step ${msg.stage3 ? 'complete' : ''} ${msg.loading?.stage3 ? 'active' : ''}`}>
-                            <div className="step-indicator">{msg.stage3 ? '✓' : '3'}</div>
-                            <span className="step-label">Synthesis</span>
-                          </div>
-                        </div>
-                      )}
+                  {/* Unified Round Display - Works for both Arena and Council modes */}
+                  {(() => {
+                    const isArena = msg.mode === 'arena';
+                    const rounds = isArena ? msg.rounds : convertCouncilToRounds(msg);
+                    const synthesis = convertSynthesis(msg);
+                    const participantMapping = getParticipantMapping(msg);
+                    const mode = isArena ? 'arena' : 'council';
 
-                      {/* Stage 1 */}
-                      {msg.loading?.stage1 && (
-                        <div className="stage-loading" role="status" aria-live="polite">
-                          <div className="spinner" aria-hidden="true"></div>
-                          <span>Running Stage 1: Collecting individual responses...</span>
-                        </div>
-                      )}
-                      {msg.stage1 && <Stage1 responses={msg.stage1} />}
+                    return (
+                      <>
+                        {/* Progress Stepper for Council mode */}
+                        {!isArena &&
+                          (msg.loading?.stage1 ||
+                            msg.loading?.stage2 ||
+                            msg.loading?.stage3 ||
+                            msg.stage1) && (
+                            <div
+                              className="council-progress"
+                              role="progressbar"
+                              aria-label="Council deliberation progress"
+                            >
+                              <div
+                                className={`progress-step ${msg.stage1 ? 'complete' : ''} ${msg.loading?.stage1 ? 'active' : ''}`}
+                              >
+                                <div className="step-indicator">{msg.stage1 ? '✓' : '1'}</div>
+                                <span className="step-label">Responses</span>
+                              </div>
+                              <div className="step-connector"></div>
+                              <div
+                                className={`progress-step ${msg.stage2 ? 'complete' : ''} ${msg.loading?.stage2 ? 'active' : ''}`}
+                              >
+                                <div className="step-indicator">{msg.stage2 ? '✓' : '2'}</div>
+                                <span className="step-label">Rankings</span>
+                              </div>
+                              <div className="step-connector"></div>
+                              <div
+                                className={`progress-step ${msg.stage3 ? 'complete' : ''} ${msg.loading?.stage3 ? 'active' : ''}`}
+                              >
+                                <div className="step-indicator">{msg.stage3 ? '✓' : '3'}</div>
+                                <span className="step-label">Synthesis</span>
+                              </div>
+                            </div>
+                          )}
 
-                      {/* Stage 2 */}
-                      {msg.loading?.stage2 && (
-                        <div className="stage-loading" role="status" aria-live="polite">
-                          <div className="spinner" aria-hidden="true"></div>
-                          <span>Running Stage 2: Peer rankings...</span>
-                        </div>
-                      )}
-                      {msg.stage2 && (
-                        <Stage2
-                          rankings={msg.stage2}
-                          labelToModel={msg.metadata?.label_to_model}
-                          aggregateRankings={msg.metadata?.aggregate_rankings}
-                          metrics={msg.metrics}
-                        />
-                      )}
+                        {/* Loading states */}
+                        {msg.loading?.stage1 && (
+                          <div className="stage-loading" role="status" aria-live="polite">
+                            <div className="spinner" aria-hidden="true"></div>
+                            <span>Collecting individual responses...</span>
+                          </div>
+                        )}
+                        {msg.loading?.stage2 && (
+                          <div className="stage-loading" role="status" aria-live="polite">
+                            <div className="spinner" aria-hidden="true"></div>
+                            <span>Peer rankings in progress...</span>
+                          </div>
+                        )}
+                        {msg.loading?.round && (
+                          <div className="stage-loading" role="status" aria-live="polite">
+                            <div className="spinner" aria-hidden="true"></div>
+                            <span>
+                              {msg.loading.roundType === 'initial'
+                                ? 'Collecting initial positions...'
+                                : `Round ${msg.loading.roundNumber}: Deliberating...`}
+                            </span>
+                          </div>
+                        )}
 
-                      {/* Stage 3 */}
-                      {msg.loading?.stage3 && (
-                        <div className="stage-loading" role="status" aria-live="polite">
-                          <div className="spinner" aria-hidden="true"></div>
-                          <span>Running Stage 3: Final synthesis...</span>
-                        </div>
-                      )}
-                      {msg.stage3 && (
-                        <Stage3
-                          finalResponse={msg.stage3}
-                          originalQuestion={conversation?.messages[index - 1]?.content}
-                          conversationId={conversation?.id}
-                          onForkConversation={onForkConversation}
-                        />
-                      )}
-                    </>
-                  )}
+                        {/* Render rounds using unified Round component */}
+                        {rounds.map((round, i) => (
+                          <Round
+                            key={`${round.round_type}-${round.round_number || i}`}
+                            round={round}
+                            participantMapping={participantMapping}
+                            isCollapsible={isArena}
+                            defaultCollapsed={false}
+                            showMetrics={false}
+                          />
+                        ))}
+
+                        {/* Synthesis loading */}
+                        {(msg.loading?.stage3 || msg.loading?.synthesis) && (
+                          <div className="stage-loading" role="status" aria-live="polite">
+                            <div className="spinner" aria-hidden="true"></div>
+                            <span>
+                              {isArena
+                                ? 'Synthesizing debate outcomes...'
+                                : 'Final synthesis in progress...'}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Render synthesis using unified Synthesis component */}
+                        {synthesis && (
+                          <Synthesis
+                            synthesis={synthesis}
+                            participantMapping={participantMapping}
+                            originalQuestion={conversation?.messages[index - 1]?.content}
+                            conversationId={conversation?.id}
+                            onForkConversation={onForkConversation}
+                            mode={mode}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -431,127 +570,136 @@ export default function ChatInterface({
       </div>
 
       <form className="input-form" onSubmit={handleSubmit}>
-          <textarea
-            className="message-input"
-            placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
+        <textarea
+          className="message-input"
+          placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={isLoading}
+          rows={3}
+        />
+
+        {/* Mode Toggle */}
+        <div
+          className={`mode-toggle ${mode === 'arena' ? 'arena-mode' : ''}`}
+          role="radiogroup"
+          aria-label="Response mode"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === 'council'}
+            className={`mode-btn ${mode === 'council' ? 'active' : ''}`}
+            onClick={() => onModeChange('council')}
             disabled={isLoading}
-            rows={3}
+          >
+            Council Mode
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === 'arena'}
+            className={`mode-btn ${mode === 'arena' ? 'active' : ''}`}
+            onClick={() => onModeChange('arena')}
+            disabled={isLoading}
+          >
+            Arena Debate
+          </button>
+        </div>
+
+        {/* Arena Round Count */}
+        {mode === 'arena' && arenaConfig && (
+          <div className="arena-config">
+            <label className="rounds-label">
+              <span>Debate Rounds: {arenaRoundCount}</span>
+              <input
+                type="range"
+                min={arenaConfig.min_rounds}
+                max={arenaConfig.max_rounds}
+                value={arenaRoundCount}
+                onChange={(e) => onArenaRoundCountChange(parseInt(e.target.value))}
+                disabled={isLoading}
+                className="rounds-slider"
+              />
+            </label>
+            <span className="rounds-hint">Round 1: Initial positions, Rounds 2+: Deliberation</span>
+          </div>
+        )}
+
+        {/* Attachment Chips */}
+        {attachments.length > 0 && (
+          <div className="attachment-chips">
+            {attachments.map((att) => (
+              <div key={att.id} className="attachment-chip">
+                {att.file_type === 'image' ? <Image size={14} /> : <FileText size={14} />}
+                <span className="attachment-name">{att.filename}</span>
+                <button
+                  type="button"
+                  className="attachment-remove"
+                  onClick={() => handleRemoveAttachment(att.id)}
+                  disabled={isLoading}
+                  aria-label={`Remove ${att.filename}`}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="input-controls">
+          {/* File attachment button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="file-input-hidden"
+            onChange={handleFileSelect}
+            disabled={isLoading || uploadingFile}
+            multiple
+            accept=".txt,.md,.json,.csv,.xml,.html,.py,.js,.ts,.pdf,.png,.jpg,.jpeg,.gif,.webp"
           />
-
-          {/* Mode Toggle */}
-          <div className={`mode-toggle ${mode === 'arena' ? 'arena-mode' : ''}`} role="radiogroup" aria-label="Response mode">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={mode === 'council'}
-              className={`mode-btn ${mode === 'council' ? 'active' : ''}`}
-              onClick={() => onModeChange('council')}
-              disabled={isLoading}
-            >
-              Council Mode
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={mode === 'arena'}
-              className={`mode-btn ${mode === 'arena' ? 'active' : ''}`}
-              onClick={() => onModeChange('arena')}
-              disabled={isLoading}
-            >
-              Arena Debate
-            </button>
-          </div>
-
-          {/* Arena Round Count */}
-          {mode === 'arena' && arenaConfig && (
-            <div className="arena-config">
-              <label className="rounds-label">
-                <span>Debate Rounds: {arenaRoundCount}</span>
-                <input
-                  type="range"
-                  min={arenaConfig.min_rounds}
-                  max={arenaConfig.max_rounds}
-                  value={arenaRoundCount}
-                  onChange={(e) => onArenaRoundCountChange(parseInt(e.target.value))}
-                  disabled={isLoading}
-                  className="rounds-slider"
-                />
-              </label>
-              <span className="rounds-hint">
-                Round 1: Initial positions, Rounds 2+: Deliberation
+          <button
+            type="button"
+            className="attach-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || uploadingFile}
+            aria-label="Attach files (PDF, images, text)"
+          >
+            <Paperclip size={18} aria-hidden="true" />
+            {uploadingFile && (
+              <span className="uploading-indicator" aria-live="polite">
+                Uploading...
               </span>
-            </div>
-          )}
-
-          {/* Attachment Chips */}
-          {attachments.length > 0 && (
-            <div className="attachment-chips">
-              {attachments.map((att) => (
-                <div key={att.id} className="attachment-chip">
-                  {att.file_type === 'image' ? <Image size={14} /> : <FileText size={14} />}
-                  <span className="attachment-name">{att.filename}</span>
-                  <button
-                    type="button"
-                    className="attachment-remove"
-                    onClick={() => handleRemoveAttachment(att.id)}
-                    disabled={isLoading}
-                    aria-label={`Remove ${att.filename}`}
-                  >
-                    <X size={12} aria-hidden="true" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="input-controls">
-            {/* File attachment button */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="file-input-hidden"
-              onChange={handleFileSelect}
-              disabled={isLoading || uploadingFile}
-              multiple
-              accept=".txt,.md,.json,.csv,.xml,.html,.py,.js,.ts,.pdf,.png,.jpg,.jpeg,.gif,.webp"
-            />
-            <button
-              type="button"
-              className="attach-btn"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading || uploadingFile}
-              aria-label="Attach files (PDF, images, text)"
-            >
-              <Paperclip size={18} aria-hidden="true" />
-              {uploadingFile && <span className="uploading-indicator" aria-live="polite">Uploading...</span>}
-            </button>
-
-            {webSearchAvailable && (
-              <label className="web-search-toggle" title={`Search via ${searchProvider === 'tavily' ? 'Tavily' : 'DuckDuckGo'}`}>
-                <input
-                  type="checkbox"
-                  checked={useWebSearch}
-                  onChange={onToggleWebSearch}
-                  disabled={isLoading}
-                />
-                <span className="toggle-label">
-                  🔍 Web Search
-                  {searchProvider && <span className="provider-badge">{searchProvider === 'tavily' ? 'Tavily' : 'DDG'}</span>}
-                </span>
-              </label>
             )}
-            <button
-              type="submit"
-              className="send-button"
-              disabled={!input.trim() || isLoading}
+          </button>
+
+          {webSearchAvailable && (
+            <label
+              className="web-search-toggle"
+              title={`Search via ${searchProvider === 'tavily' ? 'Tavily' : 'DuckDuckGo'}`}
             >
-              {mode === 'arena' ? 'Start Debate' : 'Send'}
-            </button>
-          </div>
-        </form>
+              <input
+                type="checkbox"
+                checked={useWebSearch}
+                onChange={onToggleWebSearch}
+                disabled={isLoading}
+              />
+              <span className="toggle-label">
+                🔍 Web Search
+                {searchProvider && (
+                  <span className="provider-badge">
+                    {searchProvider === 'tavily' ? 'Tavily' : 'DDG'}
+                  </span>
+                )}
+              </span>
+            </label>
+          )}
+          <button type="submit" className="send-button" disabled={!input.trim() || isLoading}>
+            {mode === 'arena' ? 'Start Debate' : 'Send'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

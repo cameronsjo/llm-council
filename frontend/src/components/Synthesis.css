@@ -1,0 +1,285 @@
+/* Unified Synthesis Component Styles */
+
+.synthesis {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Mode-specific accents */
+.synthesis-council {
+  --synthesis-accent: var(--color-stage3-accent, #2e7d32);
+}
+
+.synthesis-arena {
+  --synthesis-accent: var(--arena-accent, #2e7d32);
+}
+
+/* Header */
+.synthesis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--color-surface-elevated);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.synthesis-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.synthesis-title::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  background: var(--color-gold);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.synthesis .copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.synthesis .copy-btn:hover {
+  border-color: var(--synthesis-accent);
+  color: var(--synthesis-accent);
+}
+
+/* Content area */
+.synthesis-content {
+  padding: var(--space-lg);
+}
+
+.chairman-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.chairman-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chairman-model {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.synthesis .reasoning-indicator {
+  color: var(--color-gold);
+  margin-left: auto;
+}
+
+/* Reasoning section */
+.synthesis .reasoning-section {
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.synthesis .reasoning-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-parchment);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.synthesis .reasoning-toggle:hover {
+  background: var(--color-ivory);
+  color: var(--color-text-primary);
+}
+
+.synthesis .reasoning-toggle svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.synthesis .reasoning-content {
+  padding: var(--space-md);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.synthesis .reasoning-content p {
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.synthesis .reasoning-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Synthesis text */
+.synthesis-text {
+  font-family: var(--font-body);
+  line-height: 1.75;
+  color: var(--color-text-primary);
+}
+
+/* Identity reveal for Arena */
+.identity-reveal {
+  background: var(--color-surface-elevated);
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.reveal-title {
+  margin: 0 0 var(--space-sm) 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.participant-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.participant-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: var(--space-xs) 0;
+}
+
+.identity-label {
+  font-weight: 600;
+  color: var(--color-gold-dark);
+  min-width: 100px;
+}
+
+.identity-arrow {
+  color: var(--color-text-muted);
+}
+
+.identity-model {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.identity-full-model {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Continue Discussion */
+.continue-discussion {
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px dashed var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.continue-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.continue-btn:hover {
+  background: var(--color-ivory);
+  border-color: var(--synthesis-accent);
+  color: var(--synthesis-accent);
+}
+
+.continue-btn:active {
+  transform: scale(0.98);
+}
+
+/* Markdown content styling */
+.synthesis .markdown-content h2 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.synthesis .markdown-content h2:first-child {
+  margin-top: 0;
+}
+
+.synthesis .markdown-content ul,
+.synthesis .markdown-content ol {
+  padding-left: 1.5em;
+  margin: 0.75em 0;
+}
+
+.synthesis .markdown-content li {
+  margin: 0.25em 0;
+}
+
+.synthesis .markdown-content p {
+  margin: 0.75em 0;
+}
+
+.synthesis .markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.synthesis .markdown-content p:last-child {
+  margin-bottom: 0;
+}

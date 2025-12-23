@@ -98,8 +98,8 @@ synthesis_complete -> {model, content}
 
 ## Success Criteria
 
-- [ ] Both modes use `rounds[]` array
-- [ ] Single `Round` component renders both council and arena rounds
-- [ ] Existing conversations still load correctly
-- [ ] No UI regression in either mode
-- [ ] Reduced code duplication
+- [x] Both modes use `rounds[]` array (unified storage format)
+- [x] Single `Round` component renders both council and arena rounds
+- [x] Existing conversations still load correctly (lazy migration on read)
+- [x] No UI regression in either mode
+- [x] Reduced code duplication (Stage1/Stage2/Stage3/ArenaRound/ArenaSynthesis → Round/Synthesis)
