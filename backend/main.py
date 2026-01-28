@@ -880,6 +880,126 @@ async def send_message_stream(
     )
 
 
+@app.post("/api/conversations/{conversation_id}/extend-debate/stream")
+async def extend_arena_debate_stream(
+    conversation_id: str,
+    user: User | None = Depends(get_optional_user),
+):
+    """Add one more deliberation round to an existing arena debate.
+
+    Returns Server-Sent Events as the new round and synthesis complete.
+    """
+    user_id = user.username if user else None
+
+    # Get conversation
+    conversation = storage.get_conversation(conversation_id, user_id=user_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Find the last assistant message that's an arena debate
+    last_arena_msg = None
+    last_user_msg = None
+    for i, msg in enumerate(reversed(conversation["messages"])):
+        if msg.get("role") == "assistant" and msg.get("mode") == "arena":
+            last_arena_msg = msg
+            # Find the user message before it
+            msg_idx = len(conversation["messages"]) - 1 - i
+            if msg_idx > 0:
+                last_user_msg = conversation["messages"][msg_idx - 1]
+            break
+
+    if not last_arena_msg:
+        raise HTTPException(status_code=400, detail="No arena debate found in this conversation")
+
+    if not last_user_msg or last_user_msg.get("role") != "user":
+        raise HTTPException(status_code=400, detail="Could not find original user query")
+
+    async def extend_event_generator():
+        """Generate events for extending the arena debate with one more round."""
+        try:
+            from .arena import ArenaRound
+
+            # Get per-conversation config
+            council_models, chairman_model = storage.get_conversation_config(
+                conversation_id, user_id=user_id
+            )
+
+            # Extract existing data from the last arena message
+            existing_rounds = last_arena_msg.get("rounds", [])
+            participant_mapping = last_arena_msg.get("participant_mapping", {})
+            original_query = last_user_msg.get("content", "")
+
+            if not existing_rounds or not participant_mapping:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Invalid arena debate data'})}\n\n"
+                return
+
+            # Convert existing rounds to ArenaRound objects
+            arena_rounds: list[ArenaRound] = []
+            for rd in existing_rounds:
+                arena_rounds.append(ArenaRound(
+                    round_number=rd["round_number"],
+                    round_type=rd["round_type"],
+                    responses=rd["responses"],
+                ))
+
+            # Calculate new round number
+            new_round_number = len(arena_rounds) + 1
+            new_total_rounds = new_round_number
+
+            yield f"data: {json.dumps({'type': 'extend_start', 'data': {'new_round_number': new_round_number}})}\n\n"
+
+            # Run one more deliberation round
+            yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': new_round_number, 'round_type': 'deliberation'}})}\n\n"
+            new_round = await round_n_deliberation(
+                original_query, new_round_number, new_total_rounds, arena_rounds, participant_mapping
+            )
+            arena_rounds.append(new_round)
+            yield f"data: {json.dumps({'type': 'round_complete', 'data': new_round.to_dict()})}\n\n"
+
+            # Run new synthesis
+            yield f"data: {json.dumps({'type': 'synthesis_start'})}\n\n"
+            synthesis = await final_synthesis(
+                original_query, arena_rounds, participant_mapping, chairman_model
+            )
+            yield f"data: {json.dumps({'type': 'synthesis_complete', 'data': synthesis, 'participant_mapping': participant_mapping})}\n\n"
+
+            # Calculate metrics
+            rounds_as_dicts = [r.to_dict() for r in arena_rounds]
+            metrics = aggregate_arena_metrics(arena_rounds, synthesis)
+            yield f"data: {json.dumps({'type': 'metrics_complete', 'data': metrics})}\n\n"
+
+            # Convert to unified format
+            unified_result = convert_arena_to_unified_result(
+                rounds_as_dicts,
+                synthesis,
+                participant_mapping,
+                metrics,
+            )
+
+            # Update the last assistant message in storage
+            storage.update_last_arena_message(
+                conversation_id,
+                unified_result,
+                user_id=user_id,
+            )
+
+            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        extend_event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
 # Serve static files if the directory exists (production mode)
 if STATIC_DIR.exists():
     # Mount static assets (JS, CSS, etc.)

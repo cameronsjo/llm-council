@@ -395,6 +395,38 @@ def add_unified_message(
     save_conversation(conversation, user_id)
 
 
+def update_last_arena_message(
+    conversation_id: str,
+    result: DeliberationResult,
+    user_id: str | None = None,
+) -> None:
+    """Update the last arena message with extended debate results.
+
+    This replaces the last assistant message (which should be an arena debate)
+    with updated rounds and synthesis.
+
+    Args:
+        conversation_id: Conversation identifier
+        result: Updated DeliberationResult with extended debate
+        user_id: Optional username for user-scoped storage
+    """
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    # Find and replace the last arena message
+    for i in range(len(conversation["messages"]) - 1, -1, -1):
+        msg = conversation["messages"][i]
+        if msg.get("role") == "assistant" and msg.get("mode") == "arena":
+            message = result.to_dict()
+            message["role"] = "assistant"
+            conversation["messages"][i] = message
+            save_conversation(conversation, user_id)
+            return
+
+    raise ValueError("No arena message found to update")
+
+
 # =============================================================================
 # Pending Message Tracking
 # =============================================================================

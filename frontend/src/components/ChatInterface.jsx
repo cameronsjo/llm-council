@@ -94,7 +94,9 @@ export default function ChatInterface({
   onRetryInterrupted,
   onDismissInterrupted,
   onForkConversation,
+  onExtendDebate,
   isLoading,
+  isExtendingDebate,
   webSearchAvailable,
   searchProvider,
   useWebSearch,
@@ -547,6 +549,8 @@ export default function ChatInterface({
                             originalQuestion={conversation?.messages[index - 1]?.content}
                             conversationId={conversation?.id}
                             onForkConversation={onForkConversation}
+                            onExtendDebate={isArena ? onExtendDebate : undefined}
+                            isExtending={isExtendingDebate}
                             mode={mode}
                           />
                         )}

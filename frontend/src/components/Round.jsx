@@ -1,8 +1,15 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronRight, Brain, Copy, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, Copy, Check, DollarSign } from 'lucide-react';
 import MetricsDisplay from './MetricsDisplay';
 import './Round.css';
+
+// Format cost for display
+function formatCost(cost) {
+  if (!cost || cost === 0) return null;
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
 
 // Round type labels for display
 const ROUND_TYPE_LABELS = {
@@ -68,6 +75,20 @@ export default function Round({
   const isArenaRound = ['opening', 'rebuttal', 'closing'].includes(roundType);
   const roundLabel = ROUND_TYPE_LABELS[roundType] || `Round ${round.round_number}`;
 
+  // Calculate round cost from metrics or responses
+  const getRoundCost = () => {
+    if (round.metrics?.cost) return round.metrics.cost;
+    if (round.metrics?.total_cost) return round.metrics.total_cost;
+    // Sum from individual responses
+    let total = 0;
+    for (const resp of round.responses) {
+      const cost = resp.metrics?.cost || 0;
+      total += cost;
+    }
+    return total;
+  };
+  const roundCost = getRoundCost();
+
   const currentResponse = round.responses[activeTab];
   const reasoningText = getReasoningText(currentResponse.reasoning_details);
   const hasReasoning = !!reasoningText;
@@ -110,6 +131,12 @@ export default function Round({
         <div className="round-title-row">
           {round.round_number && <span className="round-number">Round {round.round_number}</span>}
           <h3 className="round-title">{roundLabel}</h3>
+          {roundCost > 0 && (
+            <span className="round-cost" title="Cost for this round">
+              <DollarSign size={12} />
+              {formatCost(roundCost)}
+            </span>
+          )}
         </div>
         {isCollapsible && (
           <button className="collapse-toggle" aria-label={isCollapsed ? 'Expand' : 'Collapse'}>
