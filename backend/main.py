@@ -69,7 +69,7 @@ from .council import (
     stage3_synthesize_final,
 )
 from .export import export_to_json, export_to_markdown
-from .models import fetch_available_models
+from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
 from .websearch import get_search_provider, is_web_search_available
 
 app = FastAPI(title="LLM Council API")
@@ -299,6 +299,18 @@ async def get_available_models():
     """Get list of available models from OpenRouter."""
     models = await fetch_available_models()
     return {"models": models}
+
+
+@app.post("/api/models/refresh")
+async def refresh_available_models():
+    """Refresh the available models list from OpenRouter.
+
+    Invalidates the cache and fetches fresh data from the API.
+    Use this when new models are available on OpenRouter.
+    """
+    invalidate_models_cache()
+    models = await fetch_available_models()
+    return {"models": models, "refreshed": True}
 
 
 @app.post("/api/attachments")

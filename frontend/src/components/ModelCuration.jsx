@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { X, Star } from 'lucide-react';
+import { X, Star, RefreshCw } from 'lucide-react';
 import { useModels, useCuratedModels, useModelFiltering, useExpandableGroups } from '../hooks';
 import { ModelSearchBox, FilterChips, ModelGroups } from './models/index.js';
 import './ModelCuration.css';
@@ -10,7 +10,7 @@ import './ModelCuration.css';
  */
 export default function ModelCuration({ onClose, onSave }) {
   // Fetch models
-  const { models, loading, error: modelsError, refetch } = useModels();
+  const { models, loading, refreshing, error: modelsError, refetch, refresh } = useModels();
 
   // Curated models state
   const curated = useCuratedModels();
@@ -157,6 +157,15 @@ export default function ModelCuration({ onClose, onSave }) {
             <span className="curated-count">
               <Star size={14} /> {curatedIds.size} curated
             </span>
+            <button
+              className={`refresh-btn ${refreshing ? 'refreshing' : ''}`}
+              onClick={refresh}
+              disabled={refreshing}
+              title="Refresh models from OpenRouter"
+            >
+              <RefreshCw size={14} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
           </div>
 
           <ModelGroups

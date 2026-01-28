@@ -110,8 +110,8 @@
 
 .curation-results {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: var(--space-md);
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
@@ -123,6 +123,46 @@
   gap: var(--space-xs);
   color: var(--color-burgundy);
   font-weight: 500;
+}
+
+.curation-results .refresh-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-ivory);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.curation-results .refresh-btn:hover:not(:disabled) {
+  background: var(--color-parchment);
+  border-color: var(--color-burgundy);
+  color: var(--color-burgundy);
+}
+
+.curation-results .refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.curation-results .refresh-btn.refreshing svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Override model-groups height for modal context */

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useModels, useCuratedModels, useModelFiltering, useExpandableGroups } from '../hooks';
 import { formatPrice, getDisplayName } from '../lib/models';
 import { ModelSearchBox, FilterChips, ModelGroups } from './models/index.js';
@@ -18,7 +19,7 @@ export default function ModelSelector({
   const [saving, setSaving] = useState(false);
 
   // Fetch models and curated list
-  const { models, loading, error, refetch } = useModels();
+  const { models, loading, refreshing, error, refetch, refresh } = useModels();
   const { curatedIds, loading: curatedLoading } = useCuratedModels();
 
   // Filtering with curated default
@@ -130,8 +131,19 @@ export default function ModelSelector({
           showContextFilter={true}
         />
 
-        <div className="filter-results-count">
-          {filteredCount} of {totalCount} models
+        <div className="filter-results-row">
+          <div className="filter-results-count">
+            {filteredCount} of {totalCount} models
+          </div>
+          <button
+            className={`refresh-btn ${refreshing ? 'refreshing' : ''}`}
+            onClick={refresh}
+            disabled={refreshing}
+            title="Refresh models from OpenRouter"
+          >
+            <RefreshCw size={14} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
         </div>
 
         <ModelGroups
