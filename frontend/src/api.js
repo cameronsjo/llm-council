@@ -72,6 +72,20 @@ export const api = {
   },
 
   /**
+   * Refresh available models from OpenRouter (invalidates cache).
+   * Use this to fetch the latest models when new models are available.
+   */
+  async refreshModels() {
+    const response = await fetch(`${API_BASE}/api/models/refresh`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to refresh models');
+    }
+    return response.json();
+  },
+
+  /**
    * Get curated models list.
    */
   async getCuratedModels() {
