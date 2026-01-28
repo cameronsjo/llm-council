@@ -493,9 +493,51 @@ export default function ChatInterface({
 
                         {/* Loading states */}
                         {msg.loading?.stage1 && (
-                          <div className="stage-loading" role="status" aria-live="polite">
-                            <div className="spinner" aria-hidden="true"></div>
-                            <span>Collecting individual responses...</span>
+                          <div className="stage-loading streaming" role="status" aria-live="polite">
+                            {msg.streaming?.progress ? (
+                              <>
+                                <div className="streaming-header">
+                                  <div className="spinner" aria-hidden="true"></div>
+                                  <span>
+                                    Collecting responses: {msg.streaming.progress.completed} of{' '}
+                                    {msg.streaming.progress.total}
+                                  </span>
+                                </div>
+                                <div className="streaming-models">
+                                  {msg.streaming.models?.map((model) => {
+                                    const modelShort = model.split('/')[1] || model;
+                                    const isComplete = msg.streaming.progress.completed_models?.includes(model);
+                                    const isStreaming = msg.streaming.tokens?.[model];
+                                    return (
+                                      <div
+                                        key={model}
+                                        className={`streaming-model ${isComplete ? 'complete' : ''} ${isStreaming ? 'active' : ''}`}
+                                      >
+                                        <span className="model-status">
+                                          {isComplete ? '✓' : isStreaming ? '⋯' : '○'}
+                                        </span>
+                                        <span className="model-name">{modelShort}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {/* Show streaming token preview for currently active models */}
+                                {Object.entries(msg.streaming.tokens || {}).map(([model, tokens]) => (
+                                  <div key={model} className="streaming-preview">
+                                    <span className="preview-model">{model.split('/')[1] || model}:</span>
+                                    <span className="preview-text">
+                                      {tokens.slice(-100)}
+                                      <span className="cursor">▋</span>
+                                    </span>
+                                  </div>
+                                ))}
+                              </>
+                            ) : (
+                              <>
+                                <div className="spinner" aria-hidden="true"></div>
+                                <span>Collecting individual responses...</span>
+                              </>
+                            )}
                           </div>
                         )}
                         {msg.loading?.stage2 && (

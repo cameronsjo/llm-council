@@ -12,7 +12,14 @@ from .deliberation import (
     RoundType,
     Synthesis,
 )
-from .openrouter import query_model, query_models_parallel
+from .openrouter import (
+    query_model,
+    query_models_parallel,
+    query_models_progressive,
+    OnModelCompleteCallback,
+    OnProgressCallback,
+    OnTokenCallback,
+)
 from .telemetry import get_tracer, is_telemetry_enabled
 from .websearch import format_search_results, is_web_search_available, search_web
 
@@ -94,6 +101,113 @@ Please use the web search results above as reference when answering. Cite source
                 if response.get('reasoning_details'):
                     result['reasoning_details'] = response['reasoning_details']
                 stage1_results.append(result)
+
+        # Record response count in span
+        if is_telemetry_enabled():
+            span.set_attribute("council.response_count", len(stage1_results))
+
+        return stage1_results
+
+
+async def stage1_collect_responses_streaming(
+    user_query: str,
+    web_search_context: str | None = None,
+    council_models: list[str] | None = None,
+    on_model_response: OnModelCompleteCallback | None = None,
+    on_progress: OnProgressCallback | None = None,
+    stream_tokens: bool = False,
+    on_token: OnTokenCallback | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Stage 1 with progressive streaming: Collect responses as each model completes.
+
+    Unlike the standard stage1_collect_responses, this version calls callbacks
+    as each model completes, enabling real-time UI updates.
+
+    Args:
+        user_query: The user's question
+        web_search_context: Optional web search results to include in context
+        council_models: Optional list of models (uses global config if None)
+        on_model_response: Callback when a model completes: (model, result) -> None
+        on_progress: Callback for progress updates: (completed, total, completed_models, pending_models) -> None
+        stream_tokens: Whether to stream tokens from each model
+        on_token: Callback for token streaming: (model, token) -> None
+
+    Returns:
+        List of dicts with 'model' and 'response' keys
+    """
+    tracer = get_tracer()
+    effective_council = council_models if council_models else get_council_models()
+
+    span_attributes = {
+        "council.stage": 1,
+        "council.stage_name": "collect_responses_streaming",
+        "council.model_count": len(effective_council),
+        "council.has_web_context": web_search_context is not None,
+        "council.stream_tokens": stream_tokens,
+    }
+
+    with tracer.start_as_current_span("council.stage1_collect_responses_streaming", attributes=span_attributes) as span:
+        # System prompt to encourage critical, honest responses
+        system_prompt = """You are a council member providing your honest assessment. Your role is to give a direct, accurate answer - not to please or validate the user.
+
+GUIDELINES:
+- If the question contains a flawed premise, point it out before answering
+- If you're uncertain, say so explicitly rather than bluffing
+- If the answer is "it depends" or "we don't know," explain why
+- Push back on bad ideas, incorrect assumptions, or poor reasoning
+- Be specific about tradeoffs, limitations, and edge cases
+- Avoid generic, hedging, or diplomatic non-answers
+
+Your response will be evaluated by your peers. Quality and honesty matter more than agreeableness."""
+
+        # Build the prompt with optional web search context
+        if web_search_context:
+            prompt = f"""The following web search results have been gathered to help answer the user's question:
+
+{web_search_context}
+
+---
+
+User's Question: {user_query}
+
+Please use the web search results above as reference when answering. Cite sources where appropriate."""
+        else:
+            prompt = user_query
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        # Collect results as they arrive
+        stage1_results: list[dict[str, Any]] = []
+
+        async def handle_model_complete(model: str, response: dict | None):
+            """Process each model's response as it arrives."""
+            if response is not None:
+                result = {
+                    "model": model,
+                    "response": response.get('content', ''),
+                    "metrics": response.get('metrics', {})
+                }
+                if response.get('reasoning_details'):
+                    result['reasoning_details'] = response['reasoning_details']
+                stage1_results.append(result)
+
+                # Call the provided callback for real-time updates
+                if on_model_response:
+                    await on_model_response(model, result)
+
+        # Query all models progressively
+        await query_models_progressive(
+            effective_council,
+            messages,
+            on_model_complete=handle_model_complete,
+            on_progress=on_progress,
+            stream_tokens=stream_tokens,
+            on_token=on_token,
+        )
 
         # Record response count in span
         if is_telemetry_enabled():

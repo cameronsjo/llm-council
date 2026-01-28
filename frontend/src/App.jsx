@@ -353,6 +353,13 @@ function App() {
                 stage2: false,
                 stage3: false,
               },
+              // Streaming state for progressive updates
+              streaming: {
+                models: [],           // List of models being queried
+                responses: [],        // Responses received so far
+                tokens: {},           // Current token buffer per model: { model: "partial text..." }
+                progress: null,       // { completed, total, completed_models, pending_models }
+              },
             };
 
       // Add the partial assistant message
@@ -408,6 +415,50 @@ function App() {
                 const messages = [...prev.messages];
                 const lastMsg = messages[messages.length - 1];
                 lastMsg.loading.stage1 = true;
+                // Initialize streaming state with the models list
+                if (event.data?.models) {
+                  lastMsg.streaming = {
+                    models: event.data.models,
+                    responses: [],
+                    tokens: {},
+                    progress: { completed: 0, total: event.data.models.length, completed_models: [], pending_models: event.data.models },
+                  };
+                }
+                return { ...prev, messages };
+              });
+              break;
+
+            case 'stage1_token':
+              // Token-level streaming for a model
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                const { model, token } = event.data;
+                // Append token to the model's buffer
+                lastMsg.streaming.tokens[model] = (lastMsg.streaming.tokens[model] || '') + token;
+                return { ...prev, messages };
+              });
+              break;
+
+            case 'stage1_model_response':
+              // A model has completed its response
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                // Add the complete response
+                lastMsg.streaming.responses.push(event.data);
+                // Clear the token buffer for this model (full response is now available)
+                delete lastMsg.streaming.tokens[event.data.model];
+                return { ...prev, messages };
+              });
+              break;
+
+            case 'stage1_progress':
+              // Progress update with completed/pending models
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.streaming.progress = event.data;
                 return { ...prev, messages };
               });
               break;
