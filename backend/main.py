@@ -65,6 +65,7 @@ from .council import (
     perform_web_search,
     run_full_council,
     stage1_collect_responses,
+    stage1_collect_responses_streaming,
     stage2_collect_rankings,
     stage3_synthesize_final,
 )
@@ -629,15 +630,80 @@ async def send_message_stream(
                     )
                     yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
 
-                # Stage 1: Collect responses
-                yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+                # Stage 1: Collect responses with progressive streaming
+                yield f"data: {json.dumps({'type': 'stage1_start', 'data': {'models': council_models}})}\n\n"
+
                 # Combine all context: prior + attachment + web search
                 combined_context = prior_context_text + attachment_context
                 if web_search_context:
                     combined_context += web_search_context
-                stage1_results = await stage1_collect_responses(
-                    request.content, combined_context or None, council_models
-                )
+
+                # Use a queue to bridge callbacks and the generator
+                event_queue: asyncio.Queue = asyncio.Queue()
+                stage1_results: list = []
+
+                async def on_model_response(model: str, result: dict | None):
+                    """Called when each model completes."""
+                    if result:
+                        stage1_results.append(result)
+                        await event_queue.put({
+                            'type': 'stage1_model_response',
+                            'data': result,
+                            'index': len(stage1_results),
+                            'total': len(council_models),
+                        })
+
+                async def on_progress(completed: int, total: int, completed_models: list, pending_models: list):
+                    """Called for progress updates."""
+                    await event_queue.put({
+                        'type': 'stage1_progress',
+                        'data': {
+                            'completed': completed,
+                            'total': total,
+                            'completed_models': completed_models,
+                            'pending_models': pending_models,
+                        },
+                    })
+
+                async def on_token(model: str, token: str):
+                    """Called for each token during streaming."""
+                    await event_queue.put({
+                        'type': 'stage1_token',
+                        'data': {
+                            'model': model,
+                            'token': token,
+                        },
+                    })
+
+                # Start the streaming query in a task
+                async def run_stage1():
+                    try:
+                        await stage1_collect_responses_streaming(
+                            request.content,
+                            combined_context or None,
+                            council_models,
+                            on_model_response=on_model_response,
+                            on_progress=on_progress,
+                            stream_tokens=True,
+                            on_token=on_token,
+                        )
+                    finally:
+                        # Signal completion
+                        await event_queue.put(None)
+
+                stage1_task = asyncio.create_task(run_stage1())
+
+                # Yield events as they arrive
+                while True:
+                    event = await event_queue.get()
+                    if event is None:
+                        break
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                # Ensure task completed
+                await stage1_task
+
+                # Emit stage1_complete with all results
                 yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
                 # Update pending progress
