@@ -57,7 +57,7 @@
 .metric-value {
   font-family: var(--font-mono);
   font-weight: 600;
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
   color: var(--color-text-primary);
 }
 
@@ -112,11 +112,11 @@
 
 .stage-row {
   display: grid;
-  grid-template-columns: 1fr 80px 100px 80px;
-  gap: var(--space-md);
+  grid-template-columns: 1fr 70px 90px 70px;
+  gap: var(--space-sm);
   align-items: center;
-  font-size: 0.8125rem;
-  padding: var(--space-sm) var(--space-md);
+  font-size: 0.75rem;
+  padding: var(--space-xs) var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light);
@@ -137,13 +137,13 @@
 .stage-tokens {
   font-family: var(--font-mono);
   color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
 }
 
 .stage-latency {
   font-family: var(--font-mono);
   color: var(--color-text-muted);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   text-align: right;
 }
 
@@ -165,10 +165,10 @@
 
 .model-row {
   display: grid;
-  grid-template-columns: 1fr 60px 60px 80px;
-  gap: var(--space-sm);
+  grid-template-columns: 1fr 55px 55px 70px;
+  gap: var(--space-xs);
   align-items: center;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast);

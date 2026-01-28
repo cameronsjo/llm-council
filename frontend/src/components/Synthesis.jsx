@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronRight, Brain, MessageSquarePlus, Copy, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, MessageSquarePlus, Copy, Check, DollarSign, Plus } from 'lucide-react';
 import './Synthesis.css';
+
+// Format cost for display
+function formatCost(cost) {
+  if (!cost || cost === 0) return null;
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
 
 // Extract reasoning text from various formats
 function getReasoningText(reasoningDetails) {
@@ -31,6 +38,8 @@ export default function Synthesis({
   originalQuestion,
   conversationId,
   onForkConversation,
+  onExtendDebate,
+  isExtending = false,
   mode = 'council',
 }) {
   const [reasoningExpanded, setReasoningExpanded] = useState(false);
@@ -46,6 +55,7 @@ export default function Synthesis({
   const reasoningText = getReasoningText(synthesis.reasoning_details);
   const hasReasoning = !!reasoningText;
   const isArena = mode === 'arena';
+  const synthesisCost = synthesis.metrics?.cost || 0;
 
   const handleCopy = async () => {
     try {
@@ -67,9 +77,17 @@ export default function Synthesis({
     <div className={`synthesis synthesis-${mode}`}>
       <div className="synthesis-header">
         <h3 className="synthesis-title">{isArena ? 'Final Synthesis' : 'Final Council Answer'}</h3>
-        <button className="copy-btn" onClick={handleCopy} title="Copy synthesis">
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-        </button>
+        <div className="synthesis-header-actions">
+          {synthesisCost > 0 && (
+            <span className="synthesis-cost" title="Synthesis cost">
+              <DollarSign size={12} />
+              {formatCost(synthesisCost)}
+            </span>
+          )}
+          <button className="copy-btn" onClick={handleCopy} title="Copy synthesis">
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        </div>
       </div>
 
       <div className="synthesis-content">
@@ -119,9 +137,32 @@ export default function Synthesis({
         </div>
       )}
 
-      {/* Continue discussion button */}
-      {onForkConversation && originalQuestion && (
-        <div className="continue-discussion">
+      {/* Action buttons */}
+      <div className="synthesis-actions">
+        {/* One more round button for Arena mode */}
+        {isArena && onExtendDebate && (
+          <button
+            className="extend-debate-btn"
+            onClick={onExtendDebate}
+            disabled={isExtending}
+            title="Add one more deliberation round"
+          >
+            {isExtending ? (
+              <>
+                <span className="spinner-small"></span>
+                Extending...
+              </>
+            ) : (
+              <>
+                <Plus size={16} />
+                One More Round
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Continue discussion button */}
+        {onForkConversation && originalQuestion && (
           <button
             className="continue-btn"
             onClick={handleContinueDiscussion}
@@ -130,8 +171,8 @@ export default function Synthesis({
             <MessageSquarePlus size={16} />
             Continue Discussion
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

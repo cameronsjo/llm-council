@@ -30,6 +30,9 @@ function App() {
   // Fork conversation state - context to include when starting a new conversation
   const [pendingForkContext, setPendingForkContext] = useState(null);
 
+  // Extend debate state
+  const [isExtendingDebate, setIsExtendingDebate] = useState(false);
+
   // Load conversations, config, and user info on mount
   useEffect(() => {
     loadConversations();
@@ -307,6 +310,120 @@ function App() {
       });
     } catch (error) {
       console.error('Failed to fork conversation:', error);
+    }
+  };
+
+  const handleExtendDebate = async () => {
+    if (!currentConversationId || isExtendingDebate) return;
+
+    setIsExtendingDebate(true);
+    try {
+      await api.extendDebateStream(currentConversationId, (eventType, event) => {
+        switch (eventType) {
+          case 'extend_start':
+            // Starting to extend
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg.mode === 'arena') {
+                lastMsg.loading = {
+                  ...lastMsg.loading,
+                  round: true,
+                  roundNumber: event.data.new_round_number,
+                  roundType: 'deliberation',
+                };
+              }
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'round_start':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg.mode === 'arena') {
+                lastMsg.loading = {
+                  ...lastMsg.loading,
+                  round: true,
+                  roundNumber: event.data.round_number,
+                  roundType: event.data.round_type,
+                };
+              }
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'round_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg.mode === 'arena') {
+                lastMsg.rounds = [...(lastMsg.rounds || []), event.data];
+                lastMsg.loading = {
+                  ...lastMsg.loading,
+                  round: false,
+                  roundNumber: null,
+                  roundType: null,
+                };
+              }
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'synthesis_start':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg.mode === 'arena') {
+                lastMsg.loading = {
+                  ...lastMsg.loading,
+                  synthesis: true,
+                };
+              }
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'synthesis_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg.mode === 'arena') {
+                lastMsg.synthesis = event.data;
+                lastMsg.participant_mapping = event.participant_mapping;
+                lastMsg.loading = {
+                  ...lastMsg.loading,
+                  synthesis: false,
+                };
+              }
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'metrics_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg.mode === 'arena') {
+                lastMsg.metrics = event.data;
+              }
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'complete':
+            setIsExtendingDebate(false);
+            break;
+
+          case 'error':
+            console.error('Extend debate error:', event.message);
+            setIsExtendingDebate(false);
+            break;
+        }
+      });
+    } catch (error) {
+      console.error('Failed to extend debate:', error);
+      setIsExtendingDebate(false);
     }
   };
 
@@ -661,7 +778,9 @@ function App() {
         onRetryInterrupted={handleRetryInterrupted}
         onDismissInterrupted={handleDismissInterrupted}
         onForkConversation={handleForkConversation}
+        onExtendDebate={handleExtendDebate}
         isLoading={isLoading}
+        isExtendingDebate={isExtendingDebate}
         webSearchAvailable={webSearchAvailable}
         searchProvider={searchProvider}
         useWebSearch={useWebSearch}
