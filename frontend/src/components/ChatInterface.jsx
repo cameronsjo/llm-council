@@ -95,6 +95,7 @@ export default function ChatInterface({
   onDismissInterrupted,
   onForkConversation,
   onExtendDebate,
+  onCancel,
   isLoading,
   isExtendingDebate,
   webSearchAvailable,
@@ -216,10 +217,14 @@ export default function ChatInterface({
       handleSubmit(e);
     }
 
-    // Escape to clear input
+    // Escape to cancel stream or clear input
     if (e.key === 'Escape') {
-      setInput('');
-      e.target.blur();
+      if (isLoading || isExtendingDebate) {
+        onCancel?.();
+      } else {
+        setInput('');
+        e.target.blur();
+      }
     }
   };
 
@@ -741,9 +746,20 @@ export default function ChatInterface({
               </span>
             </label>
           )}
-          <button type="submit" className="send-button" disabled={!input.trim() || isLoading}>
-            {mode === 'arena' ? 'Start Debate' : 'Send'}
-          </button>
+          {(isLoading || isExtendingDebate) ? (
+            <button
+              type="button"
+              className="cancel-button"
+              onClick={onCancel}
+              title="Cancel stream (Esc)"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button type="submit" className="send-button" disabled={!input.trim()}>
+              {mode === 'arena' ? 'Start Debate' : 'Send'}
+            </button>
+          )}
         </div>
       </form>
     </div>
