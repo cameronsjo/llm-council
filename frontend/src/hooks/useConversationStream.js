@@ -12,11 +12,12 @@ import { conversationReducer, buildAssistantMessage } from './conversationReduce
 
 /**
  * @param {Object} options
- * @param {() => void} [options.onComplete]      Called when a stream finishes successfully.
- * @param {() => void} [options.onTitleComplete]  Called when backend generates a title.
- * @param {() => void} [options.onAuthExpired]    Called when an auth redirect is detected.
+ * @param {() => void} [options.onComplete]        Called when a stream finishes successfully.
+ * @param {() => void} [options.onTitleComplete]    Called when backend generates a title.
+ * @param {() => void} [options.onAuthExpired]      Called when an auth redirect is detected.
+ * @param {(msg: string) => void} [options.onServerShutdown]  Called when server is restarting mid-stream.
  */
-export function useConversationStream({ onComplete, onTitleComplete, onAuthExpired } = {}) {
+export function useConversationStream({ onComplete, onTitleComplete, onAuthExpired, onServerShutdown } = {}) {
   const [conversation, dispatch] = useReducer(conversationReducer, null);
   const abortRef = useRef(null);
 
@@ -90,6 +91,11 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
                 console.error('[stream] sendMessage server error. ConversationId: %s, Event: %o', conversationId, event);
                 dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
               }
+              if (eventType === 'server_shutdown') {
+                console.warn('[stream] Server shutting down mid-stream. ConversationId: %s', conversationId);
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                onServerShutdown?.(event.message || 'Server is restarting');
+              }
             },
             resume,
             priorContext,
@@ -105,7 +111,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onTitleComplete, onAuthExpired]);
+  }, [onComplete, onTitleComplete, onAuthExpired, onServerShutdown]);
 
   // ── Extend debate ──────────────────────────────────────────────────────
 
@@ -137,6 +143,11 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
                 console.error('[stream] extendDebate server error. ConversationId: %s, Event: %o', conversationId, event);
                 dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
               }
+              if (eventType === 'server_shutdown') {
+                console.warn('[stream] Server shutting down mid-stream. ConversationId: %s', conversationId);
+                dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
+                onServerShutdown?.(event.message || 'Server is restarting');
+              }
             },
             controller.signal,
           );
@@ -149,7 +160,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onAuthExpired]);
+  }, [onComplete, onAuthExpired, onServerShutdown]);
 
   // ── Retry Stage 3 ──────────────────────────────────────────────────────
 
@@ -182,6 +193,11 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
                 console.error('[stream] retryStage3 server error. ConversationId: %s, Event: %o', conversationId, event);
                 dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
               }
+              if (eventType === 'server_shutdown') {
+                console.warn('[stream] Server shutting down mid-stream. ConversationId: %s', conversationId);
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                onServerShutdown?.(event.message || 'Server is restarting');
+              }
             },
             controller.signal,
           );
@@ -194,7 +210,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onAuthExpired]);
+  }, [onComplete, onAuthExpired, onServerShutdown]);
 
   // ── Public API ─────────────────────────────────────────────────────────
 

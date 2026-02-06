@@ -68,6 +68,13 @@ function App() {
     onComplete: loadConversations,
     onTitleComplete: loadConversations,
     onAuthExpired: () => setAuthExpired(true),
+    onServerShutdown: (msg) => {
+      console.warn('[app] Server shutdown during stream: %s', msg);
+      // Reload conversation to pick up any partial data that was saved
+      if (currentConversationId) {
+        loadConversation(currentConversationId);
+      }
+    },
   });
 
   // Load conversations, config, and user info on mount

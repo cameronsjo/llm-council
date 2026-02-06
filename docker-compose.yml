@@ -26,6 +26,7 @@ services:
     volumes:
       - council-data:/app/data
     restart: unless-stopped
+    stop_grace_period: 120s
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/api/health')"]
       interval: 30s

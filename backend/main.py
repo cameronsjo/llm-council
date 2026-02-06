@@ -77,15 +77,30 @@ from .council_stream import CouncilPipelineInput, retry_stage3_pipeline, run_cou
 from .export import export_to_json, export_to_markdown
 from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
 from .openrouter import close_shared_client
+from .shutdown import shutdown_coordinator
 from .websearch import get_search_provider, is_web_search_available
 
-app = FastAPI(title="LLM Council API")
+
+from contextlib import asynccontextmanager
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up shared resources on shutdown."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: startup and graceful shutdown."""
+    yield
+    # Shutdown: signal active SSE streams before closing resources
+    shutdown_coordinator.initiate_shutdown()
+    if shutdown_coordinator.active_stream_count > 0:
+        logger.info(
+            "Waiting for %d active stream(s) to drain",
+            shutdown_coordinator.active_stream_count,
+        )
+        # Brief pause so streams can emit their shutdown event
+        await asyncio.sleep(1)
     await close_shared_client()
+
+
+app = FastAPI(title="LLM Council API", lifespan=lifespan)
 
 # Instrument FastAPI with OpenTelemetry (after app creation)
 instrument_fastapi(app)
@@ -581,11 +596,19 @@ async def send_message_stream(
             prior_context_source_id=prior_context_source_id,
         )
 
-        async for event in run_council_pipeline(pipeline_input):
-            yield f"data: {json.dumps(event)}\n\n"
+        shutdown_coordinator.register_stream()
+        try:
+            async for event in run_council_pipeline(pipeline_input):
+                if shutdown_coordinator.is_shutting_down:
+                    yield shutdown_coordinator.shutdown_sse_event()
+                    return
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            shutdown_coordinator.unregister_stream()
 
     async def arena_event_generator():
         """Generate events for arena mode (multi-round debate)."""
+        shutdown_coordinator.register_stream()
         try:
             logger.info(
                 "Beginning arena stream. ConversationId: %s, UserId: %s",
@@ -733,6 +756,8 @@ async def send_message_stream(
             )
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            shutdown_coordinator.unregister_stream()
 
     # Choose the appropriate event generator based on mode
     if request.mode == "arena":
@@ -766,10 +791,17 @@ async def retry_stage3_stream(
     )
 
     async def event_generator():
-        async for event in retry_stage3_pipeline(
-            conversation_id, chairman_model, user_id=user_id
-        ):
-            yield f"data: {json.dumps(event)}\n\n"
+        shutdown_coordinator.register_stream()
+        try:
+            async for event in retry_stage3_pipeline(
+                conversation_id, chairman_model, user_id=user_id
+            ):
+                if shutdown_coordinator.is_shutting_down:
+                    yield shutdown_coordinator.shutdown_sse_event()
+                    return
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            shutdown_coordinator.unregister_stream()
 
     return StreamingResponse(
         event_generator(),
@@ -818,6 +850,7 @@ async def extend_arena_debate_stream(
 
     async def extend_event_generator():
         """Generate events for extending the arena debate with one more round."""
+        shutdown_coordinator.register_stream()
         try:
             logger.info(
                 "Beginning extend-debate stream. ConversationId: %s, UserId: %s",
@@ -901,6 +934,8 @@ async def extend_arena_debate_stream(
                 conversation_id, e,
             )
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            shutdown_coordinator.unregister_stream()
 
     return StreamingResponse(
         extend_event_generator(),
@@ -940,4 +975,4 @@ if STATIC_DIR.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001, timeout_graceful_shutdown=90)

@@ -276,6 +276,7 @@ export function conversationReducer(state, action) {
     case 'title_complete':
     case 'complete':
     case 'error':
+    case 'server_shutdown':
       return state;
 
     default:

@@ -239,6 +239,31 @@ The web search feature allows models to access current information from the web 
 - `SENTRY_TRACES_SAMPLE_RATE`: Sentry performance tracing sample rate (default: `0.1`)
 - `SENTRY_PROFILES_SAMPLE_RATE`: Sentry profiling sample rate (default: `0.1`)
 
+### Graceful Shutdown
+
+SSE streams can last 30-60+ seconds during model calls. The shutdown strategy has three layers:
+
+**Layer 1 (implemented):** Grace period + drain
+- `stop_grace_period: 120s` in docker-compose — Docker waits 2 min after SIGTERM before SIGKILL
+- `timeout_graceful_shutdown=90` on uvicorn — drains in-flight requests for up to 90s
+- Covers most chairman model calls without any client-side awareness
+
+**Layer 2 (implemented):** Shutdown coordinator + `server_shutdown` SSE event
+- `backend/shutdown.py`: `ShutdownCoordinator` tracks active SSE streams
+- On lifespan shutdown, sets a flag; generators check between yields
+- Emits `{"type": "server_shutdown", "message": "..."}` so frontend can react cleanly
+- Frontend `useConversationStream` handles via `onServerShutdown` callback
+- App.jsx reloads the conversation to pick up any partial data that was saved
+
+**Layer 3 (not implemented — infra):** Blue-green / rolling deployment
+- Traefik can route to new container only after health check passes
+- Old container drains until all streams complete, then terminates
+- Requires separate container instances (not in-place `docker compose up -d` recreate)
+- Docker Compose doesn't natively support blue-green; would need:
+  - Traefik dynamic config with weighted routing, or
+  - A deploy orchestrator (k8s, Nomad, Bosun with custom drain logic)
+- For reference: Traefik's `traefik.http.services.*.loadbalancer.server.scheme` + health checks can do this with two service definitions
+
 ## Authentication
 
 **Reverse Proxy Auth Pattern:**
