@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight, Brain, Copy, Check, DollarSign } from 'lucide-react';
 import MetricsDisplay from './MetricsDisplay';
 import { formatCost, getReasoningText } from '../lib/formatting';
@@ -141,14 +142,14 @@ export default function Round({
                 </button>
                 {reasoningExpanded && (
                   <div className="reasoning-content">
-                    <ReactMarkdown>{reasoningText}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{reasoningText}</ReactMarkdown>
                   </div>
                 )}
               </div>
             )}
 
             <div className="response-content markdown-content">
-              <ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {isRankings
                   ? deAnonymizeText(getResponseContent(currentResponse), participantMapping)
                   : getResponseContent(currentResponse)}

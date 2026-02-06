@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight, Brain, MessageSquarePlus, Copy, Check, DollarSign, Plus, RefreshCw } from 'lucide-react';
 import { formatCost, getReasoningText } from '../lib/formatting';
 import './Synthesis.css';
@@ -84,14 +85,14 @@ export default function Synthesis({
             </button>
             {reasoningExpanded && (
               <div className="reasoning-content">
-                <ReactMarkdown>{reasoningText}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{reasoningText}</ReactMarkdown>
               </div>
             )}
           </div>
         )}
 
         <div className={`synthesis-text markdown-content${isSynthesisError ? ' synthesis-error' : ''}`}>
-          <ReactMarkdown>{content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
       </div>
 
