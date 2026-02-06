@@ -126,6 +126,39 @@ export function useConversationStream({ onComplete, onTitleComplete } = {}) {
     }
   }, [onComplete]);
 
+  // ── Retry Stage 3 ──────────────────────────────────────────────────────
+
+  const retryStage3 = useCallback(async (conversationId) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    dispatch({ type: 'SET_LOADING', payload: { isLoading: true } });
+
+    try {
+      await api.retryStage3Stream(
+        conversationId,
+        (eventType, event) => {
+          if (controller.signal.aborted) return;
+          dispatch({ type: eventType, payload: event });
+
+          if (eventType === 'complete') {
+            dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            onComplete?.();
+          }
+          if (eventType === 'error') {
+            dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+          }
+        },
+        controller.signal,
+      );
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      console.error('Failed to retry Stage 3:', error);
+      dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+    }
+  }, [onComplete]);
+
   // ── Public API ─────────────────────────────────────────────────────────
 
   return {
@@ -135,6 +168,7 @@ export function useConversationStream({ onComplete, onTitleComplete } = {}) {
     setConversation,
     sendMessage,
     extendDebate,
+    retryStage3,
     cancelStream,
     updateTitle,
     dispatch, // escape hatch for edge cases

@@ -46,6 +46,7 @@ function App() {
     setConversation: setCurrentConversation,
     sendMessage,
     extendDebate,
+    retryStage3,
     cancelStream,
     updateTitle,
   } = useConversationStream({
@@ -327,6 +328,11 @@ function App() {
     await extendDebate(currentConversationId);
   };
 
+  const handleRetryStage3 = async () => {
+    if (!currentConversationId || isLoading) return;
+    await retryStage3(currentConversationId);
+  };
+
   const handleSendMessage = async (content, attachments = [], resume = false) => {
     if (!currentConversationId) return;
     const priorContext = pendingForkContext;
@@ -388,6 +394,7 @@ function App() {
         onDismissInterrupted={handleDismissInterrupted}
         onForkConversation={handleForkConversation}
         onExtendDebate={handleExtendDebate}
+        onRetryStage3={handleRetryStage3}
         onCancel={cancelStream}
         isLoading={isLoading}
         isExtendingDebate={isExtendingDebate}

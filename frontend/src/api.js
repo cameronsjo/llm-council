@@ -425,6 +425,29 @@ export const api = {
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
   },
+
+  /**
+   * Retry Stage 3 synthesis on a conversation where it previously failed.
+   * Re-uses existing Stage 1+2 data, only re-runs the chairman call.
+   */
+  async retryStage3Stream(conversationId, onEvent, signal = null) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/retry-stage3/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal,
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to retry Stage 3');
+    }
+
+    await readSSEStream(response.body.getReader(), onEvent, signal);
+  },
 };
 
 export { readSSEStream };

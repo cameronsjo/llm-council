@@ -275,6 +275,44 @@
   cursor: not-allowed;
 }
 
+/* Synthesis error state */
+.synthesis-error {
+  color: var(--color-error, #d32f2f);
+  background: var(--color-error-light, #fff3f3);
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-error-border, #ffcdd2);
+}
+
+/* Retry synthesis button */
+.retry-synthesis-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-error-light, #fff3f3);
+  border: 1px solid var(--color-error-border, #ffcdd2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  color: var(--color-error, #d32f2f);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.retry-synthesis-btn:hover:not(:disabled) {
+  background: var(--color-error, #d32f2f);
+  color: white;
+}
+
+.retry-synthesis-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.retry-synthesis-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .spinner-small {
   width: 14px;
   height: 14px;

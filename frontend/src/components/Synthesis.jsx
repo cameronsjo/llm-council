@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronRight, Brain, MessageSquarePlus, Copy, Check, DollarSign, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, MessageSquarePlus, Copy, Check, DollarSign, Plus, RefreshCw } from 'lucide-react';
 import { formatCost, getReasoningText } from '../lib/formatting';
 import './Synthesis.css';
 
@@ -11,7 +11,9 @@ export default function Synthesis({
   conversationId,
   onForkConversation,
   onExtendDebate,
+  onRetryStage3,
   isExtending = false,
+  isLoading = false,
   mode = 'council',
 }) {
   const [reasoningExpanded, setReasoningExpanded] = useState(false);
@@ -28,6 +30,7 @@ export default function Synthesis({
   const hasReasoning = !!reasoningText;
   const isArena = mode === 'arena';
   const synthesisCost = synthesis.metrics?.cost || 0;
+  const isSynthesisError = content.startsWith('Error:');
 
   const handleCopy = async () => {
     try {
@@ -87,7 +90,7 @@ export default function Synthesis({
           </div>
         )}
 
-        <div className="synthesis-text markdown-content">
+        <div className={`synthesis-text markdown-content${isSynthesisError ? ' synthesis-error' : ''}`}>
           <ReactMarkdown>{content}</ReactMarkdown>
         </div>
       </div>
@@ -111,6 +114,28 @@ export default function Synthesis({
 
       {/* Action buttons */}
       <div className="synthesis-actions">
+        {/* Retry synthesis button when chairman failed */}
+        {isSynthesisError && onRetryStage3 && (
+          <button
+            className="retry-synthesis-btn"
+            onClick={onRetryStage3}
+            disabled={isLoading}
+            title="Re-run the chairman synthesis using existing Stage 1 and Stage 2 data"
+          >
+            {isLoading ? (
+              <>
+                <span className="spinner-small"></span>
+                Retrying...
+              </>
+            ) : (
+              <>
+                <RefreshCw size={16} />
+                Retry Synthesis
+              </>
+            )}
+          </button>
+        )}
+
         {/* One more round button for Arena mode */}
         {isArena && onExtendDebate && (
           <button
