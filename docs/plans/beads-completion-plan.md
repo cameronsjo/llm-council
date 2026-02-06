@@ -44,21 +44,21 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-c31: stage1_collect_responses (P2)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-c31-stage1-prompts
 **Approach:** Extract system prompt to a module-level constant (shared with streaming variant). Add logging for failed models (`logger.warning` with model name). Add validation: if `effective_council` is empty, raise ValueError immediately instead of silently returning empty list.
 **Alternatives considered:** (1) Separate prompts.py module — overkill for 2 prompts. (2) Move prompts to config — they're not user-configurable, they're implementation details.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/13
+**Notes:** Also merged streaming/non-streaming, extracted helpers, fixed falsy empty-list check.
 
 ### council-bw0: stage1_collect_responses_streaming (P2)
 
-**Status:** pending
-**Branch:** fix/council-bw0-dedupe-stage1
+**Status:** done
+**Branch:** fix/council-c31-stage1-prompts (bundled with council-c31)
 **Approach:** Merge with `stage1_collect_responses` using a `streaming: bool = False` parameter and optional callbacks. The non-streaming path just doesn't pass callbacks to `query_models_progressive`. This eliminates 95% code duplication. The shared function uses `query_models_progressive` for both paths (it already falls back to gather-like behavior when no callbacks are provided).
 **Alternatives considered:** (1) Keep separate functions — maintains clarity but 95% duplication is unacceptable. (2) Extract shared helper called by both — still 2 functions but less duplication. (3) Strategy pattern — over-engineered.
-**PR:**
-**Notes:** Depends on council-c31 being done first (shared prompt constant).
+**PR:** https://github.com/cameronsjo/llm-council/pull/13
+**Notes:** Bundled with council-c31. Used callback presence to auto-detect streaming mode.
 
 ### council-a0z: stage2_collect_rankings (P2)
 
