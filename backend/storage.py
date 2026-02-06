@@ -448,6 +448,38 @@ def update_last_arena_message(
     raise ValueError("No arena message found to update")
 
 
+def update_last_council_stage3(
+    conversation_id: str,
+    stage3_result: dict[str, Any],
+    metrics: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Update only the stage3 field of the last council assistant message.
+
+    Used when retrying a failed Stage 3 synthesis without re-running Stage 1+2.
+
+    Args:
+        conversation_id: Conversation identifier
+        stage3_result: New stage3 result dict (model, response, metrics)
+        metrics: Optional updated aggregate metrics
+        user_id: Optional username for user-scoped storage
+    """
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    for i in range(len(conversation["messages"]) - 1, -1, -1):
+        msg = conversation["messages"][i]
+        if msg.get("role") == "assistant" and msg.get("mode") == "council":
+            msg["stage3"] = stage3_result
+            if metrics is not None:
+                msg["metrics"] = metrics
+            save_conversation(conversation, user_id)
+            return
+
+    raise ValueError("No council message found to update")
+
+
 # =============================================================================
 # Pending Message Tracking
 # =============================================================================

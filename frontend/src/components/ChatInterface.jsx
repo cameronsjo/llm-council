@@ -31,6 +31,7 @@ export default function ChatInterface({
   onDismissInterrupted,
   onForkConversation,
   onExtendDebate,
+  onRetryStage3,
   onCancel,
   isLoading,
   isExtendingDebate,
@@ -507,7 +508,9 @@ export default function ChatInterface({
                             conversationId={conversation?.id}
                             onForkConversation={onForkConversation}
                             onExtendDebate={isArena ? onExtendDebate : undefined}
+                            onRetryStage3={!isArena ? onRetryStage3 : undefined}
                             isExtending={isExtendingDebate}
+                            isLoading={isLoading}
                             mode={mode}
                           />
                         )}

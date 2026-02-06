@@ -285,3 +285,88 @@ async def run_council_pipeline(
             input.conversation_id, {"error": str(e)}, user_id=input.user_id
         )
         yield {"type": "error", "message": str(e)}
+
+
+async def retry_stage3_pipeline(
+    conversation_id: str,
+    chairman_model: str,
+    user_id: str | None = None,
+    *,
+    storage: ModuleType | None = None,
+) -> AsyncGenerator[dict, None]:
+    """Re-run Stage 3 synthesis using existing Stage 1+2 data from the conversation.
+
+    Reads the last council assistant message, extracts stage1/stage2 results,
+    re-runs the chairman call, and updates the message in place.
+
+    Args:
+        conversation_id: Conversation with a failed Stage 3 to retry.
+        chairman_model: Model to use for synthesis.
+        user_id: Optional username for user-scoped storage.
+        storage: Storage module (injectable for testing).
+    """
+    if storage is None:
+        from . import storage as _storage
+        storage = _storage
+
+    try:
+        conversation = storage.get_conversation(conversation_id, user_id)
+        if conversation is None:
+            yield {"type": "error", "message": "Conversation not found"}
+            return
+
+        # Find the last council assistant message
+        last_council_msg = None
+        user_query = None
+        for msg in reversed(conversation["messages"]):
+            if msg.get("role") == "assistant" and msg.get("mode") == "council":
+                last_council_msg = msg
+            elif msg.get("role") == "user" and last_council_msg is not None:
+                user_query = msg.get("content", "")
+                break
+
+        if last_council_msg is None:
+            yield {"type": "error", "message": "No council message found to retry"}
+            return
+
+        stage1_results = last_council_msg.get("stage1")
+        stage2_results = last_council_msg.get("stage2")
+
+        if not stage1_results or not stage2_results:
+            yield {"type": "error", "message": "Stage 1 or Stage 2 data missing"}
+            return
+
+        if not user_query:
+            yield {"type": "error", "message": "Could not find original user query"}
+            return
+
+        # Re-run Stage 3 only
+        yield {"type": "stage3_start"}
+        stage3_result = await stage3_synthesize_final(
+            user_query, stage1_results, stage2_results, chairman_model
+        )
+
+        # Check if it failed again
+        if stage3_result.get("response", "").startswith("Error:"):
+            yield {"type": "stage3_complete", "data": stage3_result}
+            yield {"type": "error", "message": "Chairman model failed again"}
+            return
+
+        yield {"type": "stage3_complete", "data": stage3_result}
+
+        # Update metrics with new stage3
+        metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
+        yield {"type": "metrics_complete", "data": metrics}
+
+        # Persist: update the last assistant message in place
+        storage.update_last_council_stage3(
+            conversation_id, stage3_result, metrics, user_id=user_id
+        )
+
+        yield {"type": "complete"}
+
+    except Exception as e:
+        logger.exception(
+            "Stage 3 retry failed. ConversationId: %s", conversation_id
+        )
+        yield {"type": "error", "message": str(e)}

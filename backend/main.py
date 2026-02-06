@@ -62,7 +62,7 @@ from .council import (
     generate_conversation_title,
     perform_web_search,
 )
-from .council_stream import CouncilPipelineInput, run_council_pipeline
+from .council_stream import CouncilPipelineInput, retry_stage3_pipeline, run_council_pipeline
 from .export import export_to_json, export_to_markdown
 from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
 from .openrouter import close_shared_client
@@ -723,6 +723,32 @@ async def send_message_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
         }
+    )
+
+
+@app.post("/api/conversations/{conversation_id}/retry-stage3/stream")
+async def retry_stage3_stream(
+    conversation_id: str,
+    user: User | None = Depends(get_optional_user),
+):
+    """Re-run Stage 3 synthesis using existing Stage 1+2 data."""
+    user_id = user.username if user else None
+    chairman_model = config.get_chairman_model()
+
+    async def event_generator():
+        async for event in retry_stage3_pipeline(
+            conversation_id, chairman_model, user_id=user_id
+        ):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
