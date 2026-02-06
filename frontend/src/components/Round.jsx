@@ -2,14 +2,8 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronRight, Brain, Copy, Check, DollarSign } from 'lucide-react';
 import MetricsDisplay from './MetricsDisplay';
+import { formatCost, getReasoningText } from '../lib/formatting';
 import './Round.css';
-
-// Format cost for display
-function formatCost(cost) {
-  if (!cost || cost === 0) return null;
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  return `$${cost.toFixed(2)}`;
-}
 
 // Round type labels for display
 const ROUND_TYPE_LABELS = {
@@ -19,28 +13,6 @@ const ROUND_TYPE_LABELS = {
   rebuttal: 'Rebuttals',
   closing: 'Closing Arguments',
 };
-
-// Extract reasoning text from various formats
-function getReasoningText(reasoningDetails) {
-  if (!reasoningDetails) return null;
-  if (typeof reasoningDetails === 'string') return reasoningDetails;
-
-  if (Array.isArray(reasoningDetails)) {
-    return reasoningDetails
-      .map((item) => {
-        if (typeof item === 'string') return item;
-        if (item.summary) return item.summary;
-        if (item.content) return item.content;
-        return null;
-      })
-      .filter(Boolean)
-      .join('\n\n');
-  }
-
-  if (reasoningDetails.summary) return reasoningDetails.summary;
-  if (reasoningDetails.content) return reasoningDetails.content;
-  return null;
-}
 
 // De-anonymize text by replacing labels with model names
 function deAnonymizeText(text, participantMapping) {

@@ -82,6 +82,9 @@ class ContextAwareFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format log record with context information."""
+        import copy
+        record = copy.copy(record)
+
         # Add context prefix if available
         context_parts = []
 
@@ -97,7 +100,7 @@ class ContextAwareFormatter(logging.Formatter):
         if context_prefix:
             context_prefix += " "
 
-        # Prepend context to message
+        # Prepend context to message (on copy, not original)
         original_msg = record.getMessage()
         record.msg = f"{context_prefix}{original_msg}"
         record.args = ()

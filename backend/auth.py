@@ -7,6 +7,7 @@ systems that pass user identity via trusted headers.
 import logging
 import os
 from dataclasses import dataclass, field
+from functools import lru_cache
 from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 
 from fastapi import HTTPException, Request, status
@@ -40,11 +41,12 @@ class User:
     display_name: str | None = None
 
 
-def _parse_trusted_ips() -> list:
+@lru_cache(maxsize=1)
+def _parse_trusted_ips() -> tuple:
     """Parse trusted proxy IPs from environment variable.
 
     Returns:
-        List of ip_address or ip_network objects
+        Tuple of ip_address or ip_network objects
     """
     trusted = []
     for ip_str in TRUSTED_PROXY_IPS.split(","):
@@ -58,7 +60,7 @@ def _parse_trusted_ips() -> list:
                 trusted.append(ip_address(ip_str))
         except ValueError:
             logger.warning("Invalid IP/CIDR in LLMCOUNCIL_TRUSTED_PROXY_IPS: %s", ip_str)
-    return trusted
+    return tuple(trusted)
 
 
 def _is_trusted_ip(client_ip: str) -> bool:

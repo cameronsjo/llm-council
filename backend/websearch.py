@@ -82,8 +82,7 @@ async def search_duckduckgo(
                 results = list(ddgs.text(query, max_results=max_results))
                 return results
 
-        loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(None, do_search)
+        results = await asyncio.to_thread(do_search)
 
         if not results:
             return None, "No search results found"

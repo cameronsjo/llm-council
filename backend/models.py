@@ -1,7 +1,7 @@
 """Model management for OpenRouter integration."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -29,7 +29,7 @@ async def fetch_available_models() -> list[dict[str, Any]]:
 
     # Return cached data if valid
     if _models_cache and _cache_timestamp:
-        if datetime.utcnow() - _cache_timestamp < CACHE_DURATION:
+        if datetime.now(timezone.utc) - _cache_timestamp < CACHE_DURATION:
             return _models_cache['data']
 
     headers = {
@@ -64,7 +64,7 @@ async def fetch_available_models() -> list[dict[str, Any]]:
 
             # Update cache
             _models_cache = {'data': models}
-            _cache_timestamp = datetime.utcnow()
+            _cache_timestamp = datetime.now(timezone.utc)
 
             return models
 

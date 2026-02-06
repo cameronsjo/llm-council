@@ -1,6 +1,8 @@
 """3-stage LLM Council orchestration."""
 
 import logging
+import re
+from collections import defaultdict
 from typing import Any
 
 from .config import get_chairman_model, get_council_models
@@ -435,8 +437,6 @@ def parse_ranking_from_text(ranking_text: str) -> list[str]:
     Returns:
         List of response labels in ranked order
     """
-    import re
-
     # Look for "FINAL RANKING:" section
     if "FINAL RANKING:" in ranking_text:
         # Extract everything after "FINAL RANKING:"
@@ -573,16 +573,12 @@ def calculate_aggregate_rankings(
     Returns:
         List of dicts with model name and average rank, sorted best to worst
     """
-    from collections import defaultdict
-
     # Track positions for each model
     model_positions = defaultdict(list)
 
     for ranking in stage2_results:
-        ranking_text = ranking['ranking']
-
-        # Parse the ranking from the structured format
-        parsed_ranking = parse_ranking_from_text(ranking_text)
+        # Use pre-parsed ranking if available, otherwise parse from text
+        parsed_ranking = ranking.get('parsed_ranking') or parse_ranking_from_text(ranking.get('ranking', ''))
 
         for position, label in enumerate(parsed_ranking, start=1):
             if label in label_to_model:
