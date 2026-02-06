@@ -13,21 +13,21 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-o7u: query_model
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-o7u-query-model
 **Approach:** Add shared httpx.AsyncClient via module-level factory (lazy singleton). Add retry with exponential backoff for 429/502/503 status codes (max 3 retries). Replace catch-all `except Exception` with differentiated handling: `httpx.HTTPStatusError` for API errors, `httpx.TimeoutException` for timeouts, `Exception` as final fallback. Each logs differently.
 **Alternatives considered:** (1) Dependency-injected client — cleaner but over-engineered for this codebase. (2) tenacity library for retry — adds dependency, `asyncio.sleep` loop is simpler. (3) Context manager client per-request — current approach, wasteful but simple.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/8
+**Notes:** Also fixed query_model_streaming metadata extraction (council-dcv) in same PR.
 
 ### council-dcv: query_model_streaming
 
-**Status:** pending
-**Branch:** fix/council-dcv-query-model-streaming
-**Approach:** Share the same httpx client from council-o7u fix. Extract metadata from SSE stream chunks — OpenRouter includes `model`, `id`, and `provider` in streaming `data` chunks. Parse these from the first chunk and populate the result dict. Add same retry logic as non-streaming for the initial connection (not mid-stream).
+**Status:** done
+**Branch:** fix/council-o7u-query-model (bundled with council-o7u)
+**Approach:** Share the same httpx client from council-o7u fix. Extract metadata from SSE stream chunks — OpenRouter includes `model`, `id`, and `provider` in streaming `data` chunks. Parse these from the first chunk and populate the result dict. Also added differentiated error handling.
 **Alternatives considered:** (1) Separate metadata fetch after stream — adds latency. (2) Accept data loss — simple but the non-streaming path sets expectations. (3) Parse every chunk for metadata — wasteful, first chunk is sufficient.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/8
+**Notes:** Bundled with council-o7u since changes were in same file and closely related.
 
 ---
 
