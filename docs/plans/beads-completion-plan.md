@@ -62,12 +62,12 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-a0z: stage2_collect_rankings (P2)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-a0z-stage2-labels
 **Approach:** Fix label generation to handle 26+ models using AA, AB, AC... pattern. Extract ranking prompt to module-level constant. Add system message to ranking calls. Add logging for empty results. Keep existing ranking parsing logic (it works well enough).
 **Alternatives considered:** (1) Limit to 26 models — artificial restriction. (2) Use numeric labels — less readable than letters. (3) Refactor parse_ranking_from_text — it works, don't fix what isn't broken.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/14
+**Notes:** Also updated parse_ranking_from_text regex to handle multi-letter labels, fixed falsy check to `is not None`, added system message. 17 new tests.
 
 ### council-1g6: run_full_council (P2)
 
@@ -111,21 +111,21 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-iux: Round component audit (P2)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-iux-round-component
 **Approach:** Extract de-anonymization logic to a pure utility function (takes raw text + label_to_model, returns text with model names bolded). This is currently inline in the component. Make it testable. Simplify legacy vs unified format handling — check if legacy format still needs support or if migration handles it.
 **Alternatives considered:** (1) Rewrite component — too big. (2) Add prop-types/TypeScript — different concern. (3) Just document the complexity — doesn't fix testability.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/16
+**Notes:** Extracted 5 functions (deAnonymizeText, getResponseContent, getTabLabel, getModelDisplayName, getRoundCost) to lib/roundUtils.js. 23 tests.
 
 ### council-9hu: Sidebar component audit (P2)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-9hu-sidebar-cleanup
 **Approach:** The Sidebar delegates to ConversationItem for per-conversation logic. Main issue is mixed responsibilities. Extract config modal trigger and theme toggle into separate small components or hooks. Keep conversation list management in Sidebar. Focus on reducing prop count.
 **Alternatives considered:** (1) Full decomposition — too many components. (2) Use context for shared state — over-engineering. (3) Just document — doesn't improve testability.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/17
+**Notes:** Extracted getUserInitial, getUserDisplayName, getThemeLabel to lib/sidebarUtils.js. 13 tests. Component already well-structured with sub-components.
 
 ---
 
@@ -155,39 +155,37 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-u91: Extract _build_partial_message_from_pending
 
-**Status:** pending
-**Branch:** fix/council-u91-extract-partial-pending
-**Approach:** Check if this function still exists after the useConversationStream refactor. The refactor moved ~400 lines out of App.jsx. If the code was already extracted or deleted, close this bead. If it still exists, extract to a utility function in a `frontend/src/utils/` module.
-**Alternatives considered:** (1) Keep inline — was already identified as needing extraction. (2) Put in reducer — only if it's state-related.
-**PR:**
-**Notes:** May be already resolved by refactor.
+**Status:** done
+**Branch:** N/A (no code changes needed)
+**Approach:** Verified function no longer exists after useConversationStream refactor.
+**PR:** N/A
+**Notes:** Resolved by prior refactor. Code removed entirely.
 
 ### council-4vt: Extract _build_partial_assistant_message
 
-**Status:** pending
-**Branch:** fix/council-4vt-extract-partial-assistant
-**Approach:** Same as council-u91 — check if the useConversationStream refactor already handled this. The `buildAssistantMessage` function was already extracted to `conversationReducer.js`. If this bead is satisfied, close it.
-**Alternatives considered:** N/A — likely already done.
-**PR:**
-**Notes:** Probably resolved by the refactor. Verify and close.
+**Status:** done
+**Branch:** N/A (no code changes needed)
+**Approach:** Verified `buildAssistantMessage` already extracted to `conversationReducer.js`.
+**PR:** N/A
+**Notes:** Resolved by prior refactor.
 
 ### council-d1r: Extract _should_migrate_message predicate
 
-**Status:** pending
-**Branch:** fix/council-d1r-extract-migrate-predicate
+**Status:** done
+**Branch:** fix/council-d1r-storage-extractions
 **Approach:** In `storage.py`, extract the migration logic predicate from `migrate_legacy_messages` into a standalone `_should_migrate_message(message)` function. Add test for it.
 **Alternatives considered:** (1) Keep inline — it's a simple predicate, extraction may be overkill. (2) Remove migration entirely — risky if old data exists.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/15
+**Notes:** Bundled with council-bqa. 11 tests total.
 
 ### council-bqa: Extract _extract_conversation_metadata
 
-**Status:** pending
-**Branch:** fix/council-bqa-extract-metadata
+**Status:** done
+**Branch:** fix/council-d1r-storage-extractions (bundled with council-d1r)
 **Approach:** In `storage.py`, extract the metadata extraction logic from `list_conversations` into `_extract_conversation_metadata(conversation)`. Add test.
 **Alternatives considered:** (1) Keep inline — simpler. (2) Create a full serialization layer — overkill.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/15
+**Notes:** Added defensive .get() for missing messages key.
 
 ---
 
