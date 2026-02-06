@@ -39,6 +39,81 @@ GUIDELINES:
 
 Your response will be evaluated by your peers. Quality and honesty matter more than agreeableness."""
 
+STAGE2_SYSTEM_PROMPT = (
+    "You are an impartial evaluator. Assess each response on its own merits. "
+    "Be rigorous, specific, and honest in your evaluation."
+)
+
+
+def generate_response_labels(count: int) -> list[str]:
+    """Generate sequential response labels: A-Z, then AA, AB, ..., AZ, BA, etc.
+
+    Args:
+        count: Number of labels to generate
+
+    Returns:
+        List of label strings (e.g., ['A', 'B', ..., 'Z', 'AA', 'AB', ...])
+    """
+    labels: list[str] = []
+    for i in range(count):
+        if i < 26:
+            labels.append(chr(65 + i))
+        else:
+            first = chr(65 + (i - 26) // 26)
+            second = chr(65 + (i - 26) % 26)
+            labels.append(first + second)
+    return labels
+
+
+def _build_ranking_prompt(user_query: str, responses_text: str) -> str:
+    """Build the Stage 2 ranking prompt.
+
+    Args:
+        user_query: The original user question
+        responses_text: Pre-formatted anonymized responses text
+
+    Returns:
+        The complete ranking prompt string
+    """
+    return f"""You are a rigorous evaluator assessing responses to the following question:
+
+Question: {user_query}
+
+Here are the responses from different models (anonymized):
+
+{responses_text}
+
+EVALUATION CRITERIA - Be ruthlessly honest:
+- Accuracy: Are there factual errors, unsupported claims, or logical fallacies?
+- Completeness: Does it actually answer the question, or dodge/deflect?
+- Depth: Is the reasoning superficial or substantive?
+- Honesty: Does it acknowledge uncertainty, or pretend to know what it doesn't?
+- Usefulness: Would this actually help someone, or is it generic filler?
+
+Your task:
+1. Critically evaluate each response. Call out specific flaws, errors, and weaknesses. Don't be kind - be accurate.
+2. Note what each response does well, if anything.
+3. Provide a final ranking based on actual quality, not politeness.
+
+IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
+- Start with the line "FINAL RANKING:" (all caps, with colon)
+- Then list the responses from best to worst as a numbered list
+- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
+- Do not add any other text or explanations in the ranking section
+
+Example format:
+
+Response A contains a factual error about X and fails to address Y...
+Response B provides accurate information but is too vague on Z...
+Response C is the most thorough but overstates confidence in its claims...
+
+FINAL RANKING:
+1. Response C
+2. Response B
+3. Response A
+
+Now provide your critical evaluation and ranking:"""
+
 
 def _build_stage1_messages(
     user_query: str, web_search_context: str | None = None,
@@ -186,8 +261,8 @@ async def stage2_collect_rankings(
     }
 
     with tracer.start_as_current_span("council.stage2_collect_rankings", attributes=span_attributes) as span:
-        # Create anonymized labels for responses (Response A, Response B, etc.)
-        labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
+        # Create anonymized labels for responses (A, B, C, ..., Z, AA, AB, ...)
+        labels = generate_response_labels(len(stage1_results))
 
         # Create mapping from label to model name
         label_to_model = {
@@ -201,52 +276,19 @@ async def stage2_collect_rankings(
             for label, result in zip(labels, stage1_results)
         ])
 
-        ranking_prompt = f"""You are a rigorous evaluator assessing responses to the following question:
+        ranking_prompt = _build_ranking_prompt(user_query, responses_text)
 
-Question: {user_query}
-
-Here are the responses from different models (anonymized):
-
-{responses_text}
-
-EVALUATION CRITERIA - Be ruthlessly honest:
-- Accuracy: Are there factual errors, unsupported claims, or logical fallacies?
-- Completeness: Does it actually answer the question, or dodge/deflect?
-- Depth: Is the reasoning superficial or substantive?
-- Honesty: Does it acknowledge uncertainty, or pretend to know what it doesn't?
-- Usefulness: Would this actually help someone, or is it generic filler?
-
-Your task:
-1. Critically evaluate each response. Call out specific flaws, errors, and weaknesses. Don't be kind - be accurate.
-2. Note what each response does well, if anything.
-3. Provide a final ranking based on actual quality, not politeness.
-
-IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
-- Start with the line "FINAL RANKING:" (all caps, with colon)
-- Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
-- Do not add any other text or explanations in the ranking section
-
-Example format:
-
-Response A contains a factual error about X and fails to address Y...
-Response B provides accurate information but is too vague on Z...
-Response C is the most thorough but overstates confidence in its claims...
-
-FINAL RANKING:
-1. Response C
-2. Response B
-3. Response A
-
-Now provide your critical evaluation and ranking:"""
-
-        messages = [{"role": "user", "content": ranking_prompt}]
+        messages = [
+            {"role": "system", "content": STAGE2_SYSTEM_PROMPT},
+            {"role": "user", "content": ranking_prompt},
+        ]
 
         # Get rankings from all council models in parallel
         responses = await query_models_parallel(effective_council, messages)
 
         # Format results
         stage2_results = []
+        failed_models = []
         for model, response in responses.items():
             if response is not None:
                 full_text = response.get('content', '')
@@ -261,6 +303,13 @@ Now provide your critical evaluation and ranking:"""
                 if response.get('reasoning_details'):
                     result['reasoning_details'] = response['reasoning_details']
                 stage2_results.append(result)
+            else:
+                failed_models.append(model)
+
+        if failed_models:
+            logger.warning(
+                "Stage 2 ranking failed for models: %s", ", ".join(failed_models)
+            )
 
         # Record ranking count in span
         if is_telemetry_enabled():
@@ -389,19 +438,19 @@ def parse_ranking_from_text(ranking_text: str) -> list[str]:
         parts = ranking_text.split("FINAL RANKING:")
         if len(parts) >= 2:
             ranking_section = parts[1]
-            # Try to extract numbered list format (e.g., "1. Response A")
-            # This pattern looks for: number, period, optional space, "Response X"
-            numbered_matches = re.findall(r'\d+\.\s*Response [A-Z]', ranking_section)
+            # Try to extract numbered list format (e.g., "1. Response A" or "1. Response AA")
+            # This pattern looks for: number, period, optional space, "Response X[X]"
+            numbered_matches = re.findall(r'\d+\.\s*Response [A-Z]+', ranking_section)
             if numbered_matches:
                 # Extract just the "Response X" part
-                return [re.search(r'Response [A-Z]', m).group() for m in numbered_matches]
+                return [re.search(r'Response [A-Z]+', m).group() for m in numbered_matches]
 
             # Fallback: Extract all "Response X" patterns in order
-            matches = re.findall(r'Response [A-Z]', ranking_section)
+            matches = re.findall(r'Response [A-Z]+', ranking_section)
             return matches
 
     # Fallback: try to find any "Response X" patterns in order
-    matches = re.findall(r'Response [A-Z]', ranking_text)
+    matches = re.findall(r'Response [A-Z]+', ranking_text)
     return matches
 
 
