@@ -51,6 +51,8 @@ export default function ChatInterface({
   const [attachments, setAttachments] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const userHasScrolled = useRef(false);
   const fileInputRef = useRef(null);
 
   const handleCopy = async (text, index) => {
@@ -76,13 +78,39 @@ export default function ChatInterface({
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (force = false) => {
+    if (force || !userHasScrolled.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
+  // Auto-scroll only when user hasn't scrolled away from bottom
   useEffect(() => {
     scrollToBottom();
   }, [conversation]);
+
+  // Reset auto-scroll when a new message is sent (user action)
+  useEffect(() => {
+    if (conversation?.messages?.length) {
+      userHasScrolled.current = false;
+      scrollToBottom(true);
+    }
+  }, [conversation?.messages?.length]);
+
+  // Detect user scroll — pause auto-scroll if they've scrolled up
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      userHasScrolled.current = distanceFromBottom > 150;
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -153,7 +181,7 @@ export default function ChatInterface({
 
   return (
     <div className="chat-interface">
-      <div className="messages-container">
+      <div className="messages-container" ref={messagesContainerRef}>
         {/* Interrupted Response Banner */}
         {conversation.pendingInterrupted &&
           conversation.pendingInfo &&
