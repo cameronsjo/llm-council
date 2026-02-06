@@ -1,12 +1,58 @@
 """Tests for pure functions in backend.council."""
 
+import pytest
+
 from backend.council import (
+    STAGE1_SYSTEM_PROMPT,
+    _build_stage1_messages,
+    _format_model_result,
     aggregate_metrics,
     calculate_aggregate_rankings,
     convert_legacy_message_to_unified,
     convert_to_unified_result,
     parse_ranking_from_text,
+    stage1_collect_responses,
 )
+
+
+# ---------------------------------------------------------------------------
+# Stage 1 helpers
+# ---------------------------------------------------------------------------
+
+class TestStage1Helpers:
+    """Tests for stage1 helper functions and constants."""
+
+    def test_system_prompt_is_non_empty(self):
+        assert len(STAGE1_SYSTEM_PROMPT) > 100
+
+    def test_build_messages_plain_query(self):
+        messages = _build_stage1_messages("What is 2+2?")
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert messages[0]["content"] == STAGE1_SYSTEM_PROMPT
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == "What is 2+2?"
+
+    def test_build_messages_with_web_context(self):
+        messages = _build_stage1_messages("query", web_search_context="search results")
+        assert "search results" in messages[1]["content"]
+        assert "query" in messages[1]["content"]
+
+    def test_format_model_result_basic(self):
+        result = _format_model_result("openai/gpt-4", {"content": "hello", "metrics": {"tokens": 5}})
+        assert result["model"] == "openai/gpt-4"
+        assert result["response"] == "hello"
+        assert result["metrics"] == {"tokens": 5}
+        assert "reasoning_details" not in result
+
+    def test_format_model_result_with_reasoning(self):
+        result = _format_model_result("model", {"content": "x", "reasoning_details": "thought"})
+        assert result["reasoning_details"] == "thought"
+
+    @pytest.mark.asyncio
+    async def test_empty_council_raises_value_error(self):
+        with pytest.raises(ValueError, match="No council models configured"):
+            await stage1_collect_responses("query", council_models=[])
 
 
 # ---------------------------------------------------------------------------

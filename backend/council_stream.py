@@ -14,7 +14,7 @@ from .council import (
     convert_to_unified_result,
     generate_conversation_title,
     perform_web_search,
-    stage1_collect_responses_streaming,
+    stage1_collect_responses,
     stage2_collect_rankings,
     stage3_synthesize_final,
 )
@@ -84,7 +84,7 @@ async def _stream_stage1(
 
     async def run() -> None:
         try:
-            await stage1_collect_responses_streaming(
+            await stage1_collect_responses(
                 content,
                 combined_context,
                 council_models,
