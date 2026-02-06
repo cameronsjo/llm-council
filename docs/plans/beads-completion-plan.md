@@ -93,12 +93,12 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-cwv: sendMessageStream frontend (P1)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-cwv-sse-buffer
 **Approach:** Add SSE buffer accumulation to handle chunks that split mid-JSON. Maintain a `buffer` string, append each chunk, then split on `\n\n` (SSE event boundary). Only parse complete events. This is the standard SSE parsing pattern. The AbortController and signal were already added in the recent useConversationStream refactor — verify this is done and mark as resolved if so. The 9-parameter issue was also addressed by the hook refactor (parameters are now spread across hook + api).
 **Alternatives considered:** (1) Use EventSource API — doesn't support POST requests. (2) Use a library like `eventsource-parser` — adds a dependency for ~20 lines of code. (3) Keep current parsing — silently loses data on chunk boundaries.
-**PR:**
-**Notes:** Check if the recent refactor already addressed some of this.
+**PR:** https://github.com/cameronsjo/llm-council/pull/10
+**Notes:** Extracted readSSEStream() shared helper used by both sendMessageStream and extendDebateStream. 10 new vitest tests.
 
 ### council-75a: ChatInterface audit (P1)
 
