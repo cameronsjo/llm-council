@@ -59,13 +59,8 @@ from .config import (
 )
 from .council import (
     aggregate_metrics,
-    calculate_aggregate_rankings,
-    convert_to_unified_result,
     generate_conversation_title,
     perform_web_search,
-    run_full_council,
-    stage2_collect_rankings,
-    stage3_synthesize_final,
 )
 from .council_stream import CouncilPipelineInput, run_council_pipeline
 from .export import export_to_json, export_to_markdown
@@ -504,58 +499,6 @@ async def clear_pending_status(
     removed = storage.remove_last_user_message(conversation_id, user_id=user_id)
 
     return {"status": "ok", "user_message_removed": removed}
-
-
-@app.post("/api/conversations/{conversation_id}/message")
-async def send_message(
-    conversation_id: str,
-    request: SendMessageRequest,
-    user: User | None = Depends(get_optional_user),
-):
-    """Send a message and run the 3-stage council process.
-
-    Returns the complete response with all stages.
-    """
-    user_id = user.username if user else None
-
-    # Check if conversation exists
-    conversation = storage.get_conversation(conversation_id, user_id=user_id)
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # Check if this is the first message
-    is_first_message = len(conversation["messages"]) == 0
-
-    # Add user message
-    storage.add_user_message(conversation_id, request.content, user_id=user_id)
-
-    # If this is the first message, generate a title
-    if is_first_message:
-        title = await generate_conversation_title(request.content)
-        storage.update_conversation_title(conversation_id, title, user_id=user_id)
-
-    # Run the 3-stage council process
-    stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content, use_web_search=request.use_web_search
-    )
-
-    # Add assistant message with all stages and metrics
-    storage.add_assistant_message(
-        conversation_id,
-        stage1_results,
-        stage2_results,
-        stage3_result,
-        metrics=metadata.get("metrics"),
-        user_id=user_id,
-    )
-
-    # Return the complete response with metadata
-    return {
-        "stage1": stage1_results,
-        "stage2": stage2_results,
-        "stage3": stage3_result,
-        "metadata": metadata,
-    }
 
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
