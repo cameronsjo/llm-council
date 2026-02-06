@@ -733,7 +733,9 @@ async def retry_stage3_stream(
 ):
     """Re-run Stage 3 synthesis using existing Stage 1+2 data."""
     user_id = user.username if user else None
-    chairman_model = config.get_chairman_model()
+    _council_models, chairman_model = storage.get_conversation_config(
+        conversation_id, user_id
+    )
 
     async def event_generator():
         async for event in retry_stage3_pipeline(

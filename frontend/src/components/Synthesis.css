@@ -292,8 +292,10 @@
   padding: var(--space-sm) var(--space-md);
   background: var(--color-error-light, #fff3f3);
   border: 1px solid var(--color-error-border, #ffcdd2);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-sm);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--color-error, #d32f2f);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -313,13 +315,15 @@
   cursor: not-allowed;
 }
 
+/* Spinner used inside action buttons */
 .spinner-small {
   width: 14px;
   height: 14px;
-  border: 2px solid var(--color-gold-dark);
+  border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+  opacity: 0.7;
 }
 
 @keyframes spin {
