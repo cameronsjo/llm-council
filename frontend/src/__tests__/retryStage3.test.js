@@ -38,8 +38,8 @@ describe('Retry Stage 3 — reducer flow', () => {
 
     const lastMsg = next.messages[next.messages.length - 1];
     expect(lastMsg.loading.stage3).toBe(true);
-    // Original error is still present until stage3_complete
-    expect(lastMsg.stage3.response).toBe('Error: Unable to generate final synthesis.');
+    // Old error is cleared immediately so UI stops showing stale result
+    expect(lastMsg.stage3).toBeNull();
   });
 
   it('stage3_complete replaces stage3 data with successful result', () => {

@@ -191,6 +191,7 @@ export function conversationReducer(state, action) {
 
     case 'stage3_start': {
       const { messages, lastMsg } = cloneLastMessage(state);
+      lastMsg.stage3 = null; // Clear stale error from previous attempt
       lastMsg.loading = { ...lastMsg.loading, stage3: true };
       return { ...state, messages };
     }
