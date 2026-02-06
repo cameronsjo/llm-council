@@ -23,6 +23,47 @@ from .council import (
 logger = logging.getLogger(__name__)
 
 
+def _extract_stage_data(
+    msg: dict[str, Any],
+) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
+    """Extract stage1 and stage2 data from either unified or legacy message format.
+
+    Unified format stores data in ``rounds`` (list of round dicts with
+    ``responses``).  Legacy format uses flat ``stage1``/``stage2`` keys.
+    Both are converted to the legacy list-of-dicts format expected by
+    ``stage3_synthesize_final`` and ``aggregate_metrics``.
+
+    Returns:
+        (stage1_results, stage2_results) in legacy format, or (None, None).
+    """
+    # Try unified format first (rounds[0]=responses, rounds[1]=rankings)
+    rounds = msg.get("rounds")
+    if rounds and len(rounds) >= 2:
+        stage1_results = [
+            {
+                "model": r.get("model", ""),
+                "response": r.get("content", ""),
+                **({"metrics": r["metrics"]} if r.get("metrics") else {}),
+                **({"reasoning_details": r["reasoning_details"]} if r.get("reasoning_details") else {}),
+            }
+            for r in rounds[0].get("responses", [])
+        ]
+        stage2_results = [
+            {
+                "model": r.get("model", ""),
+                "ranking": r.get("content", ""),
+                **({"metrics": r["metrics"]} if r.get("metrics") else {}),
+                **({"parsed_ranking": r["parsed_ranking"]} if r.get("parsed_ranking") else {}),
+                **({"reasoning_details": r["reasoning_details"]} if r.get("reasoning_details") else {}),
+            }
+            for r in rounds[1].get("responses", [])
+        ]
+        return stage1_results or None, stage2_results or None
+
+    # Fall back to legacy format
+    return msg.get("stage1"), msg.get("stage2")
+
+
 @dataclass(frozen=True)
 class CouncilPipelineInput:
     """All inputs needed by the council streaming pipeline."""
@@ -380,13 +421,14 @@ async def retry_stage3_pipeline(
             yield {"type": "error", "message": "No council message found to retry"}
             return
 
-        stage1_results = last_council_msg.get("stage1")
-        stage2_results = last_council_msg.get("stage2")
+        # Extract stage data from either unified or legacy format
+        stage1_results, stage2_results = _extract_stage_data(last_council_msg)
 
         if not stage1_results or not stage2_results:
             logger.warning(
-                "Stage 3 retry aborted, missing stage data. ConversationId: %s, HasStage1: %s, HasStage2: %s",
+                "Stage 3 retry aborted, missing stage data. ConversationId: %s, HasStage1: %s, HasStage2: %s, HasRounds: %s",
                 conversation_id, bool(stage1_results), bool(stage2_results),
+                bool(last_council_msg.get("rounds")),
             )
             yield {"type": "error", "message": "Stage 1 or Stage 2 data missing"}
             return

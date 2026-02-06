@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.council_stream import retry_stage3_pipeline
+from backend.council_stream import _extract_stage_data, retry_stage3_pipeline
 from backend.storage import update_last_council_stage3
 
 
@@ -501,3 +501,220 @@ class TestRetryStage3PipelineUnexpectedException:
         assert "stage3_start" in types
         assert types[-1] == "error"
         assert "OpenRouter timeout" in events[-1]["message"]
+
+
+# =============================================================================
+# Unified format fixtures
+# =============================================================================
+
+UNIFIED_ROUND1 = {
+    "round_number": 1,
+    "round_type": "responses",
+    "responses": [
+        {"participant": "Response A", "model": "model-a", "content": "Answer A", "metrics": {"total_tokens": 50}},
+        {"participant": "Response B", "model": "model-b", "content": "Answer B", "metrics": {"total_tokens": 60}},
+    ],
+}
+
+UNIFIED_ROUND2 = {
+    "round_number": 2,
+    "round_type": "rankings",
+    "responses": [
+        {
+            "participant": "model-a",
+            "model": "model-a",
+            "content": "FINAL RANKING:\n1. Response A\n2. Response B",
+            "parsed_ranking": ["Response A", "Response B"],
+            "metrics": {"total_tokens": 40},
+        },
+    ],
+    "metadata": {
+        "label_to_model": {"Response A": "model-a", "Response B": "model-b"},
+        "aggregate_rankings": [],
+    },
+}
+
+UNIFIED_SYNTHESIS = {
+    "model": "model-chairman",
+    "content": "Error: Unable to generate final synthesis.",
+}
+
+
+def _make_unified_conversation(*, has_rounds: bool = True) -> dict:
+    """Build a conversation with unified-format assistant message."""
+    messages: list[dict] = [{"role": "user", "content": "What is the meaning of life?"}]
+    council_msg: dict = {"role": "assistant", "mode": "council"}
+    if has_rounds:
+        council_msg["rounds"] = [UNIFIED_ROUND1, UNIFIED_ROUND2]
+        council_msg["synthesis"] = UNIFIED_SYNTHESIS
+        council_msg["participant_mapping"] = {"Response A": "model-a", "Response B": "model-b"}
+    messages.append(council_msg)
+    return {"id": "conv-unified", "messages": messages}
+
+
+# =============================================================================
+# _extract_stage_data — format bridge
+# =============================================================================
+
+
+class TestExtractStageData:
+    """Tests for _extract_stage_data helper."""
+
+    def test_extracts_from_legacy_format(self):
+        """Returns stage1/stage2 directly from legacy keys."""
+        msg = {"stage1": STAGE1_RESULTS, "stage2": STAGE2_RESULTS}
+        s1, s2 = _extract_stage_data(msg)
+        assert s1 == STAGE1_RESULTS
+        assert s2 == STAGE2_RESULTS
+
+    def test_extracts_from_unified_format(self):
+        """Converts unified rounds back to legacy-format lists."""
+        msg = {"rounds": [UNIFIED_ROUND1, UNIFIED_ROUND2]}
+        s1, s2 = _extract_stage_data(msg)
+
+        assert len(s1) == 2
+        assert s1[0]["model"] == "model-a"
+        assert s1[0]["response"] == "Answer A"
+        assert s1[0]["metrics"]["total_tokens"] == 50
+
+        assert len(s2) == 1
+        assert s2[0]["model"] == "model-a"
+        assert s2[0]["ranking"] == "FINAL RANKING:\n1. Response A\n2. Response B"
+        assert s2[0]["parsed_ranking"] == ["Response A", "Response B"]
+
+    def test_returns_none_for_empty_message(self):
+        """Returns (None, None) when neither format is present."""
+        s1, s2 = _extract_stage_data({})
+        assert s1 is None
+        assert s2 is None
+
+    def test_returns_none_when_rounds_too_short(self):
+        """Returns (None, None) when rounds list has fewer than 2 entries."""
+        msg = {"rounds": [UNIFIED_ROUND1]}
+        s1, s2 = _extract_stage_data(msg)
+        assert s1 is None
+        assert s2 is None
+
+    def test_unified_preserves_reasoning_details(self):
+        """reasoning_details are carried through from unified responses."""
+        round1 = {
+            "round_number": 1,
+            "round_type": "responses",
+            "responses": [
+                {"participant": "A", "model": "m-a", "content": "answer", "reasoning_details": "thinking..."},
+            ],
+        }
+        round2 = {
+            "round_number": 2,
+            "round_type": "rankings",
+            "responses": [
+                {"participant": "m-a", "model": "m-a", "content": "ranking text"},
+            ],
+        }
+        s1, s2 = _extract_stage_data({"rounds": [round1, round2]})
+        assert s1[0]["reasoning_details"] == "thinking..."
+        assert "reasoning_details" not in s2[0]  # not set, should be omitted
+
+
+# =============================================================================
+# update_last_council_stage3 — unified format
+# =============================================================================
+
+
+class TestUpdateLastCouncilStage3Unified:
+    """Tests for storage update on unified-format messages."""
+
+    def test_updates_synthesis_key_on_unified_message(self):
+        """Writes to 'synthesis' (not 'stage3') when message has 'rounds' key."""
+        conversation = _make_unified_conversation()
+        new_stage3 = {"model": "model-chairman", "response": "Better synthesis", "metrics": {"total_tokens": 120}}
+
+        with (
+            patch("backend.storage.get_conversation", return_value=conversation),
+            patch("backend.storage.save_conversation") as mock_save,
+        ):
+            update_last_council_stage3("conv-unified", new_stage3)
+
+        council_msg = conversation["messages"][-1]
+        assert council_msg["synthesis"]["model"] == "model-chairman"
+        assert council_msg["synthesis"]["content"] == "Better synthesis"
+        assert council_msg["synthesis"]["metrics"]["total_tokens"] == 120
+        assert "stage3" not in council_msg  # should NOT create legacy key
+        mock_save.assert_called_once()
+
+    def test_preserves_reasoning_details_on_unified(self):
+        """reasoning_details is included in synthesis when provided."""
+        conversation = _make_unified_conversation()
+        new_stage3 = {
+            "model": "model-chairman",
+            "response": "Synthesis with reasoning",
+            "metrics": {},
+            "reasoning_details": "Chairman's chain of thought",
+        }
+
+        with (
+            patch("backend.storage.get_conversation", return_value=conversation),
+            patch("backend.storage.save_conversation"),
+        ):
+            update_last_council_stage3("conv-unified", new_stage3)
+
+        council_msg = conversation["messages"][-1]
+        assert council_msg["synthesis"]["reasoning_details"] == "Chairman's chain of thought"
+
+
+# =============================================================================
+# retry_stage3_pipeline — unified format
+# =============================================================================
+
+
+class TestRetryStage3PipelineUnified:
+    """Retry pipeline works with unified-format conversations."""
+
+    @pytest.mark.asyncio
+    async def test_succeeds_with_unified_format_conversation(self):
+        """Pipeline extracts stage data from rounds and completes successfully."""
+        conversation = _make_unified_conversation()
+        storage = _make_mock_storage(conversation=conversation)
+        new_stage3 = {"model": "model-chairman", "response": "New synthesis", "metrics": {"total_tokens": 100}}
+
+        with (
+            patch(
+                "backend.council_stream.stage3_synthesize_final",
+                new_callable=AsyncMock,
+                return_value=new_stage3,
+            ) as mock_s3,
+            patch("backend.council_stream.aggregate_metrics", return_value={"total_cost": 0.01}),
+        ):
+            events = await _collect_events(
+                retry_stage3_pipeline("conv-unified", "model-chairman", storage=storage)
+            )
+
+        types = _event_types(events)
+        assert types == ["stage3_start", "stage3_complete", "metrics_complete", "complete"]
+
+        # Verify stage3_synthesize_final received properly converted data
+        call_args = mock_s3.call_args
+        stage1_arg = call_args[0][1]
+        stage2_arg = call_args[0][2]
+        assert len(stage1_arg) == 2
+        assert stage1_arg[0]["model"] == "model-a"
+        assert stage1_arg[0]["response"] == "Answer A"
+        assert len(stage2_arg) == 1
+        assert stage2_arg[0]["ranking"] == "FINAL RANKING:\n1. Response A\n2. Response B"
+
+    @pytest.mark.asyncio
+    async def test_unified_pipeline_persists_result(self):
+        """Pipeline calls storage update after successful retry with unified data."""
+        conversation = _make_unified_conversation()
+        storage = _make_mock_storage(conversation=conversation)
+        new_stage3 = {"model": "model-chairman", "response": "Fixed", "metrics": {}}
+
+        with (
+            patch("backend.council_stream.stage3_synthesize_final", new_callable=AsyncMock, return_value=new_stage3),
+            patch("backend.council_stream.aggregate_metrics", return_value={}),
+        ):
+            await _collect_events(
+                retry_stage3_pipeline("conv-unified", "model-chairman", storage=storage)
+            )
+
+        storage.update_last_council_stage3.assert_called_once()

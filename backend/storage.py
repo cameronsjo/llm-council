@@ -486,7 +486,19 @@ def update_last_council_stage3(
     for i in range(len(conversation["messages"]) - 1, -1, -1):
         msg = conversation["messages"][i]
         if msg.get("role") == "assistant" and msg.get("mode") == "council":
-            msg["stage3"] = stage3_result
+            if "rounds" in msg:
+                # Unified format: update synthesis dict
+                msg["synthesis"] = {
+                    "model": stage3_result.get("model", ""),
+                    "content": stage3_result.get("response", ""),
+                }
+                if stage3_result.get("metrics"):
+                    msg["synthesis"]["metrics"] = stage3_result["metrics"]
+                if stage3_result.get("reasoning_details"):
+                    msg["synthesis"]["reasoning_details"] = stage3_result["reasoning_details"]
+            else:
+                # Legacy format: update stage3 key
+                msg["stage3"] = stage3_result
             if metrics is not None:
                 msg["metrics"] = metrics
             save_conversation(conversation, user_id)
