@@ -6,6 +6,7 @@ import ModelSelector from './ModelSelector';
 import ModelCuration from './ModelCuration';
 import VersionInfo from './VersionInfo';
 import { useTheme } from '../hooks';
+import { getUserInitial, getUserDisplayName, getThemeLabel } from '../lib/sidebarUtils';
 
 export default function Sidebar({
   conversations,
@@ -69,11 +70,7 @@ export default function Sidebar({
     dark: <Moon size={16} />,
   }[theme];
 
-  const themeLabel = {
-    system: 'System',
-    light: 'Light',
-    dark: 'Dark',
-  }[theme];
+  const themeLabel = getThemeLabel(theme);
 
   const handleOpenConfig = () => {
     setPendingCouncil(councilModels);
@@ -110,10 +107,10 @@ export default function Sidebar({
         {userInfo?.authenticated && (
           <div className="user-info">
             <span className="user-avatar">
-              {(userInfo.display_name || userInfo.username || '?')[0].toUpperCase()}
+              {getUserInitial(userInfo)}
             </span>
             <span className="user-name">
-              {userInfo.display_name || userInfo.username}
+              {getUserDisplayName(userInfo)}
             </span>
           </div>
         )}
