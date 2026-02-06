@@ -18,6 +18,11 @@ services:
       # Authentication (for use behind Authelia/OIDC reverse proxy)
       - LLMCOUNCIL_AUTH_ENABLED=${LLMCOUNCIL_AUTH_ENABLED:-false}
       - LLMCOUNCIL_TRUSTED_PROXY_IPS=${LLMCOUNCIL_TRUSTED_PROXY_IPS:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      # Sentry error monitoring (opt-in, no-op when DSN is empty)
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.1}
     volumes:
       - council-data:/app/data
     restart: unless-stopped

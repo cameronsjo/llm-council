@@ -23,6 +23,7 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.49b0",
     "opentelemetry-exporter-otlp>=1.28.0",
     "python-json-logger>=2.0.0",
+    "sentry-sdk[fastapi]>=2.0.0",
 ]
 
 [tool.setuptools.packages.find]

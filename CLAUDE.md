@@ -234,6 +234,10 @@ The web search feature allows models to access current information from the web 
 - `LLMCOUNCIL_DATA_DIR`: Data directory (default: `/app/data`)
 - `LLMCOUNCIL_AUTH_ENABLED`: Enable reverse proxy auth
 - `LLMCOUNCIL_TRUSTED_PROXY_IPS`: Trusted proxy IPs for auth headers
+- `SENTRY_DSN`: Optional Sentry DSN for error monitoring (no-op when empty)
+- `SENTRY_ENVIRONMENT`: Sentry environment tag (default: `development` local, `production` in Docker)
+- `SENTRY_TRACES_SAMPLE_RATE`: Sentry performance tracing sample rate (default: `0.1`)
+- `SENTRY_PROFILES_SAMPLE_RATE`: Sentry profiling sample rate (default: `0.1`)
 
 ## Authentication
 
