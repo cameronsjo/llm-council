@@ -343,6 +343,26 @@
   cursor: not-allowed;
 }
 
+.cancel-button {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--color-parchment);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.cancel-button:hover {
+  background: var(--color-burgundy-light);
+  color: #fff;
+  border-color: var(--color-burgundy);
+}
+
 /* Web Search Toggle */
 .web-search-toggle {
   display: flex;

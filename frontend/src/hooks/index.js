@@ -10,3 +10,4 @@ export {
   useAutoExpandableGroups,
 } from './useExpandableGroups';
 export { useTheme } from './useTheme';
+export { useConversationStream } from './useConversationStream';

@@ -321,7 +321,8 @@ export const api = {
     attachments = [],
     onEvent,
     resume = false,
-    priorContext = null
+    priorContext = null,
+    signal = null
   ) {
     const body = {
       content,
@@ -350,6 +351,7 @@ export const api = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal,
       }
     );
 
@@ -361,10 +363,16 @@ export const api = {
     const decoder = new TextDecoder();
 
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      let result;
+      try {
+        result = await reader.read();
+      } catch (e) {
+        if (e.name === 'AbortError') break;
+        throw e;
+      }
+      if (result.done) break;
 
-      const chunk = decoder.decode(value);
+      const chunk = decoder.decode(result.value);
       const lines = chunk.split('\n');
 
       for (const line of lines) {
@@ -374,6 +382,7 @@ export const api = {
             const event = JSON.parse(data);
             onEvent(event.type, event);
           } catch (e) {
+            if (e.name === 'AbortError') break;
             console.error('Failed to parse SSE event:', e);
           }
         }
@@ -387,7 +396,7 @@ export const api = {
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
-  async extendDebateStream(conversationId, onEvent) {
+  async extendDebateStream(conversationId, onEvent, signal = null) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/extend-debate/stream`,
       {
@@ -395,6 +404,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal,
       }
     );
 
@@ -406,10 +416,16 @@ export const api = {
     const decoder = new TextDecoder();
 
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      let result;
+      try {
+        result = await reader.read();
+      } catch (e) {
+        if (e.name === 'AbortError') break;
+        throw e;
+      }
+      if (result.done) break;
 
-      const chunk = decoder.decode(value);
+      const chunk = decoder.decode(result.value);
       const lines = chunk.split('\n');
 
       for (const line of lines) {
@@ -419,6 +435,7 @@ export const api = {
             const event = JSON.parse(data);
             onEvent(event.type, event);
           } catch (e) {
+            if (e.name === 'AbortError') break;
             console.error('Failed to parse SSE event:', e);
           }
         }
