@@ -22,3 +22,6 @@ frontend/.vite/
 
 # Claude Code local settings
 .claude/.playwright-mcp/
+
+# Git worktrees
+.worktrees/
