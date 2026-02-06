@@ -358,15 +358,17 @@ async def stage3_synthesize_final(
     }
 
     with tracer.start_as_current_span("council.stage3_synthesize_final", attributes=span_attributes) as span:
-        # Build comprehensive context for chairman
+        # Build comprehensive context for chairman using ANONYMOUS labels
+        # Stage 2 uses "Response A, B, C..." — reuse the same labels here
+        # so the chairman never sees real model names
         stage1_text = "\n\n".join([
-            f"Model: {result['model']}\nResponse: {result['response']}"
-            for result in stage1_results
+            f"Response {chr(65 + i)}:\n{result['response']}"
+            for i, result in enumerate(stage1_results)
         ])
 
         stage2_text = "\n\n".join([
-            f"Model: {result['model']}\nRanking: {result['ranking']}"
-            for result in stage2_results
+            f"Evaluator {i + 1}:\n{result['ranking']}"
+            for i, result in enumerate(stage2_results)
         ])
 
         chairman_prompt = f"""You are the Chairman of an LLM Council tasked with delivering the TRUTH, not consensus.
@@ -401,11 +403,14 @@ Now provide your synthesis - the truth as best you can determine it:"""
 
         messages = [{"role": "user", "content": chairman_prompt}]
 
-        # Query the chairman model
+        # Query the chairman model with one retry (most important single call)
         response = await query_model(effective_chairman, messages)
+        if response is None:
+            logger.warning("Chairman model %s failed on first attempt, retrying.", effective_chairman)
+            response = await query_model(effective_chairman, messages)
 
         if response is None:
-            # Fallback if chairman fails
+            logger.error("Chairman model %s failed after retry.", effective_chairman)
             if is_telemetry_enabled():
                 from opentelemetry.trace import Status, StatusCode
                 span.set_status(Status(StatusCode.ERROR, "Chairman model failed"))
