@@ -71,21 +71,21 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-1g6: run_full_council (P2)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-1g6-remove-dead-code
 **Approach:** Check if this is truly dead code — verify that only the non-streaming endpoint (`/api/conversations/{id}/message`) uses it and that the frontend never calls that endpoint. If confirmed dead, remove both `run_full_council` and the non-streaming endpoint. This also resolves council-8dz.
 **Alternatives considered:** (1) Keep and fix — maintaining 2 code paths is a burden. (2) Make streaming path delegate to this — would require significant restructuring. (3) Mark as deprecated — half-measure.
-**PR:**
-**Notes:** Resolves council-8dz too if we remove both.
+**PR:** https://github.com/cameronsjo/llm-council/pull/12
+**Notes:** Removed run_full_council (66 lines), non-streaming endpoint (51 lines), frontend sendMessage (20 lines), 4 unused imports. -144 lines total.
 
 ### council-8dz: send_message non-streaming (P2)
 
-**Status:** pending
-**Branch:** fix/council-8dz-remove-non-streaming
+**Status:** done
+**Branch:** fix/council-1g6-remove-dead-code (bundled with council-1g6)
 **Approach:** Remove the non-streaming `/api/conversations/{id}/message` endpoint and `run_full_council`. Frontend only uses `/message/stream`. Confirm by searching frontend for the endpoint URL.
 **Alternatives considered:** (1) Fix to use per-conversation config — work for dead code. (2) Keep as fallback — adds maintenance burden for unused code.
-**PR:**
-**Notes:** Bundle with council-1g6 — same PR.
+**PR:** https://github.com/cameronsjo/llm-council/pull/12
+**Notes:** Bundled with council-1g6.
 
 ---
 
