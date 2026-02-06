@@ -73,7 +73,7 @@ class TestCouncilPipelineHappyPath:
         storage = make_mock_storage()
 
         with (
-            patch("backend.council_stream.stage1_collect_responses_streaming", new_callable=AsyncMock) as mock_s1,
+            patch("backend.council_stream.stage1_collect_responses", new_callable=AsyncMock) as mock_s1,
             patch("backend.council_stream.stage2_collect_rankings", new_callable=AsyncMock) as mock_s2,
             patch("backend.council_stream.stage3_synthesize_final", new_callable=AsyncMock) as mock_s3,
             patch("backend.council_stream.generate_conversation_title", new_callable=AsyncMock) as mock_title,
@@ -124,7 +124,7 @@ class TestCouncilPipelineHappyPath:
         storage = make_mock_storage()
 
         with (
-            patch("backend.council_stream.stage1_collect_responses_streaming", new_callable=AsyncMock) as mock_s1,
+            patch("backend.council_stream.stage1_collect_responses", new_callable=AsyncMock) as mock_s1,
             patch("backend.council_stream.stage2_collect_rankings", new_callable=AsyncMock) as mock_s2,
             patch("backend.council_stream.stage3_synthesize_final", new_callable=AsyncMock) as mock_s3,
             patch("backend.council_stream.calculate_aggregate_rankings") as mock_agg,
@@ -153,7 +153,7 @@ class TestCouncilPipelineHappyPath:
         storage = make_mock_storage()
 
         with (
-            patch("backend.council_stream.stage1_collect_responses_streaming", new_callable=AsyncMock) as mock_s1,
+            patch("backend.council_stream.stage1_collect_responses", new_callable=AsyncMock) as mock_s1,
             patch("backend.council_stream.stage2_collect_rankings", new_callable=AsyncMock) as mock_s2,
             patch("backend.council_stream.stage3_synthesize_final", new_callable=AsyncMock) as mock_s3,
             patch("backend.council_stream.generate_conversation_title", new_callable=AsyncMock) as mock_title,
@@ -193,7 +193,7 @@ class TestCouncilPipelineResume:
         inp = make_input(resume=True, is_first_message=False)
 
         with (
-            patch("backend.council_stream.stage1_collect_responses_streaming", new_callable=AsyncMock) as mock_s1,
+            patch("backend.council_stream.stage1_collect_responses", new_callable=AsyncMock) as mock_s1,
             patch("backend.council_stream.stage2_collect_rankings", new_callable=AsyncMock) as mock_s2,
             patch("backend.council_stream.stage3_synthesize_final", new_callable=AsyncMock) as mock_s3,
             patch("backend.council_stream.calculate_aggregate_rankings") as mock_agg,
@@ -225,7 +225,7 @@ class TestCouncilPipelineErrors:
         storage = make_mock_storage()
 
         with (
-            patch("backend.council_stream.stage1_collect_responses_streaming", new_callable=AsyncMock) as mock_s1,
+            patch("backend.council_stream.stage1_collect_responses", new_callable=AsyncMock) as mock_s1,
             patch("backend.council_stream.stage2_collect_rankings", new_callable=AsyncMock) as mock_s2,
             patch("backend.council_stream.process_attachments") as mock_attach,
         ):
