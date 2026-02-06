@@ -13,7 +13,7 @@ For each entry: file path, function name, line number, and reason.
 | `backend/openrouter.py` | `query_model()` | 23 | Makes HTTP POST to OpenRouter API via httpx; response parsing tightly coupled to API shape |
 | `backend/openrouter.py` | `query_models_parallel()` | 108 | Wraps `query_model()` with `asyncio.gather`; mocking every coroutine does not verify parallel behavior |
 | `backend/openrouter.py` | `query_model_streaming()` | 163 | Streams SSE lines from OpenRouter via `httpx.AsyncClient.stream`; stateful line-by-line parsing |
-| `backend/openrouter.py` | `query_models_progressive()` | 286 | Uses `asyncio.as_completed` over streaming/non-streaming queries; ordering is nondeterministic |
+| `backend/openrouter.py` | `query_models_progressive()` | 286 | Uses `asyncio.wait` over streaming/non-streaming queries; core logic tested in `tests/test_openrouter.py` |
 | `backend/council.py` | `stage1_collect_responses()` | 31 | Orchestrates parallel LLM queries via `query_models_parallel` |
 | `backend/council.py` | `stage1_collect_responses_streaming()` | 114 | Orchestrates progressive LLM queries with callback-driven streaming |
 | `backend/council.py` | `stage2_collect_rankings()` | 221 | Sends anonymized ranking prompts to all council models in parallel |
@@ -85,7 +85,7 @@ For each entry: file path, function name, line number, and reason.
 | `backend/main.py` | `get_pending_status()` | 459 | FastAPI endpoint with auth dependency |
 | `backend/main.py` | `clear_pending_status()` | 491 | FastAPI endpoint with auth dependency |
 | `backend/main.py` | `send_message()` | 511 | FastAPI endpoint orchestrating full council pipeline |
-| `backend/main.py` | `send_message_stream()` | 563 | FastAPI SSE endpoint with async generator, event queue, and callbacks |
+| `backend/main.py` | `send_message_stream()` | 563 | FastAPI SSE endpoint; council pipeline logic extracted to `backend/council_stream.py` (tested) |
 | `backend/main.py` | `extend_arena_debate_stream()` | 962 | FastAPI SSE endpoint extending existing arena debate |
 | `backend/main.py` | `logging_context_middleware()` | 92 | FastAPI middleware managing request-scoped correlation IDs |
 | `frontend/src/App.jsx` | `App` | 1-799 | React component with state, effects, callbacks, and API integration |
