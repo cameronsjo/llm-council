@@ -64,11 +64,10 @@ from .council import (
     generate_conversation_title,
     perform_web_search,
     run_full_council,
-    stage1_collect_responses,
-    stage1_collect_responses_streaming,
     stage2_collect_rankings,
     stage3_synthesize_final,
 )
+from .council_stream import CouncilPipelineInput, run_council_pipeline
 from .export import export_to_json, export_to_markdown
 from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
 from .websearch import get_search_provider, is_web_search_available
@@ -580,226 +579,45 @@ async def send_message_stream(
     is_first_message = len(conversation["messages"]) == 0
 
     async def council_event_generator():
-        """Generate events for council mode (3-stage process)."""
-        try:
-            # Get per-conversation config (with global fallback)
-            council_models, chairman_model = storage.get_conversation_config(
-                conversation_id, user_id=user_id
+        """Generate SSE-formatted events for council mode."""
+        council_models, chairman_model = storage.get_conversation_config(
+            conversation_id, user_id=user_id
+        )
+
+        prior_context_text = ""
+        prior_context_source_id = None
+        if request.prior_context:
+            prior_context_text = (
+                "## Prior Discussion Context\n\n"
+                f"**Original Question:** {request.prior_context.original_question}\n\n"
+                f"**Council's Previous Conclusion:**\n{request.prior_context.synthesis}\n\n"
+                "---\n\n"
+                "The user now has a follow-up question based on this prior discussion:\n\n"
             )
+            prior_context_source_id = request.prior_context.source_conversation_id
 
-            # Check for resume mode with existing partial data
-            pending_data = storage.get_pending_message(conversation_id, user_id=user_id)
-            can_resume = (
-                request.resume
-                and pending_data
-                and pending_data.get("partial_data", {}).get("stage1")
-            )
+        attachment_dicts = (
+            [a.model_dump() for a in request.attachments]
+            if request.attachments
+            else []
+        )
 
-            if can_resume:
-                # Resume from saved Stage 1 results
-                yield f"data: {json.dumps({'type': 'resume_start', 'data': {'from_stage': 2}})}\n\n"
-                stage1_results = pending_data["partial_data"]["stage1"]
-                yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results, 'resumed': True})}\n\n"
-                # Web search info from original run (if any)
-                web_search_context = None
-                web_search_error = None
-            else:
-                # Normal flow: Add user message and run Stage 1
-                storage.add_user_message(conversation_id, request.content, user_id=user_id)
+        pipeline_input = CouncilPipelineInput(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            content=request.content,
+            council_models=council_models,
+            chairman_model=chairman_model,
+            is_first_message=is_first_message,
+            use_web_search=request.use_web_search,
+            resume=request.resume,
+            attachments=attachment_dicts,
+            prior_context_text=prior_context_text,
+            prior_context_source_id=prior_context_source_id,
+        )
 
-                # Mark as pending
-                storage.mark_response_pending(
-                    conversation_id, "council", request.content, user_id=user_id
-                )
-
-                # Build prior context if continuing from a previous conversation
-                prior_context_text = ""
-                if request.prior_context:
-                    prior_context_text = (
-                        "## Prior Discussion Context\n\n"
-                        f"**Original Question:** {request.prior_context.original_question}\n\n"
-                        f"**Council's Previous Conclusion:**\n{request.prior_context.synthesis}\n\n"
-                        "---\n\n"
-                        "The user now has a follow-up question based on this prior discussion:\n\n"
-                    )
-                    yield f"data: {json.dumps({'type': 'prior_context', 'data': {'source_id': request.prior_context.source_conversation_id}})}\n\n"
-
-                # Process attachments if any
-                attachment_context = ""
-                if request.attachments:
-                    attachment_dicts = [a.model_dump() for a in request.attachments]
-                    text_context, _ = process_attachments(attachment_dicts, user_id)
-                    if text_context:
-                        attachment_context = f"## Attached Documents\n\n{text_context}\n\n---\n\n"
-
-                # Optionally perform web search
-                web_search_context = None
-                web_search_error = None
-                if request.use_web_search:
-                    yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
-                    web_search_context, web_search_error = await perform_web_search(
-                        request.content
-                    )
-                    yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
-
-                # Stage 1: Collect responses with progressive streaming
-                yield f"data: {json.dumps({'type': 'stage1_start', 'data': {'models': council_models}})}\n\n"
-
-                # Combine all context: prior + attachment + web search
-                combined_context = prior_context_text + attachment_context
-                if web_search_context:
-                    combined_context += web_search_context
-
-                # Use a queue to bridge callbacks and the generator
-                event_queue: asyncio.Queue = asyncio.Queue()
-                stage1_results: list = []
-
-                async def on_model_response(model: str, result: dict | None):
-                    """Called when each model completes."""
-                    if result:
-                        stage1_results.append(result)
-                        await event_queue.put({
-                            'type': 'stage1_model_response',
-                            'data': result,
-                            'index': len(stage1_results),
-                            'total': len(council_models),
-                        })
-
-                async def on_progress(completed: int, total: int, completed_models: list, pending_models: list):
-                    """Called for progress updates."""
-                    await event_queue.put({
-                        'type': 'stage1_progress',
-                        'data': {
-                            'completed': completed,
-                            'total': total,
-                            'completed_models': completed_models,
-                            'pending_models': pending_models,
-                        },
-                    })
-
-                async def on_token(model: str, token: str):
-                    """Called for each token during streaming."""
-                    await event_queue.put({
-                        'type': 'stage1_token',
-                        'data': {
-                            'model': model,
-                            'token': token,
-                        },
-                    })
-
-                # Start the streaming query in a task
-                async def run_stage1():
-                    try:
-                        await stage1_collect_responses_streaming(
-                            request.content,
-                            combined_context or None,
-                            council_models,
-                            on_model_response=on_model_response,
-                            on_progress=on_progress,
-                            stream_tokens=True,
-                            on_token=on_token,
-                        )
-                    finally:
-                        # Signal completion
-                        await event_queue.put(None)
-
-                stage1_task = asyncio.create_task(run_stage1())
-
-                # Yield events as they arrive
-                while True:
-                    event = await event_queue.get()
-                    if event is None:
-                        break
-                    yield f"data: {json.dumps(event)}\n\n"
-
-                # Ensure task completed
-                await stage1_task
-
-                # Emit stage1_complete with all results
-                yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
-
-                # Update pending progress
-                storage.update_pending_progress(
-                    conversation_id, {"stage1": stage1_results}, user_id=user_id
-                )
-
-            # Start title generation in parallel (don't await yet) - only for new conversations
-            title_task = None
-            if is_first_message and not can_resume:
-                title_task = asyncio.create_task(
-                    generate_conversation_title(request.content)
-                )
-
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(
-                request.content, stage1_results, council_models
-            )
-            aggregate_rankings = calculate_aggregate_rankings(
-                stage2_results, label_to_model
-            )
-            metadata = {
-                "label_to_model": label_to_model,
-                "aggregate_rankings": aggregate_rankings,
-                "web_search_used": web_search_context is not None,
-                "web_search_error": web_search_error,
-            }
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
-
-            # Update pending progress
-            storage.update_pending_progress(
-                conversation_id,
-                {"stage1": stage1_results, "stage2": stage2_results, "metadata": metadata},
-                user_id=user_id,
-            )
-
-            # Stage 3: Synthesize final answer
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(
-                request.content, stage1_results, stage2_results, chairman_model
-            )
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
-
-            # Calculate and send aggregated metrics
-            metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
-            yield f"data: {json.dumps({'type': 'metrics_complete', 'data': metrics})}\n\n"
-
-            # Wait for title generation if it was started
-            if title_task:
-                title = await title_task
-                storage.update_conversation_title(
-                    conversation_id, title, user_id=user_id
-                )
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
-
-            # Convert to unified format and save
-            unified_result = convert_to_unified_result(
-                stage1_results,
-                stage2_results,
-                stage3_result,
-                label_to_model,
-                aggregate_rankings,
-                metrics,
-            )
-            storage.add_unified_message(
-                conversation_id,
-                unified_result,
-                user_id=user_id,
-            )
-
-            # Clear pending on success
-            storage.clear_pending(conversation_id, user_id=user_id)
-
-            # Send completion event
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
-
-        except Exception as e:
-            # Update pending with error
-            storage.update_pending_progress(
-                conversation_id, {"error": str(e)}, user_id=user_id
-            )
-            # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        async for event in run_council_pipeline(pipeline_input):
+            yield f"data: {json.dumps(event)}\n\n"
 
     async def arena_event_generator():
         """Generate events for arena mode (multi-round debate)."""
