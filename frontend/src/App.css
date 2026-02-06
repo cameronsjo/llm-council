@@ -29,6 +29,41 @@
   animation-delay: 0.1s;
 }
 
+/* Auth Expired Banner */
+.auth-expired-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--color-error, #d32f2f);
+  color: white;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  box-shadow: var(--shadow-medium);
+}
+
+.auth-expired-banner button {
+  padding: var(--space-xs) var(--space-md);
+  background: white;
+  color: var(--color-error, #d32f2f);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.auth-expired-banner button:hover {
+  opacity: 0.9;
+}
+
 /* Mobile Menu Toggle */
 .mobile-menu-toggle {
   display: none;
