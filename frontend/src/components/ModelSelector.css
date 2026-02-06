@@ -231,36 +231,19 @@
   max-height: calc(90vh - 350px);
 }
 
-/* Chairman Select */
-.chairman-select {
+/* Provider Filter Chips */
+.provider-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   width: 100%;
-  padding: var(--space-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: 0.875rem;
-  font-family: var(--font-body);
-  background: var(--color-surface);
-  cursor: pointer;
-  color: var(--color-text-primary);
-  transition: all var(--transition-fast);
+  padding-top: 4px;
 }
 
-.chairman-select:focus {
-  outline: none;
-  border-color: var(--color-burgundy);
-  box-shadow: 0 0 0 3px rgba(139, 38, 53, 0.1);
-}
-
-.chairman-select option {
-  padding: var(--space-sm);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-}
-
-.chairman-select optgroup {
-  background: var(--color-ivory);
-  color: var(--color-text-primary);
-  font-weight: 600;
+.provider-chip {
+  padding: 4px 12px;
+  font-size: 0.8125rem;
+  border-radius: 14px;
 }
 
 /* Action Buttons */

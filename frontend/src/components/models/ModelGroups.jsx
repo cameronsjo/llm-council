@@ -9,8 +9,9 @@ export function ModelItem({
   model,
   isSelected,
   onToggle,
-  variant = 'checkbox', // 'checkbox' | 'star'
+  variant = 'checkbox', // 'checkbox' | 'radio' | 'star'
   showContext = false,
+  radioName = 'model-radio',
 }) {
   const displayName = getDisplayName(model);
 
@@ -38,6 +39,33 @@ export function ModelItem({
         </span>
         {isSelected && <Check size={16} className="check-icon" />}
       </button>
+    );
+  }
+
+  // Radio variant (single-select)
+  if (variant === 'radio') {
+    return (
+      <label className="model-option">
+        <input
+          type="radio"
+          name={radioName}
+          checked={isSelected}
+          onChange={() => onToggle(model.id)}
+        />
+        <span className="model-info">
+          <span className="model-name" title={model.id}>
+            {displayName}
+          </span>
+          <span className="model-meta">
+            <span className="model-price">{formatPrice(model.pricing?.completion)}</span>
+            {showContext && model.context_length > 0 && (
+              <span className="model-context">
+                {formatContextLength(model.context_length)}
+              </span>
+            )}
+          </span>
+        </span>
+      </label>
     );
   }
 
@@ -116,6 +144,7 @@ export function ModelGroups({
   showContext = false,
   getSelectedCount = () => 0,
   getBulkAction = null,
+  radioName = 'model-radio',
 }) {
   return (
     <div className="model-groups">
@@ -148,6 +177,7 @@ export function ModelGroups({
                     onToggle={onToggleModel}
                     variant={variant}
                     showContext={showContext}
+                    radioName={radioName}
                   />
                 ))}
               </div>

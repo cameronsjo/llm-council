@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useModels, useCuratedModels, useModelFiltering, useExpandableGroups } from '../hooks';
-import { formatPrice, getDisplayName } from '../lib/models';
 import { ModelSearchBox, FilterChips, ModelGroups } from './models/index.js';
 import './ModelSelector.css';
 
@@ -15,6 +14,7 @@ export default function ModelSelector({
   onChairmanChange,
   onSave,
   onCancel,
+  filterStateRef = null,
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -22,8 +22,8 @@ export default function ModelSelector({
   const { models, loading, refreshing, error, refetch, refresh } = useModels();
   const { curatedIds, loading: curatedLoading } = useCuratedModels();
 
-  // Filtering with curated default
-  const filtering = useModelFiltering(models, curatedIds, {
+  // Filtering — restore saved filters or use curated defaults
+  const filtering = useModelFiltering(models, curatedIds, filterStateRef?.current ?? {
     showCuratedOnly: curatedIds.size > 0,
     showMajorOnly: curatedIds.size === 0,
   });
@@ -36,10 +36,28 @@ export default function ModelSelector({
     searchQuery,
     setSearchQuery,
     filters,
+    allProviders,
   } = filtering;
 
-  // Expand/collapse state
+  // Persist filter state for next modal open
+  useEffect(() => {
+    if (!filterStateRef) return;
+    filterStateRef.current = {
+      showMajorOnly: filters.showMajorOnly,
+      showFreeOnly: filters.showFreeOnly,
+      showCuratedOnly: filters.showCuratedOnly,
+      minContext: filters.minContext,
+      selectedProviders: filters.selectedProviders,
+    };
+  }, [filterStateRef, filters.showMajorOnly, filters.showFreeOnly, filters.showCuratedOnly, filters.minContext, filters.selectedProviders]);
+
+  // Expand/collapse state — separate for council and chairman sections
   const { isExpanded, toggle: toggleProvider, expandAll } = useExpandableGroups();
+  const {
+    isExpanded: isChairmanExpanded,
+    toggle: toggleChairmanProvider,
+    expandAll: expandAllChairman,
+  } = useExpandableGroups();
 
   // Auto-expand when searching
   useEffect(() => {
@@ -59,8 +77,16 @@ export default function ModelSelector({
       if (providersWithSelected.size > 0) {
         expandAll(Array.from(providersWithSelected));
       }
+
+      // Expand chairman's provider group
+      if (selectedChairman) {
+        const chairmanModel = models.find(m => m.id === selectedChairman);
+        if (chairmanModel) {
+          expandAllChairman([chairmanModel.provider || 'Other']);
+        }
+      }
     }
-  }, [models, selectedCouncil, expandAll]);
+  }, [models, selectedCouncil, selectedChairman, expandAll, expandAllChairman]);
 
   // Count selected models per provider
   const selectedPerProvider = useMemo(() => {
@@ -129,6 +155,8 @@ export default function ModelSelector({
           curatedCount={curatedIds.size}
           showCuratedFilter={true}
           showContextFilter={true}
+          showProviderChips={true}
+          allProviders={allProviders}
         />
 
         <div className="filter-results-row">
@@ -159,24 +187,20 @@ export default function ModelSelector({
       </div>
 
       <div className="selector-section">
-        <h4>Chairman</h4>
+        <h4>Chairman {selectedChairman ? '(1)' : ''}</h4>
         <p className="selector-help">The model that synthesizes the final answer</p>
-        <select
-          value={selectedChairman}
-          onChange={(e) => onChairmanChange(e.target.value)}
-          className="chairman-select"
-        >
-          <option value="">Select a chairman...</option>
-          {sortedProviders.map(provider => (
-            <optgroup key={provider} label={provider}>
-              {groupedModels[provider]?.map(model => (
-                <option key={model.id} value={model.id}>
-                  {getDisplayName(model)} ({formatPrice(model.pricing?.completion)})
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+
+        <ModelGroups
+          sortedProviders={sortedProviders}
+          groupedModels={groupedModels}
+          isExpanded={isChairmanExpanded}
+          onToggleProvider={toggleChairmanProvider}
+          isSelected={(id) => id === selectedChairman}
+          onToggleModel={onChairmanChange}
+          variant="radio"
+          radioName="chairman-model"
+          showContext={true}
+        />
       </div>
 
       <div className="selector-actions">

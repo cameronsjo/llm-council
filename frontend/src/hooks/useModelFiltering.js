@@ -13,6 +13,7 @@ const DEFAULT_FILTERS = {
   showFreeOnly: false,
   showCuratedOnly: false,
   minContext: 0,
+  selectedProviders: new Set(), // empty = show all
 };
 
 /**
@@ -41,6 +42,27 @@ export function useModelFiltering(
   const [minContext, setMinContext] = useState(
     initialFilters.minContext ?? DEFAULT_FILTERS.minContext
   );
+  const [selectedProviders, setSelectedProviders] = useState(
+    initialFilters.selectedProviders ?? DEFAULT_FILTERS.selectedProviders
+  );
+
+  const toggleProvider = (provider) => {
+    setSelectedProviders((prev) => {
+      const next = new Set(prev);
+      if (next.has(provider)) {
+        next.delete(provider);
+      } else {
+        next.add(provider);
+      }
+      return next;
+    });
+  };
+
+  // All unique providers from unfiltered model list (for chip rendering)
+  const allProviders = useMemo(() => {
+    const providers = new Set(models.map((m) => m.provider).filter(Boolean));
+    return sortProviders(Array.from(providers));
+  }, [models]);
 
   const result = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
@@ -75,6 +97,11 @@ export function useModelFiltering(
         return false;
       }
 
+      // Per-provider filter
+      if (selectedProviders.size > 0 && !selectedProviders.has(m.provider?.toLowerCase())) {
+        return false;
+      }
+
       return true;
     });
 
@@ -95,6 +122,7 @@ export function useModelFiltering(
     showFreeOnly,
     showCuratedOnly,
     minContext,
+    selectedProviders,
     curatedIds,
   ]);
 
@@ -107,6 +135,7 @@ export function useModelFiltering(
     setShowFreeOnly(DEFAULT_FILTERS.showFreeOnly);
     setShowCuratedOnly(DEFAULT_FILTERS.showCuratedOnly);
     setMinContext(DEFAULT_FILTERS.minContext);
+    setSelectedProviders(DEFAULT_FILTERS.selectedProviders);
   };
 
   /**
@@ -117,7 +146,8 @@ export function useModelFiltering(
     showMajorOnly ||
     showFreeOnly ||
     showCuratedOnly ||
-    minContext > 0;
+    minContext > 0 ||
+    selectedProviders.size > 0;
 
   return {
     // Results
@@ -137,7 +167,12 @@ export function useModelFiltering(
       setShowCuratedOnly,
       minContext,
       setMinContext,
+      selectedProviders,
+      toggleProvider,
     },
+
+    // Provider data
+    allProviders,
 
     // Utilities
     clearFilters,

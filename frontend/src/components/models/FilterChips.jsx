@@ -8,6 +8,8 @@ export function FilterChips({
   curatedCount = 0,
   showCuratedFilter = false,
   showContextFilter = false,
+  showProviderChips = false,
+  allProviders = [],
 }) {
   const {
     showMajorOnly,
@@ -18,6 +20,8 @@ export function FilterChips({
     setShowCuratedOnly,
     minContext,
     setMinContext,
+    selectedProviders,
+    toggleProvider,
   } = filters;
 
   return (
@@ -69,6 +73,19 @@ export function FilterChips({
           <option value={100000}>100K+ context</option>
           <option value={200000}>200K+ context</option>
         </select>
+      )}
+      {showProviderChips && allProviders.length > 0 && (
+        <div className="provider-chips">
+          {allProviders.map((provider) => (
+            <button
+              key={provider}
+              className={`filter-chip provider-chip ${selectedProviders?.has(provider.toLowerCase()) ? 'active' : ''}`}
+              onClick={() => toggleProvider?.(provider.toLowerCase())}
+            >
+              {provider}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -27,6 +27,7 @@ export default function Sidebar({
   const [showCuration, setShowCuration] = useState(false);
   const [pendingCouncil, setPendingCouncil] = useState(councilModels);
   const [pendingChairman, setPendingChairman] = useState(chairmanModel);
+  const filterStateRef = useRef(null);
   const { theme, cycleTheme } = useTheme();
   const modalRef = useRef(null);
 
@@ -187,6 +188,7 @@ export default function Sidebar({
               onChairmanChange={setPendingChairman}
               onSave={handleSaveConfig}
               onCancel={handleCancelConfig}
+              filterStateRef={filterStateRef}
             />
           </div>
         </div>
