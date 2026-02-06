@@ -156,6 +156,25 @@ def get_conversation(
     return conversation
 
 
+def _should_migrate_message(msg: dict[str, Any]) -> bool:
+    """Check if a message needs legacy-to-unified migration.
+
+    A message needs migration if it's an assistant message in the old
+    stage1/stage2/stage3 format (i.e., has 'stage1' but no 'rounds').
+
+    Args:
+        msg: A single message dict
+
+    Returns:
+        True if the message should be migrated
+    """
+    return (
+        msg.get("role") == "assistant"
+        and "stage1" in msg
+        and "rounds" not in msg
+    )
+
+
 def migrate_legacy_messages(conversation: dict[str, Any]) -> dict[str, Any]:
     """Migrate legacy messages to unified format in-memory.
 
@@ -171,17 +190,10 @@ def migrate_legacy_messages(conversation: dict[str, Any]) -> dict[str, Any]:
     from .council import convert_legacy_message_to_unified
 
     messages = conversation.get("messages", [])
-    migrated_messages = []
-
-    for msg in messages:
-        if msg.get("role") == "assistant":
-            # Check if it's legacy council format (has stage1 but no rounds)
-            if "stage1" in msg and "rounds" not in msg:
-                migrated_messages.append(convert_legacy_message_to_unified(msg))
-            else:
-                migrated_messages.append(msg)
-        else:
-            migrated_messages.append(msg)
+    migrated_messages = [
+        convert_legacy_message_to_unified(msg) if _should_migrate_message(msg) else msg
+        for msg in messages
+    ]
 
     conversation["messages"] = migrated_messages
     return conversation
@@ -203,6 +215,23 @@ def save_conversation(
         json.dump(conversation, f, indent=2)
 
 
+def _extract_conversation_metadata(data: dict[str, Any]) -> dict[str, Any]:
+    """Extract display metadata from a full conversation dict.
+
+    Args:
+        data: Full conversation dict loaded from JSON
+
+    Returns:
+        Metadata dict with id, created_at, title, and message_count
+    """
+    return {
+        "id": data["id"],
+        "created_at": data["created_at"],
+        "title": data.get("title", "New Conversation"),
+        "message_count": len(data.get("messages", [])),
+    }
+
+
 def list_conversations(user_id: str | None = None) -> list[dict[str, Any]]:
     """List all conversations (metadata only).
 
@@ -221,15 +250,7 @@ def list_conversations(user_id: str | None = None) -> list[dict[str, Any]]:
             path = os.path.join(data_dir, filename)
             with open(path) as f:
                 data = json.load(f)
-                # Return metadata only
-                conversations.append(
-                    {
-                        "id": data["id"],
-                        "created_at": data["created_at"],
-                        "title": data.get("title", "New Conversation"),
-                        "message_count": len(data["messages"]),
-                    }
-                )
+                conversations.append(_extract_conversation_metadata(data))
 
     # Sort by creation time, newest first
     conversations.sort(key=lambda x: x["created_at"], reverse=True)
