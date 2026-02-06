@@ -36,13 +36,24 @@ export class ApiError extends Error {
  * Use for SSE and blob endpoints that don't return JSON.
  */
 async function fetchWithAuth(url, options = {}, errorMessage = 'Request failed') {
-  const response = await fetch(url, options);
+  const method = options.method || 'GET';
+  console.debug('[api] %s %s', method, url);
+
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (err) {
+    console.error('[api] Network error on %s %s: %s', method, url, err.message);
+    throw err;
+  }
 
   if (response.redirected) {
+    console.warn('[api] Auth redirect detected. URL: %s → %s', url, response.url);
     throw new AuthRedirectError(response.url);
   }
 
   if (!response.ok) {
+    console.error('[api] HTTP %d on %s %s: %s', response.status, method, url, errorMessage);
     throw new ApiError(errorMessage, response.status);
   }
 
@@ -82,14 +93,17 @@ async function fetchSSE(url, options = {}, errorMessage = 'Stream request failed
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('text/event-stream')) {
     if (contentType.includes('text/html')) {
+      console.warn('[api:sse] Got HTML instead of event-stream. URL: %s', url);
       throw new AuthRedirectError(response.url);
     }
+    console.error('[api:sse] Unexpected content-type "%s" on %s', contentType, url);
     throw new ApiError(
       `Expected event stream but got ${contentType || 'unknown content type'}`,
       response.status,
     );
   }
 
+  console.debug('[api:sse] Stream connected. URL: %s', url);
   return response;
 }
 
@@ -102,15 +116,23 @@ async function fetchSSE(url, options = {}, errorMessage = 'Stream request failed
 async function readSSEStream(reader, onEvent, signal = null) {
   const decoder = new TextDecoder();
   let buffer = '';
+  let eventCount = 0;
 
   while (true) {
-    if (signal?.aborted) break;
+    if (signal?.aborted) {
+      console.debug('[api:sse] Stream aborted by signal after %d events', eventCount);
+      break;
+    }
 
     let result;
     try {
       result = await reader.read();
     } catch (e) {
-      if (e.name === 'AbortError') break;
+      if (e.name === 'AbortError') {
+        console.debug('[api:sse] Stream read aborted after %d events', eventCount);
+        break;
+      }
+      console.error('[api:sse] Stream read error after %d events: %s', eventCount, e.message);
       throw e;
     }
     if (result.done) break;
@@ -127,10 +149,11 @@ async function readSSEStream(reader, onEvent, signal = null) {
         if (line.startsWith('data: ')) {
           try {
             const event = JSON.parse(line.slice(6));
+            eventCount++;
             onEvent(event.type, event);
           } catch (e) {
             if (e.name === 'AbortError') break;
-            console.error('Failed to parse SSE event:', e);
+            console.error('[api:sse] Failed to parse SSE event: %s. Raw: %s', e.message, line.slice(6, 100));
           }
         }
       }
@@ -143,6 +166,7 @@ async function readSSEStream(reader, onEvent, signal = null) {
       if (line.startsWith('data: ')) {
         try {
           const event = JSON.parse(line.slice(6));
+          eventCount++;
           onEvent(event.type, event);
         } catch (e) {
           // Incomplete final event — nothing to do
@@ -150,6 +174,8 @@ async function readSSEStream(reader, onEvent, signal = null) {
       }
     }
   }
+
+  console.debug('[api:sse] Stream ended. Total events: %d', eventCount);
 }
 
 export const api = {

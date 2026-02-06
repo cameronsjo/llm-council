@@ -36,6 +36,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
   // ── Cancel ─────────────────────────────────────────────────────────────
 
   const cancelStream = useCallback(() => {
+    console.info('[stream] Cancel requested');
     abortRef.current?.abort();
     abortRef.current = null;
     dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
@@ -55,6 +56,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     const controller = new AbortController();
     abortRef.current = controller;
 
+    console.info('[stream] sendMessage. ConversationId: %s, Mode: %s, Resume: %s', conversationId, mode, resume);
     dispatch({ type: 'SET_LOADING', payload: { isLoading: true } });
     dispatch({ type: 'ADD_USER_MESSAGE', payload: { content, attachments } });
     dispatch({ type: 'ADD_ASSISTANT_MESSAGE', payload: { mode } });
@@ -75,10 +77,12 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
 
           if (eventType === 'title_complete') onTitleComplete?.();
           if (eventType === 'complete') {
+            console.info('[stream] sendMessage complete. ConversationId: %s', conversationId);
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
             onComplete?.();
           }
           if (eventType === 'error') {
+            console.error('[stream] sendMessage server error. ConversationId: %s, Event: %o', conversationId, event);
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
           }
         },
@@ -89,7 +93,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     } catch (error) {
       if (error.name === 'AbortError') return;
       if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
-      console.error('Failed to send message:', error);
+      console.error('[stream] sendMessage failed. ConversationId: %s, Error: %s', conversationId, error.message, error);
       dispatch({ type: 'ROLLBACK_OPTIMISTIC' });
       dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
     }
@@ -102,6 +106,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     const controller = new AbortController();
     abortRef.current = controller;
 
+    console.info('[stream] extendDebate. ConversationId: %s', conversationId);
     dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: true } });
 
     try {
@@ -112,10 +117,12 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
           dispatch({ type: eventType, payload: event });
 
           if (eventType === 'complete') {
+            console.info('[stream] extendDebate complete. ConversationId: %s', conversationId);
             dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
             onComplete?.();
           }
           if (eventType === 'error') {
+            console.error('[stream] extendDebate server error. ConversationId: %s, Event: %o', conversationId, event);
             dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
           }
         },
@@ -124,7 +131,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     } catch (error) {
       if (error.name === 'AbortError') return;
       if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
-      console.error('Failed to extend debate:', error);
+      console.error('[stream] extendDebate failed. ConversationId: %s, Error: %s', conversationId, error.message, error);
       dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
     }
   }, [onComplete, onAuthExpired]);
@@ -136,6 +143,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     const controller = new AbortController();
     abortRef.current = controller;
 
+    console.info('[stream] retryStage3. ConversationId: %s', conversationId);
     dispatch({ type: 'SET_LOADING', payload: { isLoading: true } });
 
     try {
@@ -143,13 +151,16 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         conversationId,
         (eventType, event) => {
           if (controller.signal.aborted) return;
+          console.debug('[stream] retryStage3 event: %s', eventType);
           dispatch({ type: eventType, payload: event });
 
           if (eventType === 'complete') {
+            console.info('[stream] retryStage3 complete. ConversationId: %s', conversationId);
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
             onComplete?.();
           }
           if (eventType === 'error') {
+            console.error('[stream] retryStage3 server error. ConversationId: %s, Event: %o', conversationId, event);
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
           }
         },
@@ -158,7 +169,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     } catch (error) {
       if (error.name === 'AbortError') return;
       if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
-      console.error('Failed to retry Stage 3:', error);
+      console.error('[stream] retryStage3 failed. ConversationId: %s, Error: %s', conversationId, error.message, error);
       dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
     }
   }, [onComplete, onAuthExpired]);
