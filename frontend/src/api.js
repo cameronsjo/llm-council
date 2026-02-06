@@ -72,6 +72,28 @@ async function fetchJSON(url, options = {}, errorMessage = 'Request failed') {
 }
 
 /**
+ * Fetch wrapper for SSE streaming endpoints.
+ * Validates content-type is text/event-stream; detects auth proxy HTML responses.
+ * @returns {Promise<Response>} The validated fetch response
+ */
+async function fetchSSE(url, options = {}, errorMessage = 'Stream request failed') {
+  const response = await fetchWithAuth(url, options, errorMessage);
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream')) {
+    if (contentType.includes('text/html')) {
+      throw new AuthRedirectError(response.url);
+    }
+    throw new ApiError(
+      `Expected event stream but got ${contentType || 'unknown content type'}`,
+      response.status,
+    );
+  }
+
+  return response;
+}
+
+/**
  * Read SSE events from a ReadableStream, buffering across chunk boundaries.
  * @param {ReadableStreamDefaultReader} reader
  * @param {function} onEvent - Called with (eventType, eventData) for each parsed event
@@ -380,7 +402,7 @@ export const api = {
       body.prior_context = priorContext;
     }
 
-    const response = await fetchWithAuth(
+    const response = await fetchSSE(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
@@ -401,7 +423,7 @@ export const api = {
    * @returns {Promise<void>}
    */
   async extendDebateStream(conversationId, onEvent, signal = null) {
-    const response = await fetchWithAuth(
+    const response = await fetchSSE(
       `${API_BASE}/api/conversations/${conversationId}/extend-debate/stream`,
       {
         method: 'POST',
@@ -419,7 +441,7 @@ export const api = {
    * Re-uses existing Stage 1+2 data, only re-runs the chairman call.
    */
   async retryStage3Stream(conversationId, onEvent, signal = null) {
-    const response = await fetchWithAuth(
+    const response = await fetchSSE(
       `${API_BASE}/api/conversations/${conversationId}/retry-stage3/stream`,
       {
         method: 'POST',
@@ -433,4 +455,4 @@ export const api = {
   },
 };
 
-export { readSSEStream, fetchJSON, fetchWithAuth };
+export { readSSEStream, fetchJSON, fetchSSE, fetchWithAuth };

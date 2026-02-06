@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchJSON, fetchWithAuth, AuthRedirectError, ApiError } from '../api.js';
+import { fetchJSON, fetchSSE, fetchWithAuth, AuthRedirectError, ApiError } from '../api.js';
 
 /**
  * Create a mock Response object matching the fetch() Response interface.
@@ -207,5 +207,94 @@ describe('fetchJSON', () => {
       expect(err).toBeInstanceOf(AuthRedirectError);
       expect(err.redirectUrl).toBe('https://auth.example.com');
     }
+  });
+});
+
+describe('fetchSSE', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('returns response when content-type is text/event-stream', async () => {
+    const resp = mockResponse({ contentType: 'text/event-stream' });
+    globalThis.fetch.mockResolvedValue(resp);
+
+    const result = await fetchSSE('/api/test');
+    expect(result).toBe(resp);
+  });
+
+  it('accepts text/event-stream with charset', async () => {
+    const resp = mockResponse({ contentType: 'text/event-stream; charset=utf-8' });
+    globalThis.fetch.mockResolvedValue(resp);
+
+    const result = await fetchSSE('/api/test');
+    expect(result).toBe(resp);
+  });
+
+  it('throws AuthRedirectError when content-type is text/html', async () => {
+    const resp = mockResponse({
+      contentType: 'text/html; charset=utf-8',
+      url: 'https://auth.example.com/login',
+    });
+    globalThis.fetch.mockResolvedValue(resp);
+
+    await expect(fetchSSE('/api/test')).rejects.toThrow(AuthRedirectError);
+  });
+
+  it('throws ApiError when content-type is application/json', async () => {
+    const resp = mockResponse({ contentType: 'application/json' });
+    globalThis.fetch.mockResolvedValue(resp);
+
+    try {
+      await fetchSSE('/api/test');
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.message).toContain('application/json');
+    }
+  });
+
+  it('throws ApiError when content-type header is missing', async () => {
+    const resp = mockResponse({ contentType: null });
+    resp.headers.get = vi.fn(() => null);
+    globalThis.fetch.mockResolvedValue(resp);
+
+    try {
+      await fetchSSE('/api/test');
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.message).toContain('unknown content type');
+    }
+  });
+
+  it('throws AuthRedirectError on redirect before checking content-type', async () => {
+    const resp = mockResponse({
+      redirected: true,
+      url: 'https://auth.example.com',
+      contentType: 'text/html',
+    });
+    globalThis.fetch.mockResolvedValue(resp);
+
+    try {
+      await fetchSSE('/api/test');
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AuthRedirectError);
+    }
+  });
+
+  it('throws ApiError on non-ok response', async () => {
+    const resp = mockResponse({ ok: false, status: 500 });
+    globalThis.fetch.mockResolvedValue(resp);
+
+    await expect(fetchSSE('/api/test', {}, 'Stream failed'))
+      .rejects.toThrow(ApiError);
   });
 });
