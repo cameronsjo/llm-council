@@ -314,17 +314,20 @@ function App() {
       setMode(pendingMode);
       await handleSendMessage(userContent, [], true); // resume=true
     } else {
-      // Full retry: Clear pending state and orphaned message on backend
-      await api.clearPending(currentConversationId);
+      // Full retry: clear pending on backend, fall back to local-only if unreachable
+      try {
+        await api.clearPending(currentConversationId);
+        const conv = await api.getConversation(currentConversationId);
+        setCurrentConversation(conv);
+      } catch (error) {
+        if (isAuthError(error, setAuthExpired)) return;
+        console.warn('Failed to clear pending on server, retrying with local state:', error.message);
+        // Strip the interrupted banner and partial message locally
+        const cleanMessages = (currentConversation.messages || []).filter((m) => !m.partial);
+        setCurrentConversation({ ...currentConversation, pendingInterrupted: false, pendingInfo: null, messages: cleanMessages });
+      }
 
-      // Reload conversation to get clean state
-      const conv = await api.getConversation(currentConversationId);
-      setCurrentConversation(conv);
-
-      // Set mode to match the interrupted request
       setMode(pendingMode);
-
-      // Re-send the message
       await handleSendMessage(userContent);
     }
   };
@@ -332,12 +335,17 @@ function App() {
   const handleDismissInterrupted = async () => {
     if (!currentConversationId) return;
 
-    // Clear pending state and orphaned message on backend
-    await api.clearPending(currentConversationId);
+    // Clear UI immediately — user shouldn't be trapped if server is down
+    const cleanMessages = (currentConversation?.messages || []).filter((m) => !m.partial);
+    setCurrentConversation({ ...currentConversation, pendingInterrupted: false, pendingInfo: null, messages: cleanMessages });
 
-    // Reload conversation
-    const conv = await api.getConversation(currentConversationId);
-    setCurrentConversation(conv);
+    // Fire-and-forget server cleanup
+    try {
+      await api.clearPending(currentConversationId);
+    } catch (error) {
+      if (isAuthError(error, setAuthExpired)) return;
+      console.warn('Failed to clear pending on server (will be cleaned up on next load):', error.message);
+    }
   };
 
   const handleForkConversation = async (originalQuestion, synthesis, sourceConversationId) => {
