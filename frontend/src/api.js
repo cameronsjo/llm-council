@@ -109,13 +109,43 @@ async function fetchSSE(url, options = {}, errorMessage = 'Stream request failed
   return response;
 }
 
+/** Default inactivity timeout for SSE reads (ms). */
+const SSE_INACTIVITY_TIMEOUT = 120_000;
+
+/**
+ * Race reader.read() against an inactivity timeout.
+ * Returns the read result, or throws SSETimeoutError if no data arrives in time.
+ */
+function readWithTimeout(reader, timeoutMs) {
+  if (!timeoutMs || timeoutMs <= 0) return reader.read();
+  return Promise.race([
+    reader.read(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new SSETimeoutError(timeoutMs)), timeoutMs),
+    ),
+  ]);
+}
+
+/**
+ * Custom error for SSE inactivity timeouts.
+ */
+class SSETimeoutError extends Error {
+  constructor(timeoutMs) {
+    super(`SSE stream inactive for ${timeoutMs / 1000}s`);
+    this.name = 'SSETimeoutError';
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 /**
  * Read SSE events from a ReadableStream, buffering across chunk boundaries.
  * @param {ReadableStreamDefaultReader} reader
  * @param {function} onEvent - Called with (eventType, eventData) for each parsed event
  * @param {AbortSignal|null} signal - Optional abort signal
+ * @param {Object} [options]
+ * @param {number} [options.inactivityTimeout] - Max ms between chunks before timeout (0 to disable)
  */
-async function readSSEStream(reader, onEvent, signal = null) {
+async function readSSEStream(reader, onEvent, signal = null, { inactivityTimeout = SSE_INACTIVITY_TIMEOUT } = {}) {
   const decoder = new TextDecoder();
   let buffer = '';
   let eventCount = 0;
@@ -128,13 +158,17 @@ async function readSSEStream(reader, onEvent, signal = null) {
 
     let result;
     try {
-      result = await reader.read();
+      result = await readWithTimeout(reader, inactivityTimeout);
     } catch (e) {
       if (e.name === 'AbortError') {
         console.debug('[api:sse] Stream read aborted after %d events', eventCount);
         break;
       }
-      console.error('[api:sse] Stream read error after %d events: %s', eventCount, e.message);
+      if (e.name === 'SSETimeoutError') {
+        console.warn('[api:sse] Stream timed out after %d events (%ds inactive)', eventCount, inactivityTimeout / 1000);
+      } else {
+        console.error('[api:sse] Stream read error after %d events: %s', eventCount, e.message);
+      }
       throw e;
     }
     if (result.done) break;
@@ -483,4 +517,4 @@ export const api = {
   },
 };
 
-export { readSSEStream, fetchJSON, fetchSSE, fetchWithAuth };
+export { readSSEStream, SSETimeoutError, fetchJSON, fetchSSE, fetchWithAuth };

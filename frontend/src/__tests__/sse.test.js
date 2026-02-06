@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { readSSEStream } from '../api.js';
+import { readSSEStream, SSETimeoutError } from '../api.js';
 
 /**
  * Create a mock ReadableStreamDefaultReader from an array of string chunks.
@@ -170,5 +170,79 @@ describe('readSSEStream', () => {
     expect(events).toHaveLength(2);
     expect(events[0].type).toBe('a');
     expect(events[1].type).toBe('b');
+  });
+
+  it('throws SSETimeoutError when reader.read() stalls past inactivityTimeout', async () => {
+    const events = [];
+    // Reader delivers one event then hangs forever
+    const encoder = new TextEncoder();
+    let readCount = 0;
+    const reader = {
+      read: vi.fn(async () => {
+        readCount++;
+        if (readCount === 1) {
+          return { done: false, value: encoder.encode('data: {"type":"first"}\n\n') };
+        }
+        // Hang — never resolves (timeout will fire first)
+        return new Promise(() => {});
+      }),
+    };
+
+    await expect(
+      readSSEStream(reader, (type, event) => events.push({ type, event }), null, { inactivityTimeout: 50 }),
+    ).rejects.toThrow(SSETimeoutError);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('first');
+  });
+
+  it('does not timeout when inactivityTimeout is 0 (disabled)', async () => {
+    const events = [];
+    const reader = mockReader([
+      'data: {"type":"ok"}\n\n',
+    ]);
+
+    // Should complete normally with timeout disabled
+    await readSSEStream(reader, (type, event) => events.push({ type, event }), null, { inactivityTimeout: 0 });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('ok');
+  });
+
+  it('resets timeout between chunks (only fires on inactivity)', async () => {
+    const events = [];
+    const encoder = new TextEncoder();
+    let readCount = 0;
+
+    const reader = {
+      read: vi.fn(async () => {
+        readCount++;
+        if (readCount <= 3) {
+          // Deliver chunks with small delays (well within timeout)
+          await new Promise((r) => setTimeout(r, 10));
+          return { done: false, value: encoder.encode(`data: {"type":"event${readCount}"}\n\n`) };
+        }
+        return { done: true, value: undefined };
+      }),
+    };
+
+    // 100ms timeout, but each chunk arrives in 10ms — should not timeout
+    await readSSEStream(reader, (type, event) => events.push({ type, event }), null, { inactivityTimeout: 100 });
+
+    expect(events).toHaveLength(3);
+  });
+
+  it('stream ending without terminal event resolves cleanly', async () => {
+    const events = [];
+    // Stream sends stage1_start but never sends complete/error
+    const reader = mockReader([
+      'data: {"type":"stage1_start"}\n\n',
+    ]);
+
+    await readSSEStream(reader, (type, event) => events.push({ type, event }));
+
+    // readSSEStream should resolve (not hang) — the hook layer handles missing terminal events
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('stage1_start');
   });
 });
