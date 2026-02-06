@@ -1,12 +1,117 @@
 """Tests for pure functions in backend.council."""
 
 from backend.council import (
+    STAGE2_SYSTEM_PROMPT,
+    _build_ranking_prompt,
     aggregate_metrics,
     calculate_aggregate_rankings,
     convert_legacy_message_to_unified,
     convert_to_unified_result,
+    generate_response_labels,
     parse_ranking_from_text,
 )
+
+
+# ---------------------------------------------------------------------------
+# generate_response_labels
+# ---------------------------------------------------------------------------
+
+class TestGenerateResponseLabels:
+    """Tests for generate_response_labels."""
+
+    def test_zero_labels(self):
+        """Zero count returns empty list."""
+        assert generate_response_labels(0) == []
+
+    def test_single_label(self):
+        """Single label is A."""
+        assert generate_response_labels(1) == ["A"]
+
+    def test_first_26_are_single_letters(self):
+        """First 26 labels are A through Z."""
+        labels = generate_response_labels(26)
+        assert labels[0] == "A"
+        assert labels[25] == "Z"
+        assert len(labels) == 26
+
+    def test_27th_label_is_aa(self):
+        """27th label (index 26) is AA, not a non-letter character."""
+        labels = generate_response_labels(27)
+        assert labels[26] == "AA"
+
+    def test_28th_label_is_ab(self):
+        """28th label is AB."""
+        labels = generate_response_labels(28)
+        assert labels[27] == "AB"
+
+    def test_52nd_label_is_az(self):
+        """52nd label (index 51) is AZ."""
+        labels = generate_response_labels(52)
+        assert labels[51] == "AZ"
+
+    def test_53rd_label_is_ba(self):
+        """53rd label (index 52) is BA."""
+        labels = generate_response_labels(53)
+        assert labels[52] == "BA"
+
+    def test_all_labels_unique(self):
+        """100 labels are all unique."""
+        labels = generate_response_labels(100)
+        assert len(labels) == len(set(labels))
+
+    def test_all_labels_are_uppercase_alpha(self):
+        """All generated labels contain only uppercase letters."""
+        labels = generate_response_labels(100)
+        for label in labels:
+            assert label.isalpha() and label.isupper(), f"Bad label: {label!r}"
+
+
+# ---------------------------------------------------------------------------
+# _build_ranking_prompt
+# ---------------------------------------------------------------------------
+
+class TestBuildRankingPrompt:
+    """Tests for _build_ranking_prompt."""
+
+    def test_contains_user_query(self):
+        """Prompt includes the user query."""
+        prompt = _build_ranking_prompt("What is Python?", "Response A:\nAnswer")
+        assert "What is Python?" in prompt
+
+    def test_contains_responses_text(self):
+        """Prompt includes the responses text."""
+        prompt = _build_ranking_prompt("Q?", "Response A:\nFoo\n\nResponse B:\nBar")
+        assert "Response A:\nFoo" in prompt
+        assert "Response B:\nBar" in prompt
+
+    def test_contains_final_ranking_instructions(self):
+        """Prompt includes FINAL RANKING format instructions."""
+        prompt = _build_ranking_prompt("Q?", "Response A:\nTest")
+        assert "FINAL RANKING:" in prompt
+        assert "1. Response A" in prompt
+
+    def test_contains_evaluation_criteria(self):
+        """Prompt includes evaluation criteria."""
+        prompt = _build_ranking_prompt("Q?", "Response A:\nTest")
+        assert "Accuracy" in prompt
+        assert "Completeness" in prompt
+
+
+# ---------------------------------------------------------------------------
+# STAGE2_SYSTEM_PROMPT
+# ---------------------------------------------------------------------------
+
+class TestStage2SystemPrompt:
+    """Tests for STAGE2_SYSTEM_PROMPT constant."""
+
+    def test_is_nonempty_string(self):
+        """System prompt is a non-empty string."""
+        assert isinstance(STAGE2_SYSTEM_PROMPT, str)
+        assert len(STAGE2_SYSTEM_PROMPT) > 0
+
+    def test_mentions_evaluator_role(self):
+        """System prompt establishes the evaluator role."""
+        assert "evaluator" in STAGE2_SYSTEM_PROMPT.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +213,29 @@ class TestParseRankingFromText:
             "2.Response B\n"
         )
         assert parse_ranking_from_text(text) == ["Response A", "Response B"]
+
+    def test_multi_letter_labels_in_numbered_list(self):
+        """Multi-letter labels (AA, AB) parse correctly in numbered format."""
+        text = (
+            "FINAL RANKING:\n"
+            "1. Response AA\n"
+            "2. Response AB\n"
+            "3. Response Z\n"
+        )
+        assert parse_ranking_from_text(text) == [
+            "Response AA",
+            "Response AB",
+            "Response Z",
+        ]
+
+    def test_multi_letter_labels_fallback(self):
+        """Multi-letter labels parse via fallback (no FINAL RANKING header)."""
+        text = "Best is Response AA, then Response BA, then Response A."
+        assert parse_ranking_from_text(text) == [
+            "Response AA",
+            "Response BA",
+            "Response A",
+        ]
 
 
 # ---------------------------------------------------------------------------
