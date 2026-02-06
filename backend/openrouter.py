@@ -24,17 +24,21 @@ RETRYABLE_STATUS_CODES = {408, 429, 502, 503}
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
 
-def _extract_error_message(response: httpx.Response) -> str:
+async def _extract_error_message(response: httpx.Response) -> str:
     """Extract the error message from an OpenRouter error response body.
 
     OpenRouter returns: { "error": { "code": int, "message": str, "metadata": {...} } }
     Falls back to the raw status text if parsing fails.
+
+    Calls aread() first to ensure the body is buffered — required when the
+    response comes from a streaming request (client.stream()).
     """
     try:
+        await response.aread()
         body = response.json()
         return body.get("error", {}).get("message", response.text[:200])
     except Exception:
-        return response.text[:200]
+        return f"HTTP {response.status_code}"
 
 
 # Module-level shared client (lazy-initialized)
@@ -145,7 +149,7 @@ async def query_model(
 
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
-                error_msg = _extract_error_message(e.response)
+                error_msg = await _extract_error_message(e.response)
 
                 if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
                     delay = RETRY_BASE_DELAY * (2 ** attempt)
@@ -399,7 +403,7 @@ async def query_model_streaming(
 
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
-                error_msg = _extract_error_message(e.response)
+                error_msg = await _extract_error_message(e.response)
 
                 if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
                     delay = RETRY_BASE_DELAY * (2 ** attempt)

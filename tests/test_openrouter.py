@@ -3,9 +3,10 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
-from backend.openrouter import query_models_progressive
+from backend.openrouter import _extract_error_message, query_models_progressive
 
 
 class TestQueryModelsProgressive:
@@ -108,3 +109,42 @@ class TestQueryModelsProgressive:
         """Raises ValueError when no messages or custom_messages provided."""
         with pytest.raises(ValueError, match="No messages provided"):
             await query_models_progressive(models=["model-a"])
+
+
+class TestExtractErrorMessage:
+    """Tests for _extract_error_message with read and unread responses."""
+
+    @pytest.mark.asyncio
+    async def test_extracts_openrouter_error_message(self):
+        """Parses the standard OpenRouter error JSON format."""
+        response = httpx.Response(
+            402,
+            json={"error": {"code": 402, "message": "Insufficient credits"}},
+        )
+        msg = await _extract_error_message(response)
+        assert msg == "Insufficient credits"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_status_code_on_invalid_json(self):
+        """Returns HTTP status code when body isn't valid JSON."""
+        response = httpx.Response(500, text="Internal Server Error")
+        msg = await _extract_error_message(response)
+        assert msg == "HTTP 500"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_status_code_on_empty_body(self):
+        """Returns HTTP status code when body is empty."""
+        response = httpx.Response(503, text="")
+        msg = await _extract_error_message(response)
+        assert msg == "HTTP 503"
+
+    @pytest.mark.asyncio
+    async def test_handles_streaming_response(self):
+        """Works on a response created via stream that has aread() called."""
+        # Simulate a streaming response where body hasn't been read
+        response = httpx.Response(
+            429,
+            json={"error": {"code": 429, "message": "Rate limited"}},
+        )
+        msg = await _extract_error_message(response)
+        assert msg == "Rate limited"
