@@ -6,6 +6,65 @@
 // VITE_API_URL can override for development with separate servers
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+/**
+ * Read SSE events from a ReadableStream, buffering across chunk boundaries.
+ * @param {ReadableStreamDefaultReader} reader
+ * @param {function} onEvent - Called with (eventType, eventData) for each parsed event
+ * @param {AbortSignal|null} signal - Optional abort signal
+ */
+async function readSSEStream(reader, onEvent, signal = null) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    if (signal?.aborted) break;
+
+    let result;
+    try {
+      result = await reader.read();
+    } catch (e) {
+      if (e.name === 'AbortError') break;
+      throw e;
+    }
+    if (result.done) break;
+
+    buffer += decoder.decode(result.value, { stream: true });
+
+    // SSE events are delimited by double newlines
+    const parts = buffer.split('\n\n');
+    // Last element is either empty (if buffer ended on \n\n) or an incomplete event
+    buffer = parts.pop();
+
+    for (const part of parts) {
+      for (const line of part.split('\n')) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6));
+            onEvent(event.type, event);
+          } catch (e) {
+            if (e.name === 'AbortError') break;
+            console.error('Failed to parse SSE event:', e);
+          }
+        }
+      }
+    }
+  }
+
+  // Flush any remaining buffered data
+  if (buffer.trim()) {
+    for (const line of buffer.split('\n')) {
+      if (line.startsWith('data: ')) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          onEvent(event.type, event);
+        } catch (e) {
+          // Incomplete final event — nothing to do
+        }
+      }
+    }
+  }
+}
+
 export const api = {
   /**
    * Get API configuration (feature flags).
@@ -359,35 +418,7 @@ export const api = {
       throw new Error('Failed to send message');
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      let result;
-      try {
-        result = await reader.read();
-      } catch (e) {
-        if (e.name === 'AbortError') break;
-        throw e;
-      }
-      if (result.done) break;
-
-      const chunk = decoder.decode(result.value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (e) {
-            if (e.name === 'AbortError') break;
-            console.error('Failed to parse SSE event:', e);
-          }
-        }
-      }
-    }
+    await readSSEStream(response.body.getReader(), onEvent, signal);
   },
 
   /**
@@ -412,34 +443,8 @@ export const api = {
       throw new Error('Failed to extend debate');
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      let result;
-      try {
-        result = await reader.read();
-      } catch (e) {
-        if (e.name === 'AbortError') break;
-        throw e;
-      }
-      if (result.done) break;
-
-      const chunk = decoder.decode(result.value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (e) {
-            if (e.name === 'AbortError') break;
-            console.error('Failed to parse SSE event:', e);
-          }
-        }
-      }
-    }
+    await readSSEStream(response.body.getReader(), onEvent, signal);
   },
 };
+
+export { readSSEStream };
