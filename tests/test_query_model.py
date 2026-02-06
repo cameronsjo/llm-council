@@ -9,10 +9,66 @@ import pytest
 from backend.openrouter import (
     MAX_RETRIES,
     RETRYABLE_STATUS_CODES,
+    ModelError,
+    _classify_error,
     close_shared_client,
     get_shared_client,
+    is_model_error,
     query_model,
 )
+
+
+class TestModelError:
+    """Tests for ModelError dataclass, _classify_error, and is_model_error."""
+
+    def test_model_error_fields(self):
+        err = ModelError(model="openai/gpt-4o", status_code=402, category="billing", message="Insufficient credits")
+        assert err.model == "openai/gpt-4o"
+        assert err.status_code == 402
+        assert err.category == "billing"
+        assert err.message == "Insufficient credits"
+
+    def test_model_error_is_frozen(self):
+        err = ModelError(model="m", status_code=500, category="unknown", message="fail")
+        with pytest.raises(AttributeError):
+            err.model = "other"
+
+    def test_to_dict(self):
+        err = ModelError(model="m", status_code=429, category="rate_limit", message="slow down")
+        d = err.to_dict()
+        assert d == {"model": "m", "status_code": 429, "category": "rate_limit", "message": "slow down"}
+
+    def test_to_dict_with_none_status(self):
+        err = ModelError(model="m", status_code=None, category="timeout", message="timed out")
+        assert err.to_dict()["status_code"] is None
+
+    @pytest.mark.parametrize("status,expected", [
+        (402, "billing"),
+        (401, "auth"),
+        (429, "rate_limit"),
+        (408, "transient"),
+        (502, "transient"),
+        (503, "transient"),
+        (None, "timeout"),
+        (400, "unknown"),
+        (500, "unknown"),
+        (200, "unknown"),
+    ])
+    def test_classify_error(self, status: int | None, expected: str):
+        assert _classify_error(status) == expected
+
+    def test_is_model_error_true(self):
+        err = ModelError(model="m", status_code=500, category="unknown", message="fail")
+        assert is_model_error(err) is True
+
+    def test_is_model_error_false_for_dict(self):
+        assert is_model_error({"content": "hello"}) is False
+
+    def test_is_model_error_false_for_none(self):
+        assert is_model_error(None) is False
+
+    def test_is_model_error_false_for_string(self):
+        assert is_model_error("error") is False
 
 
 @pytest.fixture(autouse=True)
@@ -128,7 +184,10 @@ class TestQueryModel:
              patch("backend.openrouter.RETRY_BASE_DELAY", 0):
             result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
-        assert result is None
+        assert is_model_error(result)
+        assert result.model == "model-a"
+        assert result.status_code == 429
+        assert result.category == "rate_limit"
         assert mock_post.call_count == MAX_RETRIES
 
     @pytest.mark.asyncio
@@ -142,23 +201,30 @@ class TestQueryModel:
         with patch.object(get_shared_client(), "post", mock_post):
             result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
-        assert result is None
+        assert is_model_error(result)
+        assert result.status_code == 400
+        assert result.category == "unknown"
         assert mock_post.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_timeout_returns_none(self):
+    async def test_timeout_returns_model_error(self):
         mock_post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
 
         with patch.object(get_shared_client(), "post", mock_post):
             result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
-        assert result is None
+        assert is_model_error(result)
+        assert result.status_code is None
+        assert result.category == "timeout"
 
     @pytest.mark.asyncio
-    async def test_unexpected_error_returns_none(self):
+    async def test_unexpected_error_returns_model_error(self):
         mock_post = AsyncMock(side_effect=RuntimeError("something broke"))
 
         with patch.object(get_shared_client(), "post", mock_post):
             result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
-        assert result is None
+        assert is_model_error(result)
+        assert result.status_code is None
+        assert result.category == "unknown"
+        assert "something broke" in result.message

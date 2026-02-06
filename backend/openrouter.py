@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Awaitable
 
 import httpx
@@ -12,6 +13,44 @@ from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
 from .telemetry import get_tracer, is_telemetry_enabled
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ModelError:
+    """Structured error from a failed model query."""
+
+    model: str
+    status_code: int | None  # HTTP status; None for timeouts
+    category: str  # billing | auth | rate_limit | transient | timeout | unknown
+    message: str  # Human-readable detail from OpenRouter
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "status_code": self.status_code,
+            "category": self.category,
+            "message": self.message,
+        }
+
+
+def _classify_error(status_code: int | None) -> str:
+    """Classify an HTTP status code into an error category."""
+    if status_code == 402:
+        return "billing"
+    if status_code == 401:
+        return "auth"
+    if status_code == 429:
+        return "rate_limit"
+    if status_code in (408, 502, 503):
+        return "transient"
+    if status_code is None:
+        return "timeout"
+    return "unknown"
+
+
+def is_model_error(result: Any) -> bool:
+    """Check if a query result is a ModelError (as opposed to a successful response)."""
+    return isinstance(result, ModelError)
 
 
 # Type aliases for streaming callbacks
@@ -68,7 +107,7 @@ async def query_model(
     model: str,
     messages: list[dict[str, str]],
     timeout: float = 120.0
-) -> dict[str, Any] | None:
+) -> dict[str, Any] | ModelError:
     """
     Query a single model via OpenRouter API.
 
@@ -80,7 +119,8 @@ async def query_model(
         timeout: Request timeout in seconds
 
     Returns:
-        Response dict with 'content', optional 'reasoning_details', and 'metrics', or None if failed
+        Response dict with 'content', optional 'reasoning_details', and 'metrics',
+        or ModelError if the query failed.
     """
     tracer = get_tracer()
     span_attributes = {
@@ -180,7 +220,7 @@ async def query_model(
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, f"HTTP {status}: {error_msg}"))
-                return None
+                return ModelError(model, status, _classify_error(status), error_msg)
 
             except httpx.TimeoutException as e:
                 logger.error("Timeout querying %s after %.0fs: %s", model, timeout, e)
@@ -188,7 +228,7 @@ async def query_model(
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
-                return None
+                return ModelError(model, None, "timeout", str(e))
 
             except Exception as e:
                 logger.error("Unexpected error querying %s: %s", model, e)
@@ -196,9 +236,9 @@ async def query_model(
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, str(e)))
-                return None
+                return ModelError(model, None, "unknown", str(e))
 
-        return None
+        return ModelError(model, None, "unknown", "Exhausted retries")
 
 
 async def query_models_parallel(
@@ -251,15 +291,17 @@ async def query_models_parallel(
         result = dict(zip(models, responses))
 
         # Record success/failure counts
-        success_count = sum(1 for r in responses if r is not None)
+        success_count = sum(1 for r in responses if not is_model_error(r) and r is not None)
         failure_count = len(responses) - success_count
         parallel_duration_ms = int((time.time() - parallel_start) * 1000)
 
         if failure_count > 0:
-            failed_models = [m for m, r in result.items() if r is None]
+            failed_models = [m for m, r in result.items() if is_model_error(r) or r is None]
+            failed_categories = [r.category for r in responses if is_model_error(r)]
             logger.warning(
-                "Parallel query completed with failures. Succeeded: %d, Failed: %d, FailedModels: %s, Duration: %dms",
-                success_count, failure_count, ", ".join(failed_models), parallel_duration_ms,
+                "Parallel query completed with failures. Succeeded: %d, Failed: %d, FailedModels: %s, Categories: %s, Duration: %dms",
+                success_count, failure_count, ", ".join(failed_models),
+                ", ".join(failed_categories) or "unknown", parallel_duration_ms,
             )
         else:
             logger.info(
@@ -281,7 +323,7 @@ async def query_model_streaming(
     messages: list[dict[str, str]],
     on_token: OnTokenCallback | None = None,
     timeout: float = 120.0
-) -> dict[str, Any] | None:
+) -> dict[str, Any] | ModelError:
     """
     Query a single model via OpenRouter API with token-level streaming.
 
@@ -292,7 +334,8 @@ async def query_model_streaming(
         timeout: Request timeout in seconds
 
     Returns:
-        Response dict with 'content', optional 'reasoning_details', and 'metrics', or None if failed
+        Response dict with 'content', optional 'reasoning_details', and 'metrics',
+        or ModelError if the query failed.
     """
     tracer = get_tracer()
     span_attributes = {
@@ -434,7 +477,7 @@ async def query_model_streaming(
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, f"HTTP {status}: {error_msg}"))
-                return None
+                return ModelError(model, status, _classify_error(status), error_msg)
 
             except httpx.TimeoutException as e:
                 if attempt < MAX_RETRIES - 1:
@@ -451,7 +494,7 @@ async def query_model_streaming(
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
-                return None
+                return ModelError(model, None, "timeout", str(e))
 
             except Exception as e:
                 logger.error("Unexpected error streaming %s: %s", model, e)
@@ -459,9 +502,9 @@ async def query_model_streaming(
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, str(e)))
-                return None
+                return ModelError(model, None, "unknown", str(e))
 
-        return None
+        return ModelError(model, None, "unknown", "Exhausted retries")
 
 
 async def query_models_progressive(
@@ -558,12 +601,12 @@ async def query_models_progressive(
                     )
 
         # Record success/failure counts
-        success_count = sum(1 for r in results.values() if r is not None)
+        success_count = sum(1 for r in results.values() if not is_model_error(r) and r is not None)
         failure_count = len(results) - success_count
         progressive_duration_ms = int((time.time() - progressive_start) * 1000)
 
         if failure_count > 0:
-            failed_models = [m for m, r in results.items() if r is None]
+            failed_models = [m for m, r in results.items() if is_model_error(r) or r is None]
             logger.warning(
                 "Progressive query completed with failures. Succeeded: %d, Failed: %d, FailedModels: %s, Duration: %dms",
                 success_count, failure_count, ", ".join(failed_models), progressive_duration_ms,

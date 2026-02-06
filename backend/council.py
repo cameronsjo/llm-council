@@ -4,7 +4,7 @@ import logging
 import re
 import time
 from collections import defaultdict
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from .config import get_chairman_model, get_council_models
 from .deliberation import (
@@ -16,6 +16,8 @@ from .deliberation import (
     Synthesis,
 )
 from .openrouter import (
+    ModelError,
+    is_model_error,
     query_model,
     query_models_parallel,
     query_models_progressive,
@@ -151,11 +153,15 @@ def _format_model_result(model: str, response: dict) -> dict[str, Any]:
     return result
 
 
+OnModelErrorCallback = Callable[[str, "ModelError"], Awaitable[None]]  # (model, error) -> None
+
+
 async def stage1_collect_responses(
     user_query: str,
     web_search_context: str | None = None,
     council_models: list[str] | None = None,
     on_model_response: OnModelCompleteCallback | None = None,
+    on_model_error: OnModelErrorCallback | None = None,
     on_progress: OnProgressCallback | None = None,
     stream_tokens: bool = False,
     on_token: OnTokenCallback | None = None,
@@ -208,12 +214,16 @@ async def stage1_collect_responses(
         if streaming:
             stage1_results: list[dict[str, Any]] = []
 
-            async def handle_model_complete(model: str, response: dict | None):
-                if response is not None:
+            async def handle_model_complete(model: str, response: dict | ModelError | None):
+                if response is not None and not is_model_error(response):
                     result = _format_model_result(model, response)
                     stage1_results.append(result)
                     if on_model_response:
                         await on_model_response(model, result)
+                elif is_model_error(response):
+                    logger.warning("Model %s failed in stage 1. Category: %s, Detail: %s", model, response.category, response.message)
+                    if on_model_error:
+                        await on_model_error(model, response)
                 else:
                     logger.warning("Model %s failed to respond in stage 1.", model)
 
@@ -229,8 +239,10 @@ async def stage1_collect_responses(
             responses = await query_models_parallel(effective_council, messages)
             stage1_results = []
             for model, response in responses.items():
-                if response is not None:
+                if response is not None and not is_model_error(response):
                     stage1_results.append(_format_model_result(model, response))
+                elif is_model_error(response):
+                    logger.warning("Model %s failed in stage 1. Category: %s, Detail: %s", model, response.category, response.message)
                 else:
                     logger.warning("Model %s failed to respond in stage 1.", model)
 
@@ -308,7 +320,7 @@ async def stage2_collect_rankings(
         stage2_results = []
         failed_models = []
         for model, response in responses.items():
-            if response is not None:
+            if response is not None and not is_model_error(response):
                 full_text = response.get('content', '')
                 parsed = parse_ranking_from_text(full_text)
                 result = {
@@ -425,11 +437,11 @@ Now provide your synthesis - the truth as best you can determine it:"""
 
         # Query the chairman model with one retry (most important single call)
         response = await query_model(effective_chairman, messages)
-        if response is None:
+        if response is None or is_model_error(response):
             logger.warning("Chairman model %s failed on first attempt, retrying.", effective_chairman)
             response = await query_model(effective_chairman, messages)
 
-        if response is None:
+        if response is None or is_model_error(response):
             stage_duration = time.monotonic() - stage_start
             logger.error(
                 "Failed Stage 3 synthesis, chairman failed after retry. Chairman: %s, Duration: %.2fs",
@@ -438,9 +450,18 @@ Now provide your synthesis - the truth as best you can determine it:"""
             if is_telemetry_enabled():
                 from opentelemetry.trace import Status, StatusCode
                 span.set_status(Status(StatusCode.ERROR, "Chairman model failed"))
+
+            # Build category-specific error message
+            error_msg = "Error: Unable to generate final synthesis."
+            if is_model_error(response):
+                if response.category == "billing":
+                    error_msg = "Error: Unable to generate — insufficient OpenRouter credits."
+                elif response.category == "auth":
+                    error_msg = "Error: Unable to generate — API key invalid."
+
             return {
                 "model": effective_chairman,
-                "response": "Error: Unable to generate final synthesis.",
+                "response": error_msg,
                 "metrics": {}
             }
 
@@ -659,7 +680,7 @@ Title:"""
     # Use gemini-2.5-flash for title generation (fast and cheap)
     response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
 
-    if response is None:
+    if response is None or is_model_error(response):
         # Fallback to a generic title
         return "New Conversation"
 

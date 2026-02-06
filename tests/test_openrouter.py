@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from backend.openrouter import _extract_error_message, query_models_progressive
+from backend.openrouter import (
+    ModelError,
+    _extract_error_message,
+    is_model_error,
+    query_models_progressive,
+)
 
 
 class TestQueryModelsProgressive:
@@ -71,17 +76,19 @@ class TestQueryModelsProgressive:
         assert progress_updates[-1] == (2, 2)  # final update: all complete
 
     @pytest.mark.asyncio
-    async def test_failed_model_returns_none(self):
-        """A model that fails returns None in results dict."""
+    async def test_failed_model_returns_model_error(self):
+        """A model that fails returns ModelError in results dict."""
+        error = ModelError(model="model-a", status_code=500, category="unknown", message="HTTP 500")
         with patch("backend.openrouter.query_model", new_callable=AsyncMock) as mock_query:
-            mock_query.return_value = None
+            mock_query.return_value = error
 
             results = await query_models_progressive(
                 models=["model-a"],
                 messages=[{"role": "user", "content": "hello"}],
             )
 
-        assert results["model-a"] is None
+        assert is_model_error(results["model-a"])
+        assert results["model-a"].category == "unknown"
 
     @pytest.mark.asyncio
     async def test_custom_messages_per_model(self):

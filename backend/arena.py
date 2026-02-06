@@ -14,7 +14,7 @@ from .deliberation import (
     RoundType,
     Synthesis,
 )
-from .openrouter import query_model, query_models_parallel
+from .openrouter import is_model_error, query_model, query_models_parallel
 from .telemetry import get_tracer, is_telemetry_enabled
 
 logger = logging.getLogger(__name__)
@@ -234,7 +234,7 @@ async def round1_initial_positions(
         round_responses = []
         for label, model in participant_mapping.items():
             response = responses.get(model)
-            if response is not None:
+            if response is not None and not is_model_error(response):
                 round_responses.append(
                     {
                         "participant": label,
@@ -319,7 +319,7 @@ async def round_n_deliberation(
         round_responses = []
         for label, model in participant_mapping.items():
             response = responses.get(model)
-            if response is not None:
+            if response is not None and not is_model_error(response):
                 round_responses.append(
                     {
                         "participant": label,
@@ -393,7 +393,7 @@ async def final_synthesis(
         # Use chairman model for synthesis
         response = await query_model(effective_chairman, messages)
 
-        if response is None:
+        if response is None or is_model_error(response):
             synthesis_duration = time.monotonic() - synthesis_start
             logger.error(
                 "Failed arena synthesis, chairman returned no response. Chairman: %s, Duration: %.2fs",
