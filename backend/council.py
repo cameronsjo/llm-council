@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 from collections import defaultdict
 from typing import Any
 
@@ -197,6 +198,11 @@ async def stage1_collect_responses(
     }
 
     with tracer.start_as_current_span("council.stage1_collect_responses", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning Stage 1 collect_responses. Models: %d, HasWebContext: %s, Streaming: %s",
+            len(effective_council), web_search_context is not None, streaming,
+        )
+        stage_start = time.monotonic()
         messages = _build_stage1_messages(user_query, web_search_context)
 
         if streaming:
@@ -227,6 +233,12 @@ async def stage1_collect_responses(
                     stage1_results.append(_format_model_result(model, response))
                 else:
                     logger.warning("Model %s failed to respond in stage 1.", model)
+
+        stage_duration = time.monotonic() - stage_start
+        logger.info(
+            "Successfully completed Stage 1. Responses: %d/%d, Duration: %.2fs",
+            len(stage1_results), len(effective_council), stage_duration,
+        )
 
         if is_telemetry_enabled():
             span.set_attribute("council.response_count", len(stage1_results))
@@ -261,6 +273,12 @@ async def stage2_collect_rankings(
     }
 
     with tracer.start_as_current_span("council.stage2_collect_rankings", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning Stage 2 collect_rankings. Models: %d, ResponsesToRank: %d",
+            len(effective_council), len(stage1_results),
+        )
+        stage_start = time.monotonic()
+
         # Create anonymized labels for responses (A, B, C, ..., Z, AA, AB, ...)
         labels = generate_response_labels(len(stage1_results))
 
@@ -311,6 +329,12 @@ async def stage2_collect_rankings(
                 "Stage 2 ranking failed for models: %s", ", ".join(failed_models)
             )
 
+        stage_duration = time.monotonic() - stage_start
+        logger.info(
+            "Successfully completed Stage 2. Rankings: %d/%d, Duration: %.2fs",
+            len(stage2_results), len(effective_council), stage_duration,
+        )
+
         # Record ranking count in span
         if is_telemetry_enabled():
             span.set_attribute("council.ranking_count", len(stage2_results))
@@ -348,6 +372,12 @@ async def stage3_synthesize_final(
     }
 
     with tracer.start_as_current_span("council.stage3_synthesize_final", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning Stage 3 synthesis. Chairman: %s, Stage1Responses: %d, Stage2Rankings: %d",
+            effective_chairman, len(stage1_results), len(stage2_results),
+        )
+        stage_start = time.monotonic()
+
         # Build comprehensive context for chairman using ANONYMOUS labels
         # Stage 2 uses "Response A, B, C..." — reuse the same labels here
         # so the chairman never sees real model names
@@ -400,7 +430,11 @@ Now provide your synthesis - the truth as best you can determine it:"""
             response = await query_model(effective_chairman, messages)
 
         if response is None:
-            logger.error("Chairman model %s failed after retry.", effective_chairman)
+            stage_duration = time.monotonic() - stage_start
+            logger.error(
+                "Failed Stage 3 synthesis, chairman failed after retry. Chairman: %s, Duration: %.2fs",
+                effective_chairman, stage_duration,
+            )
             if is_telemetry_enabled():
                 from opentelemetry.trace import Status, StatusCode
                 span.set_status(Status(StatusCode.ERROR, "Chairman model failed"))
@@ -409,6 +443,12 @@ Now provide your synthesis - the truth as best you can determine it:"""
                 "response": "Error: Unable to generate final synthesis.",
                 "metrics": {}
             }
+
+        stage_duration = time.monotonic() - stage_start
+        logger.info(
+            "Successfully completed Stage 3 synthesis. Chairman: %s, Duration: %.2fs",
+            effective_chairman, stage_duration,
+        )
 
         result = {
             "model": effective_chairman,

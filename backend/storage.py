@@ -1,6 +1,7 @@
 """JSON-based storage for conversations."""
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any
 
 from .config import DATA_BASE_DIR, DATA_DIR, get_chairman_model, get_council_models
 from .deliberation import DeliberationResult
+
+logger = logging.getLogger(__name__)
 
 # Timeout for stale pending responses (10 minutes)
 PENDING_STALE_TIMEOUT_SECONDS = 600
@@ -431,6 +434,10 @@ def update_last_arena_message(
         result: Updated DeliberationResult with extended debate
         user_id: Optional username for user-scoped storage
     """
+    logger.info(
+        "Updating last arena message. ConversationId: %s, Rounds: %d",
+        conversation_id, len(result.rounds),
+    )
     conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
@@ -443,6 +450,10 @@ def update_last_arena_message(
             message["role"] = "assistant"
             conversation["messages"][i] = message
             save_conversation(conversation, user_id)
+            logger.info(
+                "Successfully updated arena message. ConversationId: %s",
+                conversation_id,
+            )
             return
 
     raise ValueError("No arena message found to update")
@@ -464,6 +475,10 @@ def update_last_council_stage3(
         metrics: Optional updated aggregate metrics
         user_id: Optional username for user-scoped storage
     """
+    logger.info(
+        "Updating last council Stage 3. ConversationId: %s, Chairman: %s",
+        conversation_id, stage3_result.get("model"),
+    )
     conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
@@ -475,6 +490,10 @@ def update_last_council_stage3(
             if metrics is not None:
                 msg["metrics"] = metrics
             save_conversation(conversation, user_id)
+            logger.info(
+                "Successfully updated council Stage 3. ConversationId: %s",
+                conversation_id,
+            )
             return
 
     raise ValueError("No council message found to update")

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any, AsyncGenerator
@@ -125,6 +126,13 @@ async def run_council_pipeline(
         from . import storage as _storage
         storage = _storage
 
+    pipeline_start = time.monotonic()
+    logger.info(
+        "Beginning council pipeline. ConversationId: %s, Models: %d, Chairman: %s, WebSearch: %s, Resume: %s",
+        input.conversation_id, len(input.council_models), input.chairman_model,
+        input.use_web_search, input.resume,
+    )
+
     try:
         # --- Resume check ---
         pending_data = storage.get_pending_message(
@@ -137,6 +145,10 @@ async def run_council_pipeline(
         )
 
         if can_resume:
+            logger.info(
+                "Resuming council pipeline from Stage 2. ConversationId: %s, CachedStage1Responses: %d",
+                input.conversation_id, len(pending_data["partial_data"]["stage1"]),
+            )
             yield {"type": "resume_start", "data": {"from_stage": 2}}
             stage1_results = pending_data["partial_data"]["stage1"]
             yield {"type": "stage1_complete", "data": stage1_results, "resumed": True}
@@ -192,6 +204,7 @@ async def run_council_pipeline(
             if web_search_context:
                 combined_context += web_search_context
 
+            stage1_start = time.monotonic()
             stage1_results: list[dict] = []
             async for event in _stream_stage1(
                 input.content,
@@ -201,6 +214,11 @@ async def run_council_pipeline(
             ):
                 yield event
 
+            stage1_duration = time.monotonic() - stage1_start
+            logger.info(
+                "Stage 1 complete. ConversationId: %s, Responses: %d/%d, Duration: %.2fs",
+                input.conversation_id, len(stage1_results), len(input.council_models), stage1_duration,
+            )
             yield {"type": "stage1_complete", "data": stage1_results}
 
             storage.update_pending_progress(
@@ -218,11 +236,17 @@ async def run_council_pipeline(
 
         # --- Stage 2: Collect rankings ---
         yield {"type": "stage2_start"}
+        stage2_start = time.monotonic()
         stage2_results, label_to_model = await stage2_collect_rankings(
             input.content, stage1_results, input.council_models
         )
         aggregate_rankings = calculate_aggregate_rankings(
             stage2_results, label_to_model
+        )
+        stage2_duration = time.monotonic() - stage2_start
+        logger.info(
+            "Stage 2 complete. ConversationId: %s, Rankings: %d/%d, Duration: %.2fs",
+            input.conversation_id, len(stage2_results), len(input.council_models), stage2_duration,
         )
         metadata = {
             "label_to_model": label_to_model,
@@ -248,8 +272,14 @@ async def run_council_pipeline(
 
         # --- Stage 3: Chairman synthesis ---
         yield {"type": "stage3_start"}
+        stage3_start = time.monotonic()
         stage3_result = await stage3_synthesize_final(
             input.content, stage1_results, stage2_results, input.chairman_model
+        )
+        stage3_duration = time.monotonic() - stage3_start
+        logger.info(
+            "Stage 3 complete. ConversationId: %s, Chairman: %s, Duration: %.2fs",
+            input.conversation_id, input.chairman_model, stage3_duration,
         )
         yield {"type": "stage3_complete", "data": stage3_result}
 
@@ -275,11 +305,18 @@ async def run_council_pipeline(
         )
         storage.clear_pending(input.conversation_id, user_id=input.user_id)
 
+        pipeline_duration = time.monotonic() - pipeline_start
+        logger.info(
+            "Successfully completed council pipeline. ConversationId: %s, Duration: %.2fs",
+            input.conversation_id, pipeline_duration,
+        )
         yield {"type": "complete"}
 
     except Exception as e:
+        pipeline_duration = time.monotonic() - pipeline_start
         logger.exception(
-            "Council pipeline failed. ConversationId: %s", input.conversation_id
+            "Failed council pipeline. ConversationId: %s, Duration: %.2fs, Error: %s",
+            input.conversation_id, pipeline_duration, e,
         )
         storage.update_pending_progress(
             input.conversation_id, {"error": str(e)}, user_id=input.user_id
@@ -309,9 +346,19 @@ async def retry_stage3_pipeline(
         from . import storage as _storage
         storage = _storage
 
+    retry_start = time.monotonic()
+    logger.info(
+        "Beginning Stage 3 retry. ConversationId: %s, Chairman: %s",
+        conversation_id, chairman_model,
+    )
+
     try:
         conversation = storage.get_conversation(conversation_id, user_id)
         if conversation is None:
+            logger.warning(
+                "Stage 3 retry aborted, conversation not found. ConversationId: %s",
+                conversation_id,
+            )
             yield {"type": "error", "message": "Conversation not found"}
             return
 
@@ -326,6 +373,10 @@ async def retry_stage3_pipeline(
                 break
 
         if last_council_msg is None:
+            logger.warning(
+                "Stage 3 retry aborted, no council message found. ConversationId: %s",
+                conversation_id,
+            )
             yield {"type": "error", "message": "No council message found to retry"}
             return
 
@@ -333,6 +384,10 @@ async def retry_stage3_pipeline(
         stage2_results = last_council_msg.get("stage2")
 
         if not stage1_results or not stage2_results:
+            logger.warning(
+                "Stage 3 retry aborted, missing stage data. ConversationId: %s, HasStage1: %s, HasStage2: %s",
+                conversation_id, bool(stage1_results), bool(stage2_results),
+            )
             yield {"type": "error", "message": "Stage 1 or Stage 2 data missing"}
             return
 
@@ -348,6 +403,10 @@ async def retry_stage3_pipeline(
 
         # Check if it failed again
         if stage3_result.get("response", "").startswith("Error:"):
+            logger.warning(
+                "Stage 3 retry chairman failed again. ConversationId: %s, Chairman: %s",
+                conversation_id, chairman_model,
+            )
             yield {"type": "stage3_complete", "data": stage3_result}
             yield {"type": "error", "message": "Chairman model failed again"}
             return
@@ -363,10 +422,17 @@ async def retry_stage3_pipeline(
             conversation_id, stage3_result, metrics, user_id=user_id
         )
 
+        retry_duration = time.monotonic() - retry_start
+        logger.info(
+            "Successfully completed Stage 3 retry. ConversationId: %s, Chairman: %s, Duration: %.2fs",
+            conversation_id, chairman_model, retry_duration,
+        )
         yield {"type": "complete"}
 
     except Exception as e:
+        retry_duration = time.monotonic() - retry_start
         logger.exception(
-            "Stage 3 retry failed. ConversationId: %s", conversation_id
+            "Failed Stage 3 retry. ConversationId: %s, Duration: %.2fs, Error: %s",
+            conversation_id, retry_duration, e,
         )
         yield {"type": "error", "message": str(e)}

@@ -3,9 +3,20 @@
 import asyncio
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
 from typing import Any
+
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn=os.environ.get("SENTRY_DSN", ""),
+    environment=os.environ.get("SENTRY_ENVIRONMENT", "development"),
+    traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+    profiles_sample_rate=float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
+    enable_tracing=True,
+)
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -530,6 +541,10 @@ async def send_message_stream(
 
     async def council_event_generator():
         """Generate SSE-formatted events for council mode."""
+        logger.info(
+            "Beginning council stream. ConversationId: %s, UserId: %s",
+            conversation_id, user_id,
+        )
         council_models, chairman_model = storage.get_conversation_config(
             conversation_id, user_id=user_id
         )
@@ -572,6 +587,10 @@ async def send_message_stream(
     async def arena_event_generator():
         """Generate events for arena mode (multi-round debate)."""
         try:
+            logger.info(
+                "Beginning arena stream. ConversationId: %s, UserId: %s",
+                conversation_id, user_id,
+            )
             # Get per-conversation config (with global fallback)
             council_models, chairman_model = storage.get_conversation_config(
                 conversation_id, user_id=user_id
@@ -696,13 +715,18 @@ async def send_message_stream(
             # Clear pending on success
             storage.clear_pending(conversation_id, user_id=user_id)
 
+            logger.info(
+                "Successfully completed arena stream. ConversationId: %s, Rounds: %d, Participants: %d",
+                conversation_id, len(rounds), len(participant_mapping),
+            )
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
         except Exception as e:
-            import traceback
-
-            traceback.print_exc()
+            logger.exception(
+                "Failed arena stream. ConversationId: %s, Error: %s",
+                conversation_id, e,
+            )
             # Update pending with error
             storage.update_pending_progress(
                 conversation_id, {"error": str(e)}, user_id=user_id
@@ -733,6 +757,10 @@ async def retry_stage3_stream(
 ):
     """Re-run Stage 3 synthesis using existing Stage 1+2 data."""
     user_id = user.username if user else None
+    logger.info(
+        "Beginning retry-stage3 endpoint. ConversationId: %s, UserId: %s",
+        conversation_id, user_id,
+    )
     _council_models, chairman_model = storage.get_conversation_config(
         conversation_id, user_id
     )
@@ -791,6 +819,10 @@ async def extend_arena_debate_stream(
     async def extend_event_generator():
         """Generate events for extending the arena debate with one more round."""
         try:
+            logger.info(
+                "Beginning extend-debate stream. ConversationId: %s, UserId: %s",
+                conversation_id, user_id,
+            )
             from .arena import ArenaRound
 
             # Get per-conversation config
@@ -857,11 +889,17 @@ async def extend_arena_debate_stream(
                 user_id=user_id,
             )
 
+            logger.info(
+                "Successfully completed extend-debate stream. ConversationId: %s, NewRound: %d",
+                conversation_id, new_round_number,
+            )
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.exception(
+                "Failed extend-debate stream. ConversationId: %s, Error: %s",
+                conversation_id, e,
+            )
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(

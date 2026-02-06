@@ -20,9 +20,22 @@ OnModelCompleteCallback = Callable[[str, dict | None], Awaitable[None]]  # (mode
 OnProgressCallback = Callable[[int, int, list[str], list[str]], Awaitable[None]]  # (completed, total, completed_models, pending_models) -> None
 
 # Retry configuration
-RETRYABLE_STATUS_CODES = {429, 502, 503}
+RETRYABLE_STATUS_CODES = {408, 429, 502, 503}
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
+
+def _extract_error_message(response: httpx.Response) -> str:
+    """Extract the error message from an OpenRouter error response body.
+
+    OpenRouter returns: { "error": { "code": int, "message": str, "metadata": {...} } }
+    Falls back to the raw status text if parsing fails.
+    """
+    try:
+        body = response.json()
+        return body.get("error", {}).get("message", response.text[:200])
+    except Exception:
+        return response.text[:200]
+
 
 # Module-level shared client (lazy-initialized)
 _shared_client: httpx.AsyncClient | None = None
@@ -84,6 +97,7 @@ async def query_model(
 
         client = get_shared_client(timeout)
         start_time = time.time()
+        logger.debug("Beginning query_model. Model: %s, Messages: %d", model, len(messages))
 
         for attempt in range(MAX_RETRIES):
             try:
@@ -123,22 +137,45 @@ async def query_model(
                         "llm.provider": data.get('provider', ''),
                     })
 
+                logger.info(
+                    "Successfully queried model. Model: %s, Tokens: %d, Duration: %dms",
+                    model, usage.get('total_tokens', 0), latency_ms,
+                )
                 return result
 
             except httpx.HTTPStatusError as e:
-                if e.response.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
+                status = e.response.status_code
+                error_msg = _extract_error_message(e.response)
+
+                if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
                     delay = RETRY_BASE_DELAY * (2 ** attempt)
                     logger.warning(
-                        "Retryable error querying %s (HTTP %d), attempt %d/%d. Retrying in %.1fs.",
-                        model, e.response.status_code, attempt + 1, MAX_RETRIES, delay,
+                        "Retryable error querying %s (HTTP %d), attempt %d/%d. Retrying in %.1fs. Detail: %s",
+                        model, status, attempt + 1, MAX_RETRIES, delay, error_msg,
                     )
                     await asyncio.sleep(delay)
                     continue
-                logger.error("HTTP error querying %s: %s (status %d)", model, e, e.response.status_code)
+
+                if status == 402:
+                    logger.error(
+                        "Billing error querying %s: insufficient credits or payment required. Detail: %s",
+                        model, error_msg,
+                    )
+                elif status == 401:
+                    logger.error(
+                        "Authentication error querying %s: invalid API key. Detail: %s",
+                        model, error_msg,
+                    )
+                else:
+                    logger.error(
+                        "HTTP error querying %s (status %d). Detail: %s",
+                        model, status, error_msg,
+                    )
+
                 if is_telemetry_enabled():
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
-                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {status}: {error_msg}"))
                 return None
 
             except httpx.TimeoutException as e:
@@ -186,6 +223,12 @@ async def query_models_parallel(
     }
 
     with tracer.start_as_current_span("llm.query_models_parallel", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning parallel query. Models: %d (%s)",
+            len(models), ", ".join(models),
+        )
+        parallel_start = time.time()
+
         # Create tasks for all models
         tasks = []
         for model in models:
@@ -204,9 +247,23 @@ async def query_models_parallel(
         result = dict(zip(models, responses))
 
         # Record success/failure counts
+        success_count = sum(1 for r in responses if r is not None)
+        failure_count = len(responses) - success_count
+        parallel_duration_ms = int((time.time() - parallel_start) * 1000)
+
+        if failure_count > 0:
+            failed_models = [m for m, r in result.items() if r is None]
+            logger.warning(
+                "Parallel query completed with failures. Succeeded: %d, Failed: %d, FailedModels: %s, Duration: %dms",
+                success_count, failure_count, ", ".join(failed_models), parallel_duration_ms,
+            )
+        else:
+            logger.info(
+                "Successfully completed parallel query. Models: %d, Duration: %dms",
+                success_count, parallel_duration_ms,
+            )
+
         if is_telemetry_enabled():
-            success_count = sum(1 for r in responses if r is not None)
-            failure_count = len(responses) - success_count
             span.set_attributes({
                 "llm.success_count": success_count,
                 "llm.failure_count": failure_count,
@@ -253,109 +310,154 @@ async def query_model_streaming(
         }
 
         client = get_shared_client(timeout)
-        start_time = time.time()
-        content_chunks: list[str] = []
-        usage = {}
+        logger.debug("Beginning streaming query. Model: %s, Messages: %d", model, len(messages))
 
-        try:
-            async with client.stream(
-                "POST",
-                OPENROUTER_API_URL,
-                headers=headers,
-                json=payload
-            ) as response:
-                response.raise_for_status()
+        for attempt in range(MAX_RETRIES):
+            start_time = time.time()
+            content_chunks: list[str] = []
+            usage = {}
 
-                # Extract metadata from first chunk
-                stream_model = None
-                stream_id = None
-                stream_provider = None
+            try:
+                async with client.stream(
+                    "POST",
+                    OPENROUTER_API_URL,
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    response.raise_for_status()
 
-                async for line in response.aiter_lines():
-                    if not line or line.startswith(":"):
-                        continue
+                    # Extract metadata from first chunk
+                    stream_model = None
+                    stream_id = None
+                    stream_provider = None
 
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-
-                        if data_str == "[DONE]":
-                            break
-
-                        try:
-                            data = json.loads(data_str)
-
-                            # Capture metadata from first chunk
-                            if stream_id is None:
-                                stream_model = data.get("model")
-                                stream_id = data.get("id")
-                                stream_provider = data.get("provider")
-
-                            choices = data.get("choices", [])
-                            if choices:
-                                delta = choices[0].get("delta", {})
-                                content = delta.get("content")
-                                if content:
-                                    content_chunks.append(content)
-                                    if on_token:
-                                        await on_token(model, content)
-
-                            if "usage" in data:
-                                usage = data["usage"]
-
-                        except json.JSONDecodeError:
+                    async for line in response.aiter_lines():
+                        if not line or line.startswith(":"):
                             continue
 
-            latency_ms = int((time.time() - start_time) * 1000)
-            full_content = "".join(content_chunks)
+                        if line.startswith("data: "):
+                            data_str = line[6:]
 
-            result = {
-                'content': full_content,
-                'reasoning_details': None,
-                'metrics': {
-                    'prompt_tokens': usage.get('prompt_tokens', 0),
-                    'completion_tokens': usage.get('completion_tokens', 0),
-                    'total_tokens': usage.get('total_tokens', 0),
-                    'cost': usage.get('cost', 0.0),
-                    'latency_ms': latency_ms,
-                    'actual_model': stream_model,
-                    'request_id': stream_id,
-                    'provider': stream_provider,
+                            if data_str == "[DONE]":
+                                break
+
+                            try:
+                                data = json.loads(data_str)
+
+                                # Capture metadata from first chunk
+                                if stream_id is None:
+                                    stream_model = data.get("model")
+                                    stream_id = data.get("id")
+                                    stream_provider = data.get("provider")
+
+                                choices = data.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content")
+                                    if content:
+                                        content_chunks.append(content)
+                                        if on_token:
+                                            await on_token(model, content)
+
+                                if "usage" in data:
+                                    usage = data["usage"]
+
+                            except json.JSONDecodeError:
+                                continue
+
+                latency_ms = int((time.time() - start_time) * 1000)
+                full_content = "".join(content_chunks)
+
+                result = {
+                    'content': full_content,
+                    'reasoning_details': None,
+                    'metrics': {
+                        'prompt_tokens': usage.get('prompt_tokens', 0),
+                        'completion_tokens': usage.get('completion_tokens', 0),
+                        'total_tokens': usage.get('total_tokens', 0),
+                        'cost': usage.get('cost', 0.0),
+                        'latency_ms': latency_ms,
+                        'actual_model': stream_model,
+                        'request_id': stream_id,
+                        'provider': stream_provider,
+                    }
                 }
-            }
 
-            if is_telemetry_enabled():
-                span.set_attributes({
-                    "llm.prompt_tokens": usage.get('prompt_tokens', 0),
-                    "llm.completion_tokens": usage.get('completion_tokens', 0),
-                    "llm.total_tokens": usage.get('total_tokens', 0),
-                    "llm.latency_ms": latency_ms,
-                })
+                if is_telemetry_enabled():
+                    span.set_attributes({
+                        "llm.prompt_tokens": usage.get('prompt_tokens', 0),
+                        "llm.completion_tokens": usage.get('completion_tokens', 0),
+                        "llm.total_tokens": usage.get('total_tokens', 0),
+                        "llm.latency_ms": latency_ms,
+                    })
 
-            return result
+                logger.info(
+                    "Successfully streamed model. Model: %s, Tokens: %d, Duration: %dms",
+                    model, usage.get('total_tokens', 0), latency_ms,
+                )
+                return result
 
-        except httpx.HTTPStatusError as e:
-            logger.error("HTTP error streaming %s: %s (status %d)", model, e, e.response.status_code)
-            if is_telemetry_enabled():
-                span.record_exception(e)
-                from opentelemetry.trace import Status, StatusCode
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-            return None
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                error_msg = _extract_error_message(e.response)
 
-        except httpx.TimeoutException as e:
-            logger.error("Timeout streaming %s after %.0fs: %s", model, timeout, e)
-            if is_telemetry_enabled():
-                span.record_exception(e)
-                from opentelemetry.trace import Status, StatusCode
-                span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
-            return None
+                if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "Retryable error streaming %s (HTTP %d), attempt %d/%d. Retrying in %.1fs. Detail: %s",
+                        model, status, attempt + 1, MAX_RETRIES, delay, error_msg,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
 
-        except Exception as e:
-            logger.error("Unexpected error streaming %s: %s", model, e)
-            if is_telemetry_enabled():
-                span.record_exception(e)
-                from opentelemetry.trace import Status, StatusCode
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-            return None
+                if status == 402:
+                    logger.error(
+                        "Billing error streaming %s: insufficient credits or payment required. Detail: %s",
+                        model, error_msg,
+                    )
+                elif status == 401:
+                    logger.error(
+                        "Authentication error streaming %s: invalid API key. Detail: %s",
+                        model, error_msg,
+                    )
+                else:
+                    logger.error(
+                        "HTTP error streaming %s (status %d). Detail: %s",
+                        model, status, error_msg,
+                    )
+
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {status}: {error_msg}"))
+                return None
+
+            except httpx.TimeoutException as e:
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "Timeout streaming %s, attempt %d/%d. Retrying in %.1fs.",
+                        model, attempt + 1, MAX_RETRIES, delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                logger.error("Timeout streaming %s after %d attempts (%.0fs each): %s", model, MAX_RETRIES, timeout, e)
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+                    span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
+                return None
+
+            except Exception as e:
+                logger.error("Unexpected error streaming %s: %s", model, e)
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                return None
+
+        return None
 
 
 async def query_models_progressive(
@@ -395,6 +497,12 @@ async def query_models_progressive(
     }
 
     with tracer.start_as_current_span("llm.query_models_progressive", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning progressive query. Models: %d, Streaming: %s",
+            len(models), stream_tokens,
+        )
+        progressive_start = time.time()
+
         # Create tasks with model tracking
         task_to_model: dict[asyncio.Task, str] = {}
         pending_models = list(models)
@@ -446,9 +554,23 @@ async def query_models_progressive(
                     )
 
         # Record success/failure counts
+        success_count = sum(1 for r in results.values() if r is not None)
+        failure_count = len(results) - success_count
+        progressive_duration_ms = int((time.time() - progressive_start) * 1000)
+
+        if failure_count > 0:
+            failed_models = [m for m, r in results.items() if r is None]
+            logger.warning(
+                "Progressive query completed with failures. Succeeded: %d, Failed: %d, FailedModels: %s, Duration: %dms",
+                success_count, failure_count, ", ".join(failed_models), progressive_duration_ms,
+            )
+        else:
+            logger.info(
+                "Successfully completed progressive query. Models: %d, Duration: %dms",
+                success_count, progressive_duration_ms,
+            )
+
         if is_telemetry_enabled():
-            success_count = sum(1 for r in results.values() if r is not None)
-            failure_count = len(results) - success_count
             span.set_attributes({
                 "llm.success_count": success_count,
                 "llm.failure_count": failure_count,

@@ -1,6 +1,7 @@
 """Multi-round arena debate orchestration for LLM Council."""
 
 import logging
+import time
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -202,6 +203,12 @@ async def round1_initial_positions(
     }
 
     with tracer.start_as_current_span("arena.round1_initial_positions", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning arena Round 1 (initial). Participants: %d, TotalRounds: %d",
+            len(participant_mapping), total_rounds,
+        )
+        round_start = time.monotonic()
+
         web_section = ""
         if web_search_context:
             web_section = f"\nThe following web search results may be helpful:\n{web_search_context}\n"
@@ -236,6 +243,12 @@ async def round1_initial_positions(
                         "metrics": response.get("metrics", {}),
                     }
                 )
+
+        round_duration = time.monotonic() - round_start
+        logger.info(
+            "Successfully completed arena Round 1. Responses: %d/%d, Duration: %.2fs",
+            len(round_responses), len(participant_mapping), round_duration,
+        )
 
         # Record response count in span
         if is_telemetry_enabled():
@@ -276,6 +289,12 @@ async def round_n_deliberation(
     }
 
     with tracer.start_as_current_span("arena.round_n_deliberation", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning arena Round %d (deliberation). Participants: %d, TotalRounds: %d",
+            round_number, len(participant_mapping), total_rounds,
+        )
+        round_start = time.monotonic()
+
         formatted_history = format_previous_rounds(previous_rounds)
 
         # Build prompts for each participant
@@ -309,6 +328,12 @@ async def round_n_deliberation(
                         "metrics": response.get("metrics", {}),
                     }
                 )
+
+        round_duration = time.monotonic() - round_start
+        logger.info(
+            "Successfully completed arena Round %d. Responses: %d/%d, Duration: %.2fs",
+            round_number, len(round_responses), len(participant_mapping), round_duration,
+        )
 
         # Record response count in span
         if is_telemetry_enabled():
@@ -348,6 +373,12 @@ async def final_synthesis(
     }
 
     with tracer.start_as_current_span("arena.final_synthesis", attributes=span_attributes) as span:
+        logger.info(
+            "Beginning arena synthesis. Chairman: %s, Rounds: %d, Participants: %d",
+            effective_chairman, len(all_rounds), len(participant_mapping),
+        )
+        synthesis_start = time.monotonic()
+
         formatted_rounds = format_previous_rounds(all_rounds)
         identity_reveal = format_identity_reveal(participant_mapping)
 
@@ -363,6 +394,11 @@ async def final_synthesis(
         response = await query_model(effective_chairman, messages)
 
         if response is None:
+            synthesis_duration = time.monotonic() - synthesis_start
+            logger.error(
+                "Failed arena synthesis, chairman returned no response. Chairman: %s, Duration: %.2fs",
+                effective_chairman, synthesis_duration,
+            )
             if is_telemetry_enabled():
                 from opentelemetry.trace import Status, StatusCode
                 span.set_status(Status(StatusCode.ERROR, "Chairman model failed"))
@@ -371,6 +407,12 @@ async def final_synthesis(
                 "content": "Error: Unable to generate synthesis.",
                 "metrics": {},
             }
+
+        synthesis_duration = time.monotonic() - synthesis_start
+        logger.info(
+            "Successfully completed arena synthesis. Chairman: %s, Duration: %.2fs",
+            effective_chairman, synthesis_duration,
+        )
 
         return {
             "model": effective_chairman,
