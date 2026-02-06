@@ -3,6 +3,13 @@ import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronRight, Brain, Copy, Check, DollarSign } from 'lucide-react';
 import MetricsDisplay from './MetricsDisplay';
 import { formatCost, getReasoningText } from '../lib/formatting';
+import {
+  deAnonymizeText,
+  getResponseContent,
+  getTabLabel,
+  getModelDisplayName,
+  getRoundCost,
+} from '../lib/roundUtils';
 import './Round.css';
 
 // Round type labels for display
@@ -13,18 +20,6 @@ const ROUND_TYPE_LABELS = {
   rebuttal: 'Rebuttals',
   closing: 'Closing Arguments',
 };
-
-// De-anonymize text by replacing labels with model names
-function deAnonymizeText(text, participantMapping) {
-  if (!participantMapping) return text;
-
-  let result = text;
-  Object.entries(participantMapping).forEach(([label, model]) => {
-    const modelShortName = model.split('/')[1] || model;
-    result = result.replace(new RegExp(label, 'g'), `**${modelShortName}**`);
-  });
-  return result;
-}
 
 export default function Round({
   round,
@@ -47,51 +42,20 @@ export default function Round({
   const isArenaRound = ['opening', 'rebuttal', 'closing'].includes(roundType);
   const roundLabel = ROUND_TYPE_LABELS[roundType] || `Round ${round.round_number}`;
 
-  // Calculate round cost from metrics or responses
-  const getRoundCost = () => {
-    if (round.metrics?.cost) return round.metrics.cost;
-    if (round.metrics?.total_cost) return round.metrics.total_cost;
-    // Sum from individual responses
-    let total = 0;
-    for (const resp of round.responses) {
-      const cost = resp.metrics?.cost || 0;
-      total += cost;
-    }
-    return total;
-  };
-  const roundCost = getRoundCost();
+  const roundCost = getRoundCost(round);
 
   const currentResponse = round.responses[activeTab];
   const reasoningText = getReasoningText(currentResponse.reasoning_details);
   const hasReasoning = !!reasoningText;
 
-  // Get content - unified format uses 'content', legacy uses 'response' or 'ranking'
-  const getContent = (resp) => resp.content || resp.response || resp.ranking || '';
-
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(getContent(currentResponse));
+      await navigator.clipboard.writeText(getResponseContent(currentResponse));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
-  };
-
-  // Get tab label - use participant for arena, model for council
-  const getTabLabel = (resp) => {
-    if (isArenaRound) {
-      return resp.participant;
-    }
-    return resp.model?.split('/')[1] || resp.model || resp.participant;
-  };
-
-  // Get model display name
-  const getModelName = (resp) => {
-    if (participantMapping && resp.participant) {
-      return participantMapping[resp.participant] || resp.model;
-    }
-    return resp.model;
   };
 
   return (
@@ -144,7 +108,7 @@ export default function Round({
                   }
                 }}
               >
-                {getTabLabel(resp)}
+                {getTabLabel(resp, isArenaRound)}
                 {resp.reasoning_details && (
                   <Brain size={12} className="reasoning-indicator" aria-hidden="true" />
                 )}
@@ -158,7 +122,7 @@ export default function Round({
                 {isArenaRound && (
                   <span className="participant-label">{currentResponse.participant}</span>
                 )}
-                <span className="model-name">{getModelName(currentResponse)}</span>
+                <span className="model-name">{getModelDisplayName(currentResponse, participantMapping)}</span>
               </div>
               <button className="copy-btn" onClick={handleCopy} title="Copy response">
                 {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -186,8 +150,8 @@ export default function Round({
             <div className="response-content markdown-content">
               <ReactMarkdown>
                 {isRankings
-                  ? deAnonymizeText(getContent(currentResponse), participantMapping)
-                  : getContent(currentResponse)}
+                  ? deAnonymizeText(getResponseContent(currentResponse), participantMapping)
+                  : getResponseContent(currentResponse)}
               </ReactMarkdown>
             </div>
 
