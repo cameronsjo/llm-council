@@ -2,9 +2,21 @@ import { useState, useEffect } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
-import { api } from './api';
+import { api, AuthRedirectError } from './api';
 import { useConversationStream } from './hooks/useConversationStream';
 import './App.css';
+
+/**
+ * Check if an error is an auth redirect and set the expired flag.
+ * Returns true if it was an auth error (caller should stop processing).
+ */
+function isAuthError(error, setAuthExpired) {
+  if (error instanceof AuthRedirectError) {
+    setAuthExpired(true);
+    return true;
+  }
+  return false;
+}
 
 function App() {
   const [conversations, setConversations] = useState([]);
@@ -16,6 +28,7 @@ function App() {
   const [chairmanModel, setChairmanModel] = useState('');
   const [userInfo, setUserInfo] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+  const [authExpired, setAuthExpired] = useState(false);
 
   // Arena mode state
   const [mode, setMode] = useState('council'); // 'council' or 'arena'
@@ -34,7 +47,9 @@ function App() {
       const convs = await api.listConversations();
       setConversations(convs);
     } catch (error) {
-      console.error('Failed to load conversations:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to load conversations:', error);
+      }
     }
   };
 
@@ -52,6 +67,7 @@ function App() {
   } = useConversationStream({
     onComplete: loadConversations,
     onTitleComplete: loadConversations,
+    onAuthExpired: () => setAuthExpired(true),
   });
 
   // Load conversations, config, and user info on mount
@@ -84,7 +100,9 @@ function App() {
         setArenaRoundCount(config.arena.default_rounds);
       }
     } catch (error) {
-      console.error('Failed to load config:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to load config:', error);
+      }
     }
   };
 
@@ -93,7 +111,9 @@ function App() {
       const info = await api.getUserInfo();
       setUserInfo(info);
     } catch (error) {
-      console.error('Failed to load user info:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to load user info:', error);
+      }
     }
   };
 
@@ -150,7 +170,9 @@ function App() {
         setCurrentConversation(conv);
       }
     } catch (error) {
-      console.error('Failed to load conversation:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to load conversation:', error);
+      }
     }
   };
 
@@ -164,7 +186,9 @@ function App() {
       ]);
       setCurrentConversationId(newConv.id);
     } catch (error) {
-      console.error('Failed to create conversation:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to create conversation:', error);
+      }
     }
   };
 
@@ -194,6 +218,7 @@ function App() {
       setCouncilModels(newCouncilModels);
       setChairmanModel(newChairmanModel);
     } catch (error) {
+      if (isAuthError(error, setAuthExpired)) return;
       console.error('Failed to update config:', error);
       throw error;
     }
@@ -208,7 +233,9 @@ function App() {
         setCurrentConversation(null);
       }
     } catch (error) {
-      console.error('Failed to delete conversation:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to delete conversation:', error);
+      }
     }
   };
 
@@ -222,7 +249,9 @@ function App() {
         updateTitle(newTitle);
       }
     } catch (error) {
-      console.error('Failed to rename conversation:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to rename conversation:', error);
+      }
     }
   };
 
@@ -248,7 +277,9 @@ function App() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Failed to export conversation:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to export conversation:', error);
+      }
     }
   };
 
@@ -319,7 +350,9 @@ function App() {
         source_conversation_id: sourceConversationId,
       });
     } catch (error) {
-      console.error('Failed to fork conversation:', error);
+      if (!isAuthError(error, setAuthExpired)) {
+        console.error('Failed to fork conversation:', error);
+      }
     }
   };
 
@@ -352,6 +385,16 @@ function App() {
 
   return (
     <div className={`app ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+      {/* Auth expired banner */}
+      {authExpired && (
+        <div className="auth-expired-banner" role="alert">
+          <span>Session expired — please re-authenticate to continue.</span>
+          <button onClick={() => window.location.reload()}>
+            Re-authenticate
+          </button>
+        </div>
+      )}
+
       {/* Mobile menu toggle */}
       <button
         className="mobile-menu-toggle"

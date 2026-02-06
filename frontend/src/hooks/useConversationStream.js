@@ -6,15 +6,16 @@
  * callbacks passed in via the options object.
  */
 import { useCallback, useReducer, useRef } from 'react';
-import { api } from '../api';
+import { api, AuthRedirectError } from '../api';
 import { conversationReducer, buildAssistantMessage } from './conversationReducer';
 
 /**
  * @param {Object} options
  * @param {() => void} [options.onComplete]      Called when a stream finishes successfully.
  * @param {() => void} [options.onTitleComplete]  Called when backend generates a title.
+ * @param {() => void} [options.onAuthExpired]    Called when an auth redirect is detected.
  */
-export function useConversationStream({ onComplete, onTitleComplete } = {}) {
+export function useConversationStream({ onComplete, onTitleComplete, onAuthExpired } = {}) {
   const [conversation, dispatch] = useReducer(conversationReducer, null);
   const abortRef = useRef(null);
 
@@ -87,11 +88,12 @@ export function useConversationStream({ onComplete, onTitleComplete } = {}) {
       );
     } catch (error) {
       if (error.name === 'AbortError') return;
+      if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
       console.error('Failed to send message:', error);
       dispatch({ type: 'ROLLBACK_OPTIMISTIC' });
       dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
     }
-  }, [onComplete, onTitleComplete]);
+  }, [onComplete, onTitleComplete, onAuthExpired]);
 
   // ── Extend debate ──────────────────────────────────────────────────────
 
@@ -121,10 +123,11 @@ export function useConversationStream({ onComplete, onTitleComplete } = {}) {
       );
     } catch (error) {
       if (error.name === 'AbortError') return;
+      if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
       console.error('Failed to extend debate:', error);
       dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
     }
-  }, [onComplete]);
+  }, [onComplete, onAuthExpired]);
 
   // ── Retry Stage 3 ──────────────────────────────────────────────────────
 
@@ -154,10 +157,11 @@ export function useConversationStream({ onComplete, onTitleComplete } = {}) {
       );
     } catch (error) {
       if (error.name === 'AbortError') return;
+      if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
       console.error('Failed to retry Stage 3:', error);
       dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
     }
-  }, [onComplete]);
+  }, [onComplete, onAuthExpired]);
 
   // ── Public API ─────────────────────────────────────────────────────────
 
