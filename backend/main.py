@@ -70,9 +70,16 @@ from .council import (
 from .council_stream import CouncilPipelineInput, run_council_pipeline
 from .export import export_to_json, export_to_markdown
 from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
+from .openrouter import close_shared_client
 from .websearch import get_search_provider, is_web_search_available
 
 app = FastAPI(title="LLM Council API")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up shared resources on shutdown."""
+    await close_shared_client()
 
 # Instrument FastAPI with OpenTelemetry (after app creation)
 instrument_fastapi(app)

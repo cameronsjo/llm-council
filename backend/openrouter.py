@@ -19,6 +19,33 @@ OnTokenCallback = Callable[[str, str], Awaitable[None]]  # (model, token) -> Non
 OnModelCompleteCallback = Callable[[str, dict | None], Awaitable[None]]  # (model, result) -> None
 OnProgressCallback = Callable[[int, int, list[str], list[str]], Awaitable[None]]  # (completed, total, completed_models, pending_models) -> None
 
+# Retry configuration
+RETRYABLE_STATUS_CODES = {429, 502, 503}
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
+
+# Module-level shared client (lazy-initialized)
+_shared_client: httpx.AsyncClient | None = None
+
+
+def get_shared_client(timeout: float = 120.0) -> httpx.AsyncClient:
+    """Get or create the shared httpx.AsyncClient for connection pooling."""
+    global _shared_client
+    if _shared_client is None or _shared_client.is_closed:
+        _shared_client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return _shared_client
+
+
+async def close_shared_client() -> None:
+    """Close the shared client. Call on application shutdown."""
+    global _shared_client
+    if _shared_client is not None and not _shared_client.is_closed:
+        await _shared_client.aclose()
+        _shared_client = None
+
 
 async def query_model(
     model: str,
@@ -27,6 +54,8 @@ async def query_model(
 ) -> dict[str, Any] | None:
     """
     Query a single model via OpenRouter API.
+
+    Uses a shared connection pool and retries on transient errors (429/502/503).
 
     Args:
         model: OpenRouter model identifier (e.g., "openai/gpt-4o")
@@ -53,10 +82,11 @@ async def query_model(
             "messages": messages,
         }
 
+        client = get_shared_client(timeout)
         start_time = time.time()
 
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(MAX_RETRIES):
+            try:
                 response = await client.post(
                     OPENROUTER_API_URL,
                     headers=headers,
@@ -84,7 +114,6 @@ async def query_model(
                     }
                 }
 
-                # Add response metrics to span
                 if is_telemetry_enabled():
                     span.set_attributes({
                         "llm.prompt_tokens": usage.get('prompt_tokens', 0),
@@ -96,13 +125,39 @@ async def query_model(
 
                 return result
 
-        except Exception as e:
-            logger.warning("Error querying model %s: %s", model, e)
-            if is_telemetry_enabled():
-                span.record_exception(e)
-                from opentelemetry.trace import Status, StatusCode
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-            return None
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "Retryable error querying %s (HTTP %d), attempt %d/%d. Retrying in %.1fs.",
+                        model, e.response.status_code, attempt + 1, MAX_RETRIES, delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                logger.error("HTTP error querying %s: %s (status %d)", model, e, e.response.status_code)
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                return None
+
+            except httpx.TimeoutException as e:
+                logger.error("Timeout querying %s after %.0fs: %s", model, timeout, e)
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+                    span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
+                return None
+
+            except Exception as e:
+                logger.error("Unexpected error querying %s: %s", model, e)
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                return None
+
+        return None
 
 
 async def query_models_parallel(
@@ -197,73 +252,77 @@ async def query_model_streaming(
             "stream": True,
         }
 
+        client = get_shared_client(timeout)
         start_time = time.time()
         content_chunks: list[str] = []
         usage = {}
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST",
-                    OPENROUTER_API_URL,
-                    headers=headers,
-                    json=payload
-                ) as response:
-                    response.raise_for_status()
+            async with client.stream(
+                "POST",
+                OPENROUTER_API_URL,
+                headers=headers,
+                json=payload
+            ) as response:
+                response.raise_for_status()
 
-                    async for line in response.aiter_lines():
-                        # Skip empty lines and comments
-                        if not line or line.startswith(":"):
+                # Extract metadata from first chunk
+                stream_model = None
+                stream_id = None
+                stream_provider = None
+
+                async for line in response.aiter_lines():
+                    if not line or line.startswith(":"):
+                        continue
+
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+
+                        if data_str == "[DONE]":
+                            break
+
+                        try:
+                            data = json.loads(data_str)
+
+                            # Capture metadata from first chunk
+                            if stream_id is None:
+                                stream_model = data.get("model")
+                                stream_id = data.get("id")
+                                stream_provider = data.get("provider")
+
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content")
+                                if content:
+                                    content_chunks.append(content)
+                                    if on_token:
+                                        await on_token(model, content)
+
+                            if "usage" in data:
+                                usage = data["usage"]
+
+                        except json.JSONDecodeError:
                             continue
-
-                        # Parse SSE data
-                        if line.startswith("data: "):
-                            data_str = line[6:]
-
-                            # Check for end of stream
-                            if data_str == "[DONE]":
-                                break
-
-                            try:
-                                data = json.loads(data_str)
-
-                                # Extract delta content
-                                choices = data.get("choices", [])
-                                if choices:
-                                    delta = choices[0].get("delta", {})
-                                    content = delta.get("content")
-                                    if content:
-                                        content_chunks.append(content)
-                                        if on_token:
-                                            await on_token(model, content)
-
-                                # Extract usage from final chunk
-                                if "usage" in data:
-                                    usage = data["usage"]
-
-                            except json.JSONDecodeError:
-                                # Ignore non-JSON payloads (comments, etc.)
-                                continue
 
             latency_ms = int((time.time() - start_time) * 1000)
             full_content = "".join(content_chunks)
 
             result = {
                 'content': full_content,
-                'reasoning_details': None,  # Not available in streaming mode
+                'reasoning_details': None,
                 'metrics': {
                     'prompt_tokens': usage.get('prompt_tokens', 0),
                     'completion_tokens': usage.get('completion_tokens', 0),
                     'total_tokens': usage.get('total_tokens', 0),
                     'cost': usage.get('cost', 0.0),
                     'latency_ms': latency_ms,
-                    'actual_model': None,  # Not available in streaming
-                    'request_id': None,
-                    'provider': None,
+                    'actual_model': stream_model,
+                    'request_id': stream_id,
+                    'provider': stream_provider,
                 }
             }
 
-            # Add response metrics to span
             if is_telemetry_enabled():
                 span.set_attributes({
                     "llm.prompt_tokens": usage.get('prompt_tokens', 0),
@@ -274,8 +333,24 @@ async def query_model_streaming(
 
             return result
 
+        except httpx.HTTPStatusError as e:
+            logger.error("HTTP error streaming %s: %s (status %d)", model, e, e.response.status_code)
+            if is_telemetry_enabled():
+                span.record_exception(e)
+                from opentelemetry.trace import Status, StatusCode
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+            return None
+
+        except httpx.TimeoutException as e:
+            logger.error("Timeout streaming %s after %.0fs: %s", model, timeout, e)
+            if is_telemetry_enabled():
+                span.record_exception(e)
+                from opentelemetry.trace import Status, StatusCode
+                span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
+            return None
+
         except Exception as e:
-            logger.warning("Error streaming from model %s: %s", model, e)
+            logger.error("Unexpected error streaming %s: %s", model, e)
             if is_telemetry_enabled():
                 span.record_exception(e)
                 from opentelemetry.trace import Status, StatusCode
