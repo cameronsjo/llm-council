@@ -35,12 +35,12 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-35i: stage3_synthesize_final (P1 - CRITICAL BUG)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-35i-anonymize-stage3
 **Approach:** Replace `f"Model: {result['model']}"` with anonymous labels in the chairman prompt. Use same "Response A, B, C" labels from Stage 2. Chairman sees anonymous labels, not model names. This preserves the core anonymization design. Also add simple retry (1 retry) for the chairman call since it's the most important single API call.
 **Alternatives considered:** (1) Keep model names but document it as intentional — breaks the project's stated design principle. (2) Use different labels than Stage 2 — confusing, better to reuse same labels. (3) Don't retry chairman — risky since entire council result depends on it.
-**PR:**
-**Notes:**
+**PR:** https://github.com/cameronsjo/llm-council/pull/9
+**Notes:** Also anonymized Stage 2 evaluator names as "Evaluator 1, 2, 3..."
 
 ### council-c31: stage1_collect_responses (P2)
 
