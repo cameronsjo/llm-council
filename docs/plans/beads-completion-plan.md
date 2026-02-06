@@ -102,12 +102,12 @@ Some beads are related and benefit from being done sequentially.
 
 ### council-75a: ChatInterface audit (P1)
 
-**Status:** pending
+**Status:** done
 **Branch:** fix/council-75a-chatinterface-cleanup
 **Approach:** The recent useConversationStream refactor already moved streaming state management out. Remaining issues: handleSubmit validation logic can be extracted to a pure function, attachment handling can be simplified. Focus on testability — extract pure validation/transformation functions. Don't restructure the component itself (that's a bigger refactor).
 **Alternatives considered:** (1) Full component split — too large for one bead. (2) Extract to smaller components — risks prop drilling. (3) Just add tests for what's testable — pragmatic.
-**PR:**
-**Notes:** Scope carefully — this is an "audit" bead, not a "rewrite" bead.
+**PR:** https://github.com/cameronsjo/llm-council/pull/11
+**Notes:** Extracted 5 pure functions to lib/messageUtils.js, 24 tests. Component reduced by ~99 lines.
 
 ### council-iux: Round component audit (P2)
 
