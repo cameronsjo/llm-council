@@ -1,6 +1,7 @@
 /**
  * API client for the LLM Council backend.
  */
+import * as Sentry from '@sentry/browser';
 
 // API base URL - empty string means same origin (production)
 // VITE_API_URL can override for development with separate servers
@@ -44,6 +45,7 @@ async function fetchWithAuth(url, options = {}, errorMessage = 'Request failed')
     response = await fetch(url, options);
   } catch (err) {
     console.error('[api] Network error on %s %s: %s', method, url, err.message);
+    Sentry.addBreadcrumb({ category: 'fetch', message: `${method} ${url} → network error: ${err.message}`, level: 'error' });
     throw err;
   }
 
