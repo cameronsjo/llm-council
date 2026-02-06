@@ -7,6 +7,71 @@
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 /**
+ * Thrown when a request is redirected (typically auth proxy sending user to login).
+ * Behind Authelia/OAuth2 Proxy, expired sessions return 200 + HTML login page
+ * which silently breaks JSON parsing. This error surfaces it clearly.
+ */
+export class AuthRedirectError extends Error {
+  constructor(url) {
+    super('Session expired — authentication required');
+    this.name = 'AuthRedirectError';
+    this.redirectUrl = url;
+  }
+}
+
+/**
+ * Thrown for non-2xx responses or unexpected content types.
+ */
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+/**
+ * Fetch wrapper with auth redirect detection.
+ * Checks response.redirected and response.ok before returning the raw Response.
+ * Use for SSE and blob endpoints that don't return JSON.
+ */
+async function fetchWithAuth(url, options = {}, errorMessage = 'Request failed') {
+  const response = await fetch(url, options);
+
+  if (response.redirected) {
+    throw new AuthRedirectError(response.url);
+  }
+
+  if (!response.ok) {
+    throw new ApiError(errorMessage, response.status);
+  }
+
+  return response;
+}
+
+/**
+ * Fetch + parse JSON with auth redirect and content-type validation.
+ * Replaces the repeated fetch→ok→json pattern across all JSON API methods.
+ */
+async function fetchJSON(url, options = {}, errorMessage = 'Request failed') {
+  const response = await fetchWithAuth(url, options, errorMessage);
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    // HTML response on a JSON endpoint = auth proxy login page
+    if (contentType.includes('text/html')) {
+      throw new AuthRedirectError(response.url);
+    }
+    throw new ApiError(
+      `Expected JSON but got ${contentType || 'unknown content type'}`,
+      response.status,
+    );
+  }
+
+  return response.json();
+}
+
+/**
  * Read SSE events from a ReadableStream, buffering across chunk boundaries.
  * @param {ReadableStreamDefaultReader} reader
  * @param {function} onEvent - Called with (eventType, eventData) for each parsed event
@@ -70,64 +135,42 @@ export const api = {
    * Get API configuration (feature flags).
    */
   async getConfig() {
-    const response = await fetch(`${API_BASE}/api/config`);
-    if (!response.ok) {
-      throw new Error('Failed to get config');
-    }
-    return response.json();
+    return fetchJSON(`${API_BASE}/api/config`, {}, 'Failed to get config');
   },
 
   /**
    * Get application version information.
    */
   async getVersion() {
-    const response = await fetch(`${API_BASE}/api/version`);
-    if (!response.ok) {
-      throw new Error('Failed to get version');
-    }
-    return response.json();
+    return fetchJSON(`${API_BASE}/api/version`, {}, 'Failed to get version');
   },
 
   /**
    * Get current user information (from reverse proxy auth headers).
    */
   async getUserInfo() {
-    const response = await fetch(`${API_BASE}/api/user`);
-    if (!response.ok) {
-      throw new Error('Failed to get user info');
-    }
-    return response.json();
+    return fetchJSON(`${API_BASE}/api/user`, {}, 'Failed to get user info');
   },
 
   /**
    * Update council configuration.
    */
   async updateConfig(councilModels, chairmanModel) {
-    const response = await fetch(`${API_BASE}/api/config`, {
+    return fetchJSON(`${API_BASE}/api/config`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         council_models: councilModels,
         chairman_model: chairmanModel,
       }),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to update config');
-    }
-    return response.json();
+    }, 'Failed to update config');
   },
 
   /**
    * Get available models from OpenRouter.
    */
   async getAvailableModels() {
-    const response = await fetch(`${API_BASE}/api/models`);
-    if (!response.ok) {
-      throw new Error('Failed to get available models');
-    }
-    return response.json();
+    return fetchJSON(`${API_BASE}/api/models`, {}, 'Failed to get available models');
   },
 
   /**
@@ -135,52 +178,34 @@ export const api = {
    * Use this to fetch the latest models when new models are available.
    */
   async refreshModels() {
-    const response = await fetch(`${API_BASE}/api/models/refresh`, {
+    return fetchJSON(`${API_BASE}/api/models/refresh`, {
       method: 'POST',
-    });
-    if (!response.ok) {
-      throw new Error('Failed to refresh models');
-    }
-    return response.json();
+    }, 'Failed to refresh models');
   },
 
   /**
    * Get curated models list.
    */
   async getCuratedModels() {
-    const response = await fetch(`${API_BASE}/api/curated-models`);
-    if (!response.ok) {
-      throw new Error('Failed to get curated models');
-    }
-    return response.json();
+    return fetchJSON(`${API_BASE}/api/curated-models`, {}, 'Failed to get curated models');
   },
 
   /**
    * Update curated models list.
    */
   async updateCuratedModels(modelIds) {
-    const response = await fetch(`${API_BASE}/api/curated-models`, {
+    return fetchJSON(`${API_BASE}/api/curated-models`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model_ids: modelIds }),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to update curated models');
-    }
-    return response.json();
+    }, 'Failed to update curated models');
   },
 
   /**
    * List all conversations.
    */
   async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`);
-    if (!response.ok) {
-      throw new Error('Failed to list conversations');
-    }
-    return response.json();
+    return fetchJSON(`${API_BASE}/api/conversations`, {}, 'Failed to list conversations');
   },
 
   /**
@@ -190,72 +215,50 @@ export const api = {
    */
   async createConversation(councilModels = null, chairmanModel = null) {
     const body = {};
-    if (councilModels) {
-      body.council_models = councilModels;
-    }
-    if (chairmanModel) {
-      body.chairman_model = chairmanModel;
-    }
-    const response = await fetch(`${API_BASE}/api/conversations`, {
+    if (councilModels) body.council_models = councilModels;
+    if (chairmanModel) body.chairman_model = chairmanModel;
+    return fetchJSON(`${API_BASE}/api/conversations`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to create conversation');
-    }
-    return response.json();
+    }, 'Failed to create conversation');
   },
 
   /**
    * Get a specific conversation.
    */
   async getConversation(conversationId) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
+    return fetchJSON(
+      `${API_BASE}/api/conversations/${conversationId}`,
+      {},
+      'Failed to get conversation',
     );
-    if (!response.ok) {
-      throw new Error('Failed to get conversation');
-    }
-    return response.json();
   },
 
   /**
    * Delete a conversation.
    */
   async deleteConversation(conversationId) {
-    const response = await fetch(
+    return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}`,
-      {
-        method: 'DELETE',
-      }
+      { method: 'DELETE' },
+      'Failed to delete conversation',
     );
-    if (!response.ok) {
-      throw new Error('Failed to delete conversation');
-    }
-    return response.json();
   },
 
   /**
    * Rename a conversation.
    */
   async renameConversation(conversationId, title) {
-    const response = await fetch(
+    return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}`,
       {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
-      }
+      },
+      'Failed to rename conversation',
     );
-    if (!response.ok) {
-      throw new Error('Failed to rename conversation');
-    }
-    return response.json();
   },
 
   /**
@@ -263,12 +266,11 @@ export const api = {
    * @returns {Promise<Blob>}
    */
   async exportMarkdown(conversationId) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/export/markdown`
+    const response = await fetchWithAuth(
+      `${API_BASE}/api/conversations/${conversationId}/export/markdown`,
+      {},
+      'Failed to export conversation',
     );
-    if (!response.ok) {
-      throw new Error('Failed to export conversation');
-    }
     return response.blob();
   },
 
@@ -277,12 +279,11 @@ export const api = {
    * @returns {Promise<Blob>}
    */
   async exportJson(conversationId) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/export/json`
+    const response = await fetchWithAuth(
+      `${API_BASE}/api/conversations/${conversationId}/export/json`,
+      {},
+      'Failed to export conversation',
     );
-    if (!response.ok) {
-      throw new Error('Failed to export conversation');
-    }
     return response.blob();
   },
 
@@ -300,9 +301,13 @@ export const api = {
       body: formData,
     });
 
+    if (response.redirected) {
+      throw new AuthRedirectError(response.url);
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || 'Failed to upload file');
+      throw new ApiError(error.detail || 'Failed to upload file', response.status);
     }
 
     return response.json();
@@ -313,29 +318,22 @@ export const api = {
    * Returns info about any in-progress or interrupted response.
    */
   async getPendingStatus(conversationId) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/pending`
+    return fetchJSON(
+      `${API_BASE}/api/conversations/${conversationId}/pending`,
+      {},
+      'Failed to get pending status',
     );
-    if (!response.ok) {
-      throw new Error('Failed to get pending status');
-    }
-    return response.json();
   },
 
   /**
    * Clear pending status and remove the orphaned user message for retry.
    */
   async clearPending(conversationId) {
-    const response = await fetch(
+    return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}/pending`,
-      {
-        method: 'DELETE',
-      }
+      { method: 'DELETE' },
+      'Failed to clear pending',
     );
-    if (!response.ok) {
-      throw new Error('Failed to clear pending');
-    }
-    return response.json();
   },
 
   /**
@@ -382,21 +380,16 @@ export const api = {
       body.prior_context = priorContext;
     }
 
-    const response = await fetch(
+    const response = await fetchWithAuth(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal,
-      }
+      },
+      'Failed to send message',
     );
-
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
   },
@@ -408,20 +401,15 @@ export const api = {
    * @returns {Promise<void>}
    */
   async extendDebateStream(conversationId, onEvent, signal = null) {
-    const response = await fetch(
+    const response = await fetchWithAuth(
       `${API_BASE}/api/conversations/${conversationId}/extend-debate/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         signal,
-      }
+      },
+      'Failed to extend debate',
     );
-
-    if (!response.ok) {
-      throw new Error('Failed to extend debate');
-    }
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
   },
@@ -431,23 +419,18 @@ export const api = {
    * Re-uses existing Stage 1+2 data, only re-runs the chairman call.
    */
   async retryStage3Stream(conversationId, onEvent, signal = null) {
-    const response = await fetch(
+    const response = await fetchWithAuth(
       `${API_BASE}/api/conversations/${conversationId}/retry-stage3/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         signal,
-      }
+      },
+      'Failed to retry Stage 3',
     );
-
-    if (!response.ok) {
-      throw new Error('Failed to retry Stage 3');
-    }
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
   },
 };
 
-export { readSSEStream };
+export { readSSEStream, fetchJSON, fetchWithAuth };
