@@ -345,27 +345,30 @@ async def query_models_progressive(
                 )
             task_to_model[task] = model
 
-        # Process tasks as they complete
-        for completed_task in asyncio.as_completed(task_to_model.keys()):
-            result = await completed_task
-            model = task_to_model[completed_task]
+        # Process tasks as they complete — asyncio.wait preserves Task identity
+        pending: set[asyncio.Task] = set(task_to_model.keys())
+        while pending:
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED
+            )
+            for completed_task in done:
+                result = completed_task.result()
+                model = task_to_model[completed_task]
 
-            # Update tracking
-            results[model] = result
-            pending_models.remove(model)
-            completed_models.append(model)
+                results[model] = result
+                pending_models.remove(model)
+                completed_models.append(model)
 
-            # Notify callbacks
-            if on_model_complete:
-                await on_model_complete(model, result)
+                if on_model_complete:
+                    await on_model_complete(model, result)
 
-            if on_progress:
-                await on_progress(
-                    len(completed_models),
-                    len(models),
-                    completed_models.copy(),
-                    pending_models.copy()
-                )
+                if on_progress:
+                    await on_progress(
+                        len(completed_models),
+                        len(models),
+                        completed_models.copy(),
+                        pending_models.copy()
+                    )
 
         # Record success/failure counts
         if is_telemetry_enabled():
