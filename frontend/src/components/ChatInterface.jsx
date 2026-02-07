@@ -22,6 +22,7 @@ import {
 } from '../lib/messageUtils';
 import Round from './Round';
 import Synthesis from './Synthesis';
+import ModelErrors from './ModelErrors';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -391,6 +392,10 @@ export default function ChatInterface({
                     <div className="web-search-error">
                       <span className="web-search-icon">⚠️</span> {msg.webSearchError}
                     </div>
+                  )}
+
+                  {msg.errors?.length > 0 && (
+                    <ModelErrors errors={msg.errors} />
                   )}
 
                   {/* Unified Round Display - Works for both Arena and Council modes */}

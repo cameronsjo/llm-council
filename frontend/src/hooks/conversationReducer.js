@@ -44,6 +44,7 @@ export function buildAssistantMessage(mode) {
     stage2: null,
     stage3: null,
     metadata: null,
+    errors: [],
     webSearchUsed: false,
     loading: {
       webSearch: false,
@@ -164,10 +165,19 @@ export function conversationReducer(state, action) {
       return { ...state, messages };
     }
 
+    case 'stage1_model_error': {
+      const { messages, lastMsg } = cloneLastMessage(state);
+      lastMsg.errors = [...(lastMsg.errors || []), action.payload.data];
+      return { ...state, messages };
+    }
+
     case 'stage1_complete': {
       const { messages, lastMsg } = cloneLastMessage(state);
       lastMsg.stage1 = action.payload.data;
       lastMsg.loading = { ...lastMsg.loading, stage1: false };
+      if (action.payload.errors?.length) {
+        lastMsg.errors = [...(lastMsg.errors || []), ...action.payload.errors];
+      }
       return { ...state, messages };
     }
 
@@ -184,6 +194,9 @@ export function conversationReducer(state, action) {
       lastMsg.stage2 = action.payload.data;
       lastMsg.metadata = action.payload.metadata;
       lastMsg.loading = { ...lastMsg.loading, stage2: false };
+      if (action.payload.errors?.length) {
+        lastMsg.errors = [...(lastMsg.errors || []), ...action.payload.errors];
+      }
       return { ...state, messages };
     }
 

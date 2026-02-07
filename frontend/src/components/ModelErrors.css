@@ -1,0 +1,67 @@
+.model-errors {
+  margin-bottom: var(--space-md);
+}
+
+.model-errors-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-lg);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.model-errors-banner + .model-errors-banner {
+  margin-top: var(--space-xs);
+}
+
+.model-errors-banner--billing {
+  background: #fff8e1;
+  border: 1px solid #ffcc02;
+  color: #6d5100;
+}
+
+.model-errors-banner--auth {
+  background: #ffeef0;
+  border: 1px solid #f97583;
+  color: #86181d;
+}
+
+.model-errors-banner--transient {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  color: #57606a;
+}
+
+.model-errors-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.model-errors-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-errors-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.model-errors-detail {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.model-errors-models {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  margin-top: 2px;
+}
+
+.model-errors-link {
+  color: inherit;
+  text-decoration: underline;
+}
