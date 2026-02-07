@@ -479,7 +479,8 @@ function App() {
         arenaRoundCount={arenaRoundCount}
         onArenaRoundCountChange={setArenaRoundCount}
         arenaConfig={arenaConfig}
-        hasPendingForkContext={!!pendingForkContext}
+        pendingForkContext={pendingForkContext}
+        onDismissForkContext={() => setPendingForkContext(null)}
       />
     </div>
   );

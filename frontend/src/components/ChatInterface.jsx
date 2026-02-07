@@ -11,6 +11,9 @@ import {
   FileText,
   Image,
   Play,
+  MessageSquarePlus,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { api } from '../api';
 import {
@@ -46,12 +49,14 @@ export default function ChatInterface({
   arenaRoundCount,
   onArenaRoundCountChange,
   arenaConfig,
-  hasPendingForkContext,
+  pendingForkContext,
+  onDismissForkContext,
 }) {
   const [input, setInput] = useState('');
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [forkContextExpanded, setForkContextExpanded] = useState(true);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const userHasScrolled = useRef(false);
@@ -582,6 +587,50 @@ export default function ChatInterface({
 
         <div ref={messagesEndRef} />
       </div>
+
+      {pendingForkContext && (
+        <div className="fork-context-preview">
+          <div className="fork-context-header">
+            <button
+              type="button"
+              className="fork-context-toggle"
+              onClick={() => setForkContextExpanded(!forkContextExpanded)}
+              aria-expanded={forkContextExpanded}
+            >
+              {forkContextExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <MessageSquarePlus size={16} />
+              <span>Continuing from previous discussion</span>
+            </button>
+            <button
+              type="button"
+              className="fork-context-dismiss"
+              onClick={onDismissForkContext}
+              aria-label="Dismiss context"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {forkContextExpanded && (
+            <div className="fork-context-body">
+              <div className="fork-context-section">
+                <span className="fork-context-label">Original question</span>
+                <p className="fork-context-text">{pendingForkContext.original_question}</p>
+              </div>
+              <div className="fork-context-section">
+                <span className="fork-context-label">Previous synthesis</span>
+                <div className="fork-context-synthesis markdown-content">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {pendingForkContext.synthesis}
+                  </ReactMarkdown>
+                </div>
+              </div>
+              <p className="fork-context-hint">
+                This context will be sent to models with your next message.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <form className="input-form" onSubmit={handleSubmit}>
         <textarea
