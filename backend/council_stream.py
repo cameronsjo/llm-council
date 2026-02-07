@@ -508,3 +508,244 @@ async def retry_stage3_pipeline(
             conversation_id, retry_duration, e,
         )
         yield {"type": "error", "message": str(e)}
+
+
+async def retry_stage2_pipeline(
+    conversation_id: str,
+    council_models: list[str],
+    chairman_model: str,
+    user_id: str | None = None,
+    *,
+    storage: ModuleType | None = None,
+) -> AsyncGenerator[dict, None]:
+    """Re-run Stage 2 + Stage 3 using existing Stage 1 data.
+
+    Reads the last council assistant message, extracts stage1 results,
+    re-runs ranking and synthesis, and updates the message in place.
+
+    Args:
+        conversation_id: Conversation with a failed Stage 2 to retry.
+        council_models: Models to use for ranking.
+        chairman_model: Model to use for synthesis.
+        user_id: Optional username for user-scoped storage.
+        storage: Storage module (injectable for testing).
+    """
+    if storage is None:
+        from . import storage as _storage
+        storage = _storage
+
+    retry_start = time.monotonic()
+    logger.info(
+        "Beginning Stage 2 retry. ConversationId: %s, Chairman: %s",
+        conversation_id, chairman_model,
+    )
+
+    try:
+        conversation = storage.get_conversation(conversation_id, user_id)
+        if conversation is None:
+            yield {"type": "error", "message": "Conversation not found"}
+            return
+
+        # Find last council message and user query
+        last_council_msg = None
+        user_query = None
+        for msg in reversed(conversation["messages"]):
+            if msg.get("role") == "assistant" and msg.get("mode") == "council":
+                last_council_msg = msg
+            elif msg.get("role") == "user" and last_council_msg is not None:
+                user_query = msg.get("content", "")
+                break
+
+        if last_council_msg is None:
+            yield {"type": "error", "message": "No council message found to retry"}
+            return
+
+        stage1_results, _ = _extract_stage_data(last_council_msg)
+        if not stage1_results:
+            yield {"type": "error", "message": "Stage 1 data missing"}
+            return
+
+        if not user_query:
+            yield {"type": "error", "message": "Could not find original user query"}
+            return
+
+        # Re-run Stage 2
+        yield {"type": "stage2_start"}
+        stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
+            user_query, stage1_results, council_models
+        )
+        aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        metadata = {
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate_rankings,
+        }
+        yield {
+            "type": "stage2_complete",
+            "data": stage2_results,
+            "metadata": metadata,
+            "errors": stage2_errors,
+        }
+
+        # Re-run Stage 3
+        yield {"type": "stage3_start"}
+        stage3_result = await stage3_synthesize_final(
+            user_query, stage1_results, stage2_results, chairman_model
+        )
+
+        if stage3_result.get("response", "").startswith("Error:"):
+            yield {"type": "stage3_complete", "data": stage3_result}
+            yield {"type": "error", "message": "Chairman model failed during stage 2 retry"}
+            return
+
+        yield {"type": "stage3_complete", "data": stage3_result}
+
+        metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
+        yield {"type": "metrics_complete", "data": metrics}
+
+        # Persist: update stages 2+3 in place
+        storage.update_last_council_stages(
+            conversation_id, stage2_results, stage3_result, metadata, metrics,
+            user_id=user_id,
+        )
+
+        retry_duration = time.monotonic() - retry_start
+        logger.info(
+            "Successfully completed Stage 2 retry. ConversationId: %s, Duration: %.2fs",
+            conversation_id, retry_duration,
+        )
+        yield {"type": "complete"}
+
+    except Exception as e:
+        retry_duration = time.monotonic() - retry_start
+        logger.exception(
+            "Failed Stage 2 retry. ConversationId: %s, Duration: %.2fs, Error: %s",
+            conversation_id, retry_duration, e,
+        )
+        yield {"type": "error", "message": str(e)}
+
+
+async def retry_stage1_pipeline(
+    conversation_id: str,
+    council_models: list[str],
+    chairman_model: str,
+    user_id: str | None = None,
+    *,
+    storage: ModuleType | None = None,
+) -> AsyncGenerator[dict, None]:
+    """Re-run all 3 stages, replacing the last council message entirely.
+
+    Reads the conversation to find the user query, re-runs stages 1-3,
+    and replaces the last assistant message in place.
+
+    Args:
+        conversation_id: Conversation to retry.
+        council_models: Models to query in Stage 1.
+        chairman_model: Model for synthesis.
+        user_id: Optional username for user-scoped storage.
+        storage: Storage module (injectable for testing).
+    """
+    if storage is None:
+        from . import storage as _storage
+        storage = _storage
+
+    retry_start = time.monotonic()
+    logger.info(
+        "Beginning Stage 1 retry (full re-run). ConversationId: %s, Models: %d, Chairman: %s",
+        conversation_id, len(council_models), chairman_model,
+    )
+
+    try:
+        conversation = storage.get_conversation(conversation_id, user_id)
+        if conversation is None:
+            yield {"type": "error", "message": "Conversation not found"}
+            return
+
+        # Find user query before last council message
+        last_council_msg = None
+        user_query = None
+        for msg in reversed(conversation["messages"]):
+            if msg.get("role") == "assistant" and msg.get("mode") == "council":
+                last_council_msg = msg
+            elif msg.get("role") == "user" and last_council_msg is not None:
+                user_query = msg.get("content", "")
+                break
+
+        if last_council_msg is None:
+            yield {"type": "error", "message": "No council message found to retry"}
+            return
+
+        if not user_query:
+            yield {"type": "error", "message": "Could not find original user query"}
+            return
+
+        # Stage 1: Progressive streaming
+        yield {"type": "stage1_start", "data": {"models": council_models}}
+        stage1_results: list[dict] = []
+        stage1_errors: list[dict] = []
+        async for event in _stream_stage1(
+            user_query, None, council_models, stage1_results, stage1_errors,
+        ):
+            yield event
+
+        yield {"type": "stage1_complete", "data": stage1_results, "errors": stage1_errors}
+
+        if len(stage1_results) == 0:
+            yield {"type": "error", "message": "All models failed in Stage 1", "errors": stage1_errors}
+            return
+
+        # Stage 2: Rankings
+        yield {"type": "stage2_start"}
+        stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
+            user_query, stage1_results, council_models
+        )
+        aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        metadata = {
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate_rankings,
+        }
+        yield {
+            "type": "stage2_complete",
+            "data": stage2_results,
+            "metadata": metadata,
+            "errors": stage2_errors,
+        }
+
+        # Stage 3: Synthesis
+        yield {"type": "stage3_start"}
+        stage3_result = await stage3_synthesize_final(
+            user_query, stage1_results, stage2_results, chairman_model
+        )
+
+        if stage3_result.get("response", "").startswith("Error:"):
+            yield {"type": "stage3_complete", "data": stage3_result}
+            yield {"type": "error", "message": "Chairman model failed during stage 1 retry"}
+            return
+
+        yield {"type": "stage3_complete", "data": stage3_result}
+
+        metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
+        yield {"type": "metrics_complete", "data": metrics}
+
+        # Persist: replace entire last council message
+        unified_result = convert_to_unified_result(
+            stage1_results, stage2_results, stage3_result,
+            label_to_model, aggregate_rankings, metrics,
+        )
+        storage.replace_last_council_message(
+            conversation_id, unified_result, metrics, user_id=user_id,
+        )
+
+        retry_duration = time.monotonic() - retry_start
+        logger.info(
+            "Successfully completed Stage 1 retry. ConversationId: %s, Duration: %.2fs",
+            conversation_id, retry_duration,
+        )
+        yield {"type": "complete"}
+
+    except Exception as e:
+        retry_duration = time.monotonic() - retry_start
+        logger.exception(
+            "Failed Stage 1 retry. ConversationId: %s, Duration: %.2fs, Error: %s",
+            conversation_id, retry_duration, e,
+        )
+        yield {"type": "error", "message": str(e)}

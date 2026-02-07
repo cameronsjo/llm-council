@@ -669,6 +669,121 @@ def is_pending_stale(
         return True
 
 
+def replace_last_council_message(
+    conversation_id: str,
+    unified_result: "DeliberationResult",
+    metrics: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Replace the entire last council message (for stage 1 retry).
+
+    Args:
+        conversation_id: Conversation identifier
+        unified_result: New DeliberationResult replacing the whole message
+        metrics: Optional aggregate metrics
+        user_id: Optional username for user-scoped storage
+    """
+    logger.info(
+        "Replacing last council message (stage 1 retry). ConversationId: %s",
+        conversation_id,
+    )
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    for i in range(len(conversation["messages"]) - 1, -1, -1):
+        msg = conversation["messages"][i]
+        if msg.get("role") == "assistant" and msg.get("mode") == "council":
+            new_msg = unified_result.to_dict()
+            new_msg["role"] = "assistant"
+            if metrics is not None:
+                new_msg["metrics"] = metrics
+            conversation["messages"][i] = new_msg
+            save_conversation(conversation, user_id)
+            logger.info(
+                "Successfully replaced council message. ConversationId: %s",
+                conversation_id,
+            )
+            return
+
+    raise ValueError("No council message found to replace")
+
+
+def update_last_council_stages(
+    conversation_id: str,
+    stage2_results: list[dict[str, Any]],
+    stage3_result: dict[str, Any],
+    metadata: dict[str, Any],
+    metrics: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Replace stage 2 + stage 3 of the last council message (for stage 2 retry).
+
+    Args:
+        conversation_id: Conversation identifier
+        stage2_results: New stage 2 ranking results
+        stage3_result: New stage 3 synthesis result
+        metadata: Updated metadata (label_to_model, aggregate_rankings, etc.)
+        metrics: Optional updated aggregate metrics
+        user_id: Optional username for user-scoped storage
+    """
+    logger.info(
+        "Updating last council stages 2+3 (stage 2 retry). ConversationId: %s",
+        conversation_id,
+    )
+    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    for i in range(len(conversation["messages"]) - 1, -1, -1):
+        msg = conversation["messages"][i]
+        if msg.get("role") == "assistant" and msg.get("mode") == "council":
+            if "rounds" in msg and len(msg["rounds"]) >= 2:
+                # Unified format: update round[1] (rankings) and synthesis
+                msg["rounds"][1] = {
+                    "round_number": 2,
+                    "round_type": "ranking",
+                    "responses": [
+                        {
+                            "model": r.get("model", ""),
+                            "content": r.get("ranking", ""),
+                            **({"metrics": r["metrics"]} if r.get("metrics") else {}),
+                            **({"parsed_ranking": r["parsed_ranking"]} if r.get("parsed_ranking") else {}),
+                            **({"reasoning_details": r["reasoning_details"]} if r.get("reasoning_details") else {}),
+                        }
+                        for r in stage2_results
+                    ],
+                }
+                # Update synthesis
+                msg["synthesis"] = {
+                    "model": stage3_result.get("model", ""),
+                    "content": stage3_result.get("response", ""),
+                }
+                if stage3_result.get("metrics"):
+                    msg["synthesis"]["metrics"] = stage3_result["metrics"]
+                if stage3_result.get("reasoning_details"):
+                    msg["synthesis"]["reasoning_details"] = stage3_result["reasoning_details"]
+            else:
+                # Legacy format: update stage2 and stage3
+                msg["stage2"] = stage2_results
+                msg["stage3"] = stage3_result
+
+            # Update metadata and metrics
+            if metadata:
+                msg["metadata"] = metadata
+            if metrics is not None:
+                msg["metrics"] = metrics
+
+            save_conversation(conversation, user_id)
+            logger.info(
+                "Successfully updated council stages 2+3. ConversationId: %s",
+                conversation_id,
+            )
+            return
+
+    raise ValueError("No council message found to update")
+
+
 def remove_last_user_message(
     conversation_id: str, user_id: str | None = None
 ) -> bool:
