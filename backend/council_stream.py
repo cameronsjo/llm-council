@@ -19,6 +19,7 @@ from .council import (
     stage2_collect_rankings,
     stage3_synthesize_final,
 )
+from .openrouter import ModelError, is_model_error
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +87,13 @@ async def _stream_stage1(
     combined_context: str | None,
     council_models: list[str],
     stage1_results: list[dict],
+    stage1_errors: list[dict],
 ) -> AsyncGenerator[dict, None]:
     """Run Stage 1 with queue-based callback-to-generator bridge.
 
-    Populates stage1_results in place as models complete.
-    Yields stage1_model_response, stage1_progress, and stage1_token events.
+    Populates stage1_results and stage1_errors in place as models complete.
+    Yields stage1_model_response, stage1_model_error, stage1_progress,
+    and stage1_token events.
     """
     event_queue: asyncio.Queue = asyncio.Queue()
 
@@ -103,6 +106,14 @@ async def _stream_stage1(
                 "index": len(stage1_results),
                 "total": len(council_models),
             })
+
+    async def on_model_error(model: str, error: ModelError) -> None:
+        error_dict = error.to_dict()
+        stage1_errors.append(error_dict)
+        await event_queue.put({
+            "type": "stage1_model_error",
+            "data": error_dict,
+        })
 
     async def on_progress(
         completed: int, total: int,
@@ -131,6 +142,7 @@ async def _stream_stage1(
                 combined_context,
                 council_models,
                 on_model_response=on_model_response,
+                on_model_error=on_model_error,
                 on_progress=on_progress,
                 stream_tokens=True,
                 on_token=on_token,
@@ -247,20 +259,36 @@ async def run_council_pipeline(
 
             stage1_start = time.monotonic()
             stage1_results: list[dict] = []
+            stage1_errors: list[dict] = []
             async for event in _stream_stage1(
                 input.content,
                 combined_context or None,
                 input.council_models,
                 stage1_results,
+                stage1_errors,
             ):
                 yield event
 
             stage1_duration = time.monotonic() - stage1_start
             logger.info(
-                "Stage 1 complete. ConversationId: %s, Responses: %d/%d, Duration: %.2fs",
-                input.conversation_id, len(stage1_results), len(input.council_models), stage1_duration,
+                "Stage 1 complete. ConversationId: %s, Responses: %d/%d, Errors: %d, Duration: %.2fs",
+                input.conversation_id, len(stage1_results), len(input.council_models),
+                len(stage1_errors), stage1_duration,
             )
-            yield {"type": "stage1_complete", "data": stage1_results}
+            yield {"type": "stage1_complete", "data": stage1_results, "errors": stage1_errors}
+
+            if len(stage1_results) == 0:
+                logger.error(
+                    "All models failed in Stage 1. ConversationId: %s, Errors: %d",
+                    input.conversation_id, len(stage1_errors),
+                )
+                storage.update_pending_progress(
+                    input.conversation_id,
+                    {"stage1": stage1_results, "errors": stage1_errors},
+                    user_id=input.user_id,
+                )
+                yield {"type": "error", "message": "All models failed in Stage 1", "errors": stage1_errors}
+                return
 
             storage.update_pending_progress(
                 input.conversation_id,
@@ -278,7 +306,7 @@ async def run_council_pipeline(
         # --- Stage 2: Collect rankings ---
         yield {"type": "stage2_start"}
         stage2_start = time.monotonic()
-        stage2_results, label_to_model = await stage2_collect_rankings(
+        stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
             input.content, stage1_results, input.council_models
         )
         aggregate_rankings = calculate_aggregate_rankings(
@@ -286,8 +314,9 @@ async def run_council_pipeline(
         )
         stage2_duration = time.monotonic() - stage2_start
         logger.info(
-            "Stage 2 complete. ConversationId: %s, Rankings: %d/%d, Duration: %.2fs",
-            input.conversation_id, len(stage2_results), len(input.council_models), stage2_duration,
+            "Stage 2 complete. ConversationId: %s, Rankings: %d/%d, Errors: %d, Duration: %.2fs",
+            input.conversation_id, len(stage2_results), len(input.council_models),
+            len(stage2_errors), stage2_duration,
         )
         metadata = {
             "label_to_model": label_to_model,
@@ -299,6 +328,7 @@ async def run_council_pipeline(
             "type": "stage2_complete",
             "data": stage2_results,
             "metadata": metadata,
+            "errors": stage2_errors,
         }
 
         storage.update_pending_progress(

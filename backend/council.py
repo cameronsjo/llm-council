@@ -262,7 +262,7 @@ async def stage2_collect_rankings(
     user_query: str,
     stage1_results: list[dict[str, Any]],
     council_models: list[str] | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, str]]:
+) -> tuple[list[dict[str, Any]], dict[str, str], list[dict[str, Any]]]:
     """
     Stage 2: Each model ranks the anonymized responses.
 
@@ -318,6 +318,7 @@ async def stage2_collect_rankings(
 
         # Format results
         stage2_results = []
+        stage2_errors = []
         failed_models = []
         for model, response in responses.items():
             if response is not None and not is_model_error(response):
@@ -335,6 +336,8 @@ async def stage2_collect_rankings(
                 stage2_results.append(result)
             else:
                 failed_models.append(model)
+                if is_model_error(response):
+                    stage2_errors.append(response.to_dict())
 
         if failed_models:
             logger.warning(
@@ -351,7 +354,7 @@ async def stage2_collect_rankings(
         if is_telemetry_enabled():
             span.set_attribute("council.ranking_count", len(stage2_results))
 
-        return stage2_results, label_to_model
+        return stage2_results, label_to_model, stage2_errors
 
 
 async def stage3_synthesize_final(

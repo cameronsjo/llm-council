@@ -90,7 +90,7 @@ class TestCouncilPipelineHappyPath:
                 return STAGE1_RESULTS
 
             mock_s1.side_effect = fake_stage1
-            mock_s2.return_value = (STAGE2_RESULTS, LABEL_TO_MODEL)
+            mock_s2.return_value = (STAGE2_RESULTS, LABEL_TO_MODEL, [])
             mock_s3.return_value = STAGE3_RESULT
             mock_title.return_value = "Meaning of Life"
             mock_agg.return_value = [{"model": "model-a", "average_rank": 1.0, "rankings_count": 1}]
@@ -133,9 +133,13 @@ class TestCouncilPipelineHappyPath:
             patch("backend.council_stream.process_attachments") as mock_attach,
         ):
             async def fake_stage1(content, context, models, **kwargs):
+                cb = kwargs.get("on_model_response")
+                if cb:
+                    for r in STAGE1_RESULTS:
+                        await cb(r["model"], r)
                 return STAGE1_RESULTS
             mock_s1.side_effect = fake_stage1
-            mock_s2.return_value = (STAGE2_RESULTS, LABEL_TO_MODEL)
+            mock_s2.return_value = (STAGE2_RESULTS, LABEL_TO_MODEL, [])
             mock_s3.return_value = STAGE3_RESULT
             mock_agg.return_value = []
             mock_metrics.return_value = {}
@@ -163,9 +167,13 @@ class TestCouncilPipelineHappyPath:
             patch("backend.council_stream.process_attachments") as mock_attach,
         ):
             async def fake_stage1(content, context, models, **kwargs):
+                cb = kwargs.get("on_model_response")
+                if cb:
+                    for r in STAGE1_RESULTS:
+                        await cb(r["model"], r)
                 return STAGE1_RESULTS
             mock_s1.side_effect = fake_stage1
-            mock_s2.return_value = (STAGE2_RESULTS, LABEL_TO_MODEL)
+            mock_s2.return_value = (STAGE2_RESULTS, LABEL_TO_MODEL, [])
             mock_s3.return_value = STAGE3_RESULT
             mock_agg.return_value = []
             mock_metrics.return_value = {}
@@ -200,7 +208,7 @@ class TestCouncilPipelineResume:
             patch("backend.council_stream.aggregate_metrics") as mock_metrics,
             patch("backend.council_stream.convert_to_unified_result") as mock_convert,
         ):
-            mock_s2.return_value = ([], {})
+            mock_s2.return_value = ([], {}, [])
             mock_s3.return_value = {"model": "m", "response": "s", "metrics": {}}
             mock_agg.return_value = []
             mock_metrics.return_value = {}
@@ -230,7 +238,11 @@ class TestCouncilPipelineErrors:
             patch("backend.council_stream.process_attachments") as mock_attach,
         ):
             async def fake_stage1(content, context, models, **kwargs):
-                return [{"model": "m", "response": "r", "metrics": {}}]
+                result = {"model": "m", "response": "r", "metrics": {}}
+                cb = kwargs.get("on_model_response")
+                if cb:
+                    await cb("m", result)
+                return [result]
             mock_s1.side_effect = fake_stage1
             mock_attach.return_value = ("", [])
             mock_s2.side_effect = RuntimeError("Stage 2 exploded")
