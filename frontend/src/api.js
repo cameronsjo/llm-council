@@ -515,6 +515,40 @@ export const api = {
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
   },
+
+  /**
+   * Retry Stage 2 ranking + Stage 3 synthesis using existing Stage 1 data.
+   */
+  async retryStage2Stream(conversationId, onEvent, signal = null) {
+    const response = await fetchSSE(
+      `${API_BASE}/api/conversations/${conversationId}/retry-stage2/stream`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+      },
+      'Failed to retry Stage 2',
+    );
+
+    await readSSEStream(response.body.getReader(), onEvent, signal);
+  },
+
+  /**
+   * Retry all 3 stages, replacing the last council message entirely.
+   */
+  async retryStage1Stream(conversationId, onEvent, signal = null) {
+    const response = await fetchSSE(
+      `${API_BASE}/api/conversations/${conversationId}/retry-stage1/stream`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+      },
+      'Failed to retry Stage 1',
+    );
+
+    await readSSEStream(response.body.getReader(), onEvent, signal);
+  },
 };
 
 export { readSSEStream, SSETimeoutError, fetchJSON, fetchSSE, fetchWithAuth };

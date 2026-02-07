@@ -61,6 +61,8 @@ function App() {
     setConversation: setCurrentConversation,
     sendMessage,
     extendDebate,
+    retryStage1,
+    retryStage2,
     retryStage3,
     cancelStream,
     updateTitle,
@@ -381,6 +383,16 @@ function App() {
     await retryStage3(currentConversationId);
   };
 
+  const handleRetryStage2 = async () => {
+    if (!currentConversationId || isLoading) return;
+    await retryStage2(currentConversationId);
+  };
+
+  const handleRetryStage1 = async () => {
+    if (!currentConversationId || isLoading) return;
+    await retryStage1(currentConversationId);
+  };
+
   const handleSendMessage = async (content, attachments = [], resume = false) => {
     if (!currentConversationId) return;
     const priorContext = pendingForkContext;
@@ -453,6 +465,8 @@ function App() {
         onForkConversation={handleForkConversation}
         onExtendDebate={handleExtendDebate}
         onRetryStage3={handleRetryStage3}
+        onRetryStage2={handleRetryStage2}
+        onRetryStage1={handleRetryStage1}
         onCancel={cancelStream}
         isLoading={isLoading}
         isExtendingDebate={isExtendingDebate}

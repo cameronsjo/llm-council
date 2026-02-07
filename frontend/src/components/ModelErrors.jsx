@@ -6,7 +6,7 @@ import './ModelErrors.css';
  * Props:
  *   errors: Array<{ model, status_code, category, message }>
  */
-export default function ModelErrors({ errors }) {
+export default function ModelErrors({ errors, onRetry }) {
   if (!errors?.length) return null;
 
   // Group by category, collapsing transient/rate_limit/timeout into one bucket
@@ -85,6 +85,16 @@ export default function ModelErrors({ errors }) {
             </div>
           </div>
         </div>
+      )}
+
+      {onRetry && (
+        <button
+          type="button"
+          className="model-errors-retry-btn"
+          onClick={onRetry}
+        >
+          Retry All Models
+        </button>
       )}
     </div>
   );

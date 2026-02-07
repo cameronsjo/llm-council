@@ -264,6 +264,134 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     );
   }, [onComplete, onAuthExpired, onServerShutdown]);
 
+  // ── Retry Stage 2 ──────────────────────────────────────────────────────
+
+  const retryStage2 = useCallback(async (conversationId) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    console.info('[stream] retryStage2. ConversationId: %s', conversationId);
+    dispatch({ type: 'SET_LOADING', payload: { isLoading: true } });
+
+    await Sentry.startSpan(
+      { name: 'council.retryStage2', op: 'ui.action' },
+      async () => {
+        let receivedTerminal = false;
+        try {
+          await api.retryStage2Stream(
+            conversationId,
+            (eventType, event) => {
+              if (controller.signal.aborted) return;
+              console.debug('[stream] retryStage2 event: %s', eventType);
+              Sentry.addBreadcrumb({ category: 'sse', message: eventType, level: 'info' });
+              dispatch({ type: eventType, payload: event });
+
+              if (eventType === 'complete') {
+                receivedTerminal = true;
+                console.info('[stream] retryStage2 complete. ConversationId: %s', conversationId);
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                onComplete?.();
+              }
+              if (eventType === 'error') {
+                receivedTerminal = true;
+                console.error('[stream] retryStage2 server error. ConversationId: %s, Event: %o', conversationId, event);
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+              }
+              if (eventType === 'server_shutdown') {
+                receivedTerminal = true;
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                onServerShutdown?.(event.message || 'Server is restarting');
+              }
+            },
+            controller.signal,
+          );
+
+          if (!receivedTerminal && !controller.signal.aborted) {
+            dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            onComplete?.();
+          }
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+          if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
+          if (error instanceof SSETimeoutError) {
+            Sentry.captureMessage('SSE stream timed out', { level: 'warning', tags: { operation: 'retryStage2', conversationId } });
+            dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            onServerShutdown?.('Stream timed out — the server may be unresponsive');
+            return;
+          }
+          Sentry.captureException(error, { tags: { operation: 'retryStage2', conversationId } });
+          console.error('[stream] retryStage2 failed. ConversationId: %s, Error: %s', conversationId, error.message, error);
+          dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+        }
+      },
+    );
+  }, [onComplete, onAuthExpired, onServerShutdown]);
+
+  // ── Retry Stage 1 (full re-run) ──────────────────────────────────────
+
+  const retryStage1 = useCallback(async (conversationId) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    console.info('[stream] retryStage1. ConversationId: %s', conversationId);
+    dispatch({ type: 'SET_LOADING', payload: { isLoading: true } });
+
+    await Sentry.startSpan(
+      { name: 'council.retryStage1', op: 'ui.action' },
+      async () => {
+        let receivedTerminal = false;
+        try {
+          await api.retryStage1Stream(
+            conversationId,
+            (eventType, event) => {
+              if (controller.signal.aborted) return;
+              console.debug('[stream] retryStage1 event: %s', eventType);
+              Sentry.addBreadcrumb({ category: 'sse', message: eventType, level: 'info' });
+              dispatch({ type: eventType, payload: event });
+
+              if (eventType === 'complete') {
+                receivedTerminal = true;
+                console.info('[stream] retryStage1 complete. ConversationId: %s', conversationId);
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                onComplete?.();
+              }
+              if (eventType === 'error') {
+                receivedTerminal = true;
+                console.error('[stream] retryStage1 server error. ConversationId: %s, Event: %o', conversationId, event);
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+              }
+              if (eventType === 'server_shutdown') {
+                receivedTerminal = true;
+                dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                onServerShutdown?.(event.message || 'Server is restarting');
+              }
+            },
+            controller.signal,
+          );
+
+          if (!receivedTerminal && !controller.signal.aborted) {
+            dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            onComplete?.();
+          }
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+          if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
+          if (error instanceof SSETimeoutError) {
+            Sentry.captureMessage('SSE stream timed out', { level: 'warning', tags: { operation: 'retryStage1', conversationId } });
+            dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            onServerShutdown?.('Stream timed out — the server may be unresponsive');
+            return;
+          }
+          Sentry.captureException(error, { tags: { operation: 'retryStage1', conversationId } });
+          console.error('[stream] retryStage1 failed. ConversationId: %s, Error: %s', conversationId, error.message, error);
+          dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+        }
+      },
+    );
+  }, [onComplete, onAuthExpired, onServerShutdown]);
+
   // ── Public API ─────────────────────────────────────────────────────────
 
   return {
@@ -273,6 +401,8 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
     setConversation,
     sendMessage,
     extendDebate,
+    retryStage1,
+    retryStage2,
     retryStage3,
     cancelStream,
     updateTitle,

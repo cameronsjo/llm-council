@@ -34,6 +34,8 @@ export default function ChatInterface({
   onForkConversation,
   onExtendDebate,
   onRetryStage3,
+  onRetryStage2,
+  onRetryStage1,
   onCancel,
   isLoading,
   isExtendingDebate,
@@ -395,7 +397,14 @@ export default function ChatInterface({
                   )}
 
                   {msg.errors?.length > 0 && (
-                    <ModelErrors errors={msg.errors} />
+                    <ModelErrors
+                      errors={msg.errors}
+                      onRetry={
+                        !isLoading && onRetryStage1
+                          ? () => onRetryStage1(conversation.id)
+                          : undefined
+                      }
+                    />
                   )}
 
                   {/* Unified Round Display - Works for both Arena and Council modes */}
@@ -556,7 +565,11 @@ export default function ChatInterface({
           ))
         )}
 
-        {isLoading && !messages[messages.length - 1]?.loading?.stage3 && (
+        {isLoading && (() => {
+          const last = conversation.messages[conversation.messages.length - 1];
+          const hasStageLoading = last?.loading?.stage1 || last?.loading?.stage2 || last?.loading?.stage3;
+          return !hasStageLoading;
+        })() && (
           <div className="loading-indicator">
             <div className="spinner"></div>
             <span>Consulting the council...</span>

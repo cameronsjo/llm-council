@@ -117,7 +117,12 @@ export function conversationReducer(state, action) {
 
     case 'stage1_start': {
       const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.loading = { ...lastMsg.loading, stage1: true };
+      // Clear all downstream data (supports retry from stage 1)
+      lastMsg.stage1 = null;
+      lastMsg.stage2 = null;
+      lastMsg.stage3 = null;
+      lastMsg.errors = [];
+      lastMsg.loading = { ...lastMsg.loading, stage1: true, stage2: false, stage3: false };
       if (action.payload.data?.models) {
         lastMsg.streaming = {
           models: action.payload.data.models,
@@ -185,7 +190,10 @@ export function conversationReducer(state, action) {
 
     case 'stage2_start': {
       const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.loading = { ...lastMsg.loading, stage2: true };
+      // Clear downstream data (supports retry from stage 2)
+      lastMsg.stage2 = null;
+      lastMsg.stage3 = null;
+      lastMsg.loading = { ...lastMsg.loading, stage2: true, stage3: false };
       return { ...state, messages };
     }
 

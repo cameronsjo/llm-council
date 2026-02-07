@@ -65,3 +65,22 @@
   color: inherit;
   text-decoration: underline;
 }
+
+.model-errors-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-sm);
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #57606a;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.model-errors-retry-btn:hover {
+  background: #eaeef2;
+  border-color: #afb8c1;
+}
