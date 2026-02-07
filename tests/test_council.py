@@ -337,8 +337,8 @@ class TestAggregateMetrics:
         assert m["total_cost"] == 0.01
         assert m["total_tokens"] == 100
         assert m["total_latency_ms"] == 500
-        assert m["by_stage"]["stage1"]["models"] == []
-        assert m["by_stage"]["stage2"]["models"] == []
+        assert m["by_stage"]["responses"]["models"] == []
+        assert m["by_stage"]["rankings"]["models"] == []
 
     def test_missing_none_metric_values_default_to_zero(self):
         """Missing or None metric values default to 0."""
@@ -358,7 +358,7 @@ class TestAggregateMetrics:
         m = aggregate_metrics(s1, [], s3)
 
         assert m["total_cost"] == round(0.0000003, 6)
-        assert m["by_stage"]["stage1"]["cost"] == round(0.0000001, 6)
+        assert m["by_stage"]["responses"]["cost"] == round(0.0000001, 6)
 
     def test_latency_uses_max_for_parallel_sum_for_sequential(self):
         """Stage 1 and 2 use max latency (parallel); stages sum sequentially."""
@@ -376,9 +376,9 @@ class TestAggregateMetrics:
 
         # max(100,400) = 400, max(200,300) = 300, + 500 = 1200
         assert m["total_latency_ms"] == 1200
-        assert m["by_stage"]["stage1"]["latency_ms"] == 400
-        assert m["by_stage"]["stage2"]["latency_ms"] == 300
-        assert m["by_stage"]["stage3"]["latency_ms"] == 500
+        assert m["by_stage"]["responses"]["latency_ms"] == 400
+        assert m["by_stage"]["rankings"]["latency_ms"] == 300
+        assert m["by_stage"]["synthesis"]["latency_ms"] == 500
 
 
 # ---------------------------------------------------------------------------

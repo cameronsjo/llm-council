@@ -18,12 +18,12 @@ describe('Model errors — reducer', () => {
     expect(msg.errors).toEqual([]);
   });
 
-  it('stage1_model_error appends error to lastMsg.errors', () => {
+  it('model_error appends error to lastMsg.errors', () => {
     const state = makeConversationWithAssistant();
     const error = { model: 'openai/gpt-4o', status_code: 402, category: 'billing', message: 'Insufficient credits' };
 
     const next = conversationReducer(state, {
-      type: 'stage1_model_error',
+      type: 'model_error',
       payload: { data: error },
     });
 
@@ -32,19 +32,19 @@ describe('Model errors — reducer', () => {
     expect(lastMsg.errors[0].category).toBe('billing');
   });
 
-  it('stage1_model_error works on stored message without errors field', () => {
+  it('model_error works on stored message without errors field', () => {
     const state = {
       id: 'conv-1',
       title: 'Test',
       messages: [
         { role: 'user', content: 'Hello' },
-        { role: 'assistant', stage1: null, stage2: null, stage3: null },
+        { role: 'assistant', rounds: [], synthesis: null },
       ],
     };
     const error = { model: 'm', status_code: 429, category: 'rate_limit', message: 'slow' };
 
     const next = conversationReducer(state, {
-      type: 'stage1_model_error',
+      type: 'model_error',
       payload: { data: error },
     });
 
@@ -53,7 +53,7 @@ describe('Model errors — reducer', () => {
     expect(lastMsg.errors[0].category).toBe('rate_limit');
   });
 
-  it('stage1_complete merges errors from payload', () => {
+  it('round_complete merges errors from responses round payload', () => {
     const state = makeConversationWithAssistant();
     const errors = [
       { model: 'model-a', status_code: 402, category: 'billing', message: 'No credits' },
@@ -61,38 +61,52 @@ describe('Model errors — reducer', () => {
     ];
 
     const next = conversationReducer(state, {
-      type: 'stage1_complete',
-      payload: { data: [{ model: 'model-c', response: 'ok' }], errors },
+      type: 'round_complete',
+      payload: {
+        data: {
+          round_type: 'responses',
+          responses: [{ model: 'model-c', response: 'ok' }],
+          errors,
+        },
+      },
     });
 
     const lastMsg = next.messages[next.messages.length - 1];
     expect(lastMsg.errors).toHaveLength(2);
-    expect(lastMsg.stage1).toHaveLength(1);
+    expect(lastMsg.rounds).toHaveLength(1);
   });
 
-  it('stage1_complete without errors does not add to errors array', () => {
+  it('round_complete without errors does not add to errors array', () => {
     const state = makeConversationWithAssistant();
     const next = conversationReducer(state, {
-      type: 'stage1_complete',
-      payload: { data: [{ model: 'model-a', response: 'ok' }] },
+      type: 'round_complete',
+      payload: {
+        data: {
+          round_type: 'responses',
+          responses: [{ model: 'model-a', response: 'ok' }],
+        },
+      },
     });
 
     const lastMsg = next.messages[next.messages.length - 1];
     expect(lastMsg.errors).toEqual([]);
   });
 
-  it('stage2_complete merges errors from payload', () => {
+  it('round_complete merges errors from rankings round payload', () => {
     const state = makeConversationWithAssistant();
-    const stage2Errors = [
+    const rankingsErrors = [
       { model: 'model-a', status_code: 429, category: 'rate_limit', message: 'Rate limited' },
     ];
 
     const next = conversationReducer(state, {
-      type: 'stage2_complete',
+      type: 'round_complete',
       payload: {
-        data: [],
-        metadata: { label_to_model: {} },
-        errors: stage2Errors,
+        data: {
+          round_type: 'rankings',
+          responses: [],
+          metadata: { label_to_model: {} },
+          errors: rankingsErrors,
+        },
       },
     });
 
@@ -101,21 +115,24 @@ describe('Model errors — reducer', () => {
     expect(lastMsg.errors[0].category).toBe('rate_limit');
   });
 
-  it('errors accumulate across stage1_model_error and stage1_complete', () => {
+  it('errors accumulate across model_error and round_complete', () => {
     let state = makeConversationWithAssistant();
 
     // First: individual error during streaming
     state = conversationReducer(state, {
-      type: 'stage1_model_error',
+      type: 'model_error',
       payload: { data: { model: 'a', status_code: 402, category: 'billing', message: 'x' } },
     });
 
-    // Then: stage1_complete with additional errors
+    // Then: round_complete with additional errors
     state = conversationReducer(state, {
-      type: 'stage1_complete',
+      type: 'round_complete',
       payload: {
-        data: [{ model: 'c', response: 'ok' }],
-        errors: [{ model: 'b', status_code: 503, category: 'transient', message: 'y' }],
+        data: {
+          round_type: 'responses',
+          responses: [{ model: 'c', response: 'ok' }],
+          errors: [{ model: 'b', status_code: 503, category: 'transient', message: 'y' }],
+        },
       },
     });
 

@@ -92,8 +92,8 @@ async def _stream_stage1(
     """Run Stage 1 with queue-based callback-to-generator bridge.
 
     Populates stage1_results and stage1_errors in place as models complete.
-    Yields stage1_model_response, stage1_model_error, stage1_progress,
-    and stage1_token events.
+    Yields model_response, model_error, round_progress,
+    and model_token events.
     """
     event_queue: asyncio.Queue = asyncio.Queue()
 
@@ -101,7 +101,7 @@ async def _stream_stage1(
         if result:
             stage1_results.append(result)
             await event_queue.put({
-                "type": "stage1_model_response",
+                "type": "model_response",
                 "data": result,
                 "index": len(stage1_results),
                 "total": len(council_models),
@@ -111,7 +111,7 @@ async def _stream_stage1(
         error_dict = error.to_dict()
         stage1_errors.append(error_dict)
         await event_queue.put({
-            "type": "stage1_model_error",
+            "type": "model_error",
             "data": error_dict,
         })
 
@@ -120,7 +120,7 @@ async def _stream_stage1(
         completed_models: list, pending_models: list,
     ) -> None:
         await event_queue.put({
-            "type": "stage1_progress",
+            "type": "round_progress",
             "data": {
                 "completed": completed,
                 "total": total,
@@ -131,7 +131,7 @@ async def _stream_stage1(
 
     async def on_token(model: str, token: str) -> None:
         await event_queue.put({
-            "type": "stage1_token",
+            "type": "model_token",
             "data": {"model": model, "token": token},
         })
 
@@ -191,20 +191,22 @@ async def run_council_pipeline(
         pending_data = storage.get_pending_message(
             input.conversation_id, user_id=input.user_id
         )
-        can_resume = (
-            input.resume
-            and pending_data
-            and pending_data.get("partial_data", {}).get("stage1")
-        )
+        partial_data = pending_data.get("partial_data", {}) if pending_data else {}
+        cached_responses = partial_data.get("responses") or partial_data.get("stage1")
+        can_resume = input.resume and pending_data and cached_responses
 
         if can_resume:
             logger.info(
                 "Resuming council pipeline from Stage 2. ConversationId: %s, CachedStage1Responses: %d",
-                input.conversation_id, len(pending_data["partial_data"]["stage1"]),
+                input.conversation_id, len(cached_responses),
             )
             yield {"type": "resume_start", "data": {"from_stage": 2}}
-            stage1_results = pending_data["partial_data"]["stage1"]
-            yield {"type": "stage1_complete", "data": stage1_results, "resumed": True}
+            stage1_results = cached_responses
+            yield {
+                "type": "round_complete",
+                "data": {"round_type": "responses", "responses": stage1_results},
+                "resumed": True,
+            }
             web_search_context = None
             web_search_error = None
         else:
@@ -251,7 +253,7 @@ async def run_council_pipeline(
                 }
 
             # --- Stage 1: Progressive streaming ---
-            yield {"type": "stage1_start", "data": {"models": input.council_models}}
+            yield {"type": "round_start", "data": {"round_type": "responses", "models": input.council_models}}
 
             combined_context = input.prior_context_text + attachment_context
             if web_search_context:
@@ -275,7 +277,10 @@ async def run_council_pipeline(
                 input.conversation_id, len(stage1_results), len(input.council_models),
                 len(stage1_errors), stage1_duration,
             )
-            yield {"type": "stage1_complete", "data": stage1_results, "errors": stage1_errors}
+            yield {
+                "type": "round_complete",
+                "data": {"round_type": "responses", "responses": stage1_results, "errors": stage1_errors},
+            }
 
             if len(stage1_results) == 0:
                 logger.error(
@@ -284,7 +289,7 @@ async def run_council_pipeline(
                 )
                 storage.update_pending_progress(
                     input.conversation_id,
-                    {"stage1": stage1_results, "errors": stage1_errors},
+                    {"responses": stage1_results, "errors": stage1_errors},
                     user_id=input.user_id,
                 )
                 yield {"type": "error", "message": "All models failed in Stage 1", "errors": stage1_errors}
@@ -292,7 +297,7 @@ async def run_council_pipeline(
 
             storage.update_pending_progress(
                 input.conversation_id,
-                {"stage1": stage1_results},
+                {"responses": stage1_results},
                 user_id=input.user_id,
             )
 
@@ -304,7 +309,7 @@ async def run_council_pipeline(
             )
 
         # --- Stage 2: Collect rankings ---
-        yield {"type": "stage2_start"}
+        yield {"type": "round_start", "data": {"round_type": "rankings"}}
         stage2_start = time.monotonic()
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
             input.content, stage1_results, input.council_models
@@ -325,24 +330,27 @@ async def run_council_pipeline(
             "web_search_error": web_search_error,
         }
         yield {
-            "type": "stage2_complete",
-            "data": stage2_results,
-            "metadata": metadata,
-            "errors": stage2_errors,
+            "type": "round_complete",
+            "data": {
+                "round_type": "rankings",
+                "responses": stage2_results,
+                "metadata": metadata,
+                "errors": stage2_errors,
+            },
         }
 
         storage.update_pending_progress(
             input.conversation_id,
             {
-                "stage1": stage1_results,
-                "stage2": stage2_results,
+                "responses": stage1_results,
+                "rankings": stage2_results,
                 "metadata": metadata,
             },
             user_id=input.user_id,
         )
 
         # --- Stage 3: Chairman synthesis ---
-        yield {"type": "stage3_start"}
+        yield {"type": "synthesis_start"}
         stage3_start = time.monotonic()
         stage3_result = await stage3_synthesize_final(
             input.content, stage1_results, stage2_results, input.chairman_model
@@ -352,7 +360,7 @@ async def run_council_pipeline(
             "Stage 3 complete. ConversationId: %s, Chairman: %s, Duration: %.2fs",
             input.conversation_id, input.chairman_model, stage3_duration,
         )
-        yield {"type": "stage3_complete", "data": stage3_result}
+        yield {"type": "synthesis_complete", "data": stage3_result}
 
         # --- Metrics ---
         metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
@@ -395,7 +403,7 @@ async def run_council_pipeline(
         yield {"type": "error", "message": str(e)}
 
 
-async def retry_stage3_pipeline(
+async def retry_synthesis_pipeline(
     conversation_id: str,
     chairman_model: str,
     user_id: str | None = None,
@@ -468,7 +476,7 @@ async def retry_stage3_pipeline(
             return
 
         # Re-run Stage 3 only
-        yield {"type": "stage3_start"}
+        yield {"type": "synthesis_start"}
         stage3_result = await stage3_synthesize_final(
             user_query, stage1_results, stage2_results, chairman_model
         )
@@ -479,11 +487,11 @@ async def retry_stage3_pipeline(
                 "Stage 3 retry chairman failed again. ConversationId: %s, Chairman: %s",
                 conversation_id, chairman_model,
             )
-            yield {"type": "stage3_complete", "data": stage3_result}
+            yield {"type": "synthesis_complete", "data": stage3_result}
             yield {"type": "error", "message": "Chairman model failed again"}
             return
 
-        yield {"type": "stage3_complete", "data": stage3_result}
+        yield {"type": "synthesis_complete", "data": stage3_result}
 
         # Update metrics with new stage3
         metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
@@ -510,7 +518,7 @@ async def retry_stage3_pipeline(
         yield {"type": "error", "message": str(e)}
 
 
-async def retry_stage2_pipeline(
+async def retry_rankings_pipeline(
     conversation_id: str,
     council_models: list[str],
     chairman_model: str,
@@ -570,7 +578,7 @@ async def retry_stage2_pipeline(
             return
 
         # Re-run Stage 2
-        yield {"type": "stage2_start"}
+        yield {"type": "round_start", "data": {"round_type": "rankings"}}
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
             user_query, stage1_results, council_models
         )
@@ -580,24 +588,27 @@ async def retry_stage2_pipeline(
             "aggregate_rankings": aggregate_rankings,
         }
         yield {
-            "type": "stage2_complete",
-            "data": stage2_results,
-            "metadata": metadata,
-            "errors": stage2_errors,
+            "type": "round_complete",
+            "data": {
+                "round_type": "rankings",
+                "responses": stage2_results,
+                "metadata": metadata,
+                "errors": stage2_errors,
+            },
         }
 
         # Re-run Stage 3
-        yield {"type": "stage3_start"}
+        yield {"type": "synthesis_start"}
         stage3_result = await stage3_synthesize_final(
             user_query, stage1_results, stage2_results, chairman_model
         )
 
         if stage3_result.get("response", "").startswith("Error:"):
-            yield {"type": "stage3_complete", "data": stage3_result}
+            yield {"type": "synthesis_complete", "data": stage3_result}
             yield {"type": "error", "message": "Chairman model failed during stage 2 retry"}
             return
 
-        yield {"type": "stage3_complete", "data": stage3_result}
+        yield {"type": "synthesis_complete", "data": stage3_result}
 
         metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
         yield {"type": "metrics_complete", "data": metrics}
@@ -624,7 +635,7 @@ async def retry_stage2_pipeline(
         yield {"type": "error", "message": str(e)}
 
 
-async def retry_stage1_pipeline(
+async def retry_all_pipeline(
     conversation_id: str,
     council_models: list[str],
     chairman_model: str,
@@ -679,7 +690,7 @@ async def retry_stage1_pipeline(
             return
 
         # Stage 1: Progressive streaming
-        yield {"type": "stage1_start", "data": {"models": council_models}}
+        yield {"type": "round_start", "data": {"round_type": "responses", "models": council_models}}
         stage1_results: list[dict] = []
         stage1_errors: list[dict] = []
         async for event in _stream_stage1(
@@ -687,14 +698,17 @@ async def retry_stage1_pipeline(
         ):
             yield event
 
-        yield {"type": "stage1_complete", "data": stage1_results, "errors": stage1_errors}
+        yield {
+            "type": "round_complete",
+            "data": {"round_type": "responses", "responses": stage1_results, "errors": stage1_errors},
+        }
 
         if len(stage1_results) == 0:
             yield {"type": "error", "message": "All models failed in Stage 1", "errors": stage1_errors}
             return
 
         # Stage 2: Rankings
-        yield {"type": "stage2_start"}
+        yield {"type": "round_start", "data": {"round_type": "rankings"}}
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
             user_query, stage1_results, council_models
         )
@@ -704,24 +718,27 @@ async def retry_stage1_pipeline(
             "aggregate_rankings": aggregate_rankings,
         }
         yield {
-            "type": "stage2_complete",
-            "data": stage2_results,
-            "metadata": metadata,
-            "errors": stage2_errors,
+            "type": "round_complete",
+            "data": {
+                "round_type": "rankings",
+                "responses": stage2_results,
+                "metadata": metadata,
+                "errors": stage2_errors,
+            },
         }
 
         # Stage 3: Synthesis
-        yield {"type": "stage3_start"}
+        yield {"type": "synthesis_start"}
         stage3_result = await stage3_synthesize_final(
             user_query, stage1_results, stage2_results, chairman_model
         )
 
         if stage3_result.get("response", "").startswith("Error:"):
-            yield {"type": "stage3_complete", "data": stage3_result}
+            yield {"type": "synthesis_complete", "data": stage3_result}
             yield {"type": "error", "message": "Chairman model failed during stage 1 retry"}
             return
 
-        yield {"type": "stage3_complete", "data": stage3_result}
+        yield {"type": "synthesis_complete", "data": stage3_result}
 
         metrics = aggregate_metrics(stage1_results, stage2_results, stage3_result)
         yield {"type": "metrics_complete", "data": metrics}

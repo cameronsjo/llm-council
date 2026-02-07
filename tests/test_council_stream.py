@@ -101,21 +101,21 @@ class TestCouncilPipelineHappyPath:
             events = await collect_events(run_council_pipeline(inp, storage=storage))
 
         types = event_types(events)
-        assert "stage1_start" in types
-        assert "stage1_complete" in types
-        assert "stage2_start" in types
-        assert "stage2_complete" in types
-        assert "stage3_start" in types
-        assert "stage3_complete" in types
+        assert "round_start" in types
+        assert "round_complete" in types
+        assert "synthesis_start" in types
+        assert "synthesis_complete" in types
         assert "metrics_complete" in types
         assert "title_complete" in types
         assert types[-1] == "complete"
 
-        # Order constraints
-        assert types.index("stage1_start") < types.index("stage1_complete")
-        assert types.index("stage1_complete") < types.index("stage2_start")
-        assert types.index("stage2_complete") < types.index("stage3_start")
-        assert types.index("stage3_complete") < types.index("complete")
+        # Order: round_start (responses) < round_complete < round_start (rankings) < round_complete < synthesis
+        round_starts = [i for i, t in enumerate(types) if t == "round_start"]
+        round_completes = [i for i, t in enumerate(types) if t == "round_complete"]
+        assert len(round_starts) >= 2  # responses + rankings
+        assert len(round_completes) >= 2
+        assert round_completes[-1] < types.index("synthesis_start")
+        assert types.index("synthesis_complete") < types.index("complete")
 
     @pytest.mark.asyncio
     async def test_clears_pending_on_success(self):
@@ -195,7 +195,7 @@ class TestCouncilPipelineResume:
         storage = make_mock_storage()
         storage.get_pending_message.return_value = {
             "partial_data": {
-                "stage1": [{"model": "m", "response": "r", "metrics": {}}]
+                "responses": [{"model": "m", "response": "r", "metrics": {}}]
             }
         }
         inp = make_input(resume=True, is_first_message=False)
@@ -218,7 +218,9 @@ class TestCouncilPipelineResume:
 
         types = event_types(events)
         assert "resume_start" in types
-        assert "stage1_start" not in types
+        # No responses round_start emitted (it's a resume, stage1 was cached)
+        responses_starts = [e for e in events if e.get("type") == "round_start" and e.get("data", {}).get("round_type") == "responses"]
+        assert len(responses_starts) == 0
         storage.add_user_message.assert_not_called()
         mock_s1.assert_not_called()
 

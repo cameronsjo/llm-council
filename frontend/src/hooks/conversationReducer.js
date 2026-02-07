@@ -20,37 +20,19 @@ function cloneLastMessage(state) {
 
 /** Build the initial skeleton assistant message for a given mode. */
 export function buildAssistantMessage(mode) {
-  if (mode === 'arena') {
-    return {
-      role: 'assistant',
-      mode: 'arena',
-      rounds: [],
-      synthesis: null,
-      participant_mapping: null,
-      webSearchUsed: false,
-      loading: {
-        webSearch: false,
-        round: false,
-        roundNumber: null,
-        roundType: null,
-        synthesis: false,
-      },
-    };
-  }
-
-  return {
+  const base = {
     role: 'assistant',
-    stage1: null,
-    stage2: null,
-    stage3: null,
-    metadata: null,
+    rounds: [],
+    synthesis: null,
+    participant_mapping: null,
     errors: [],
     webSearchUsed: false,
     loading: {
       webSearch: false,
-      stage1: false,
-      stage2: false,
-      stage3: false,
+      round: false,
+      roundNumber: null,
+      roundType: null,
+      synthesis: false,
     },
     streaming: {
       models: [],
@@ -59,6 +41,12 @@ export function buildAssistantMessage(mode) {
       progress: null,
     },
   };
+
+  if (mode === 'arena') {
+    base.mode = 'arena';
+  }
+
+  return base;
 }
 
 // --- Reducer -----------------------------------------------------------------
@@ -113,16 +101,33 @@ export function conversationReducer(state, action) {
       return { ...state, messages };
     }
 
-    // ── SSE: Council Stage 1 ─────────────────────────────────────────────
+    // ── SSE: Round events (shared by Council + Arena) ────────────────────
 
-    case 'stage1_start': {
+    case 'round_start': {
       const { messages, lastMsg } = cloneLastMessage(state);
-      // Clear all downstream data (supports retry from stage 1)
-      lastMsg.stage1 = null;
-      lastMsg.stage2 = null;
-      lastMsg.stage3 = null;
-      lastMsg.errors = [];
-      lastMsg.loading = { ...lastMsg.loading, stage1: true, stage2: false, stage3: false };
+      const roundType = action.payload.data?.round_type;
+
+      // Clear downstream data on retry
+      if (roundType === 'responses') {
+        lastMsg.rounds = [];
+        lastMsg.synthesis = null;
+        lastMsg.participant_mapping = null;
+        lastMsg.errors = [];
+      }
+      if (roundType === 'rankings') {
+        // Keep responses round, clear rankings onward
+        lastMsg.rounds = (lastMsg.rounds || []).filter(r => r.round_type !== 'rankings');
+        lastMsg.synthesis = null;
+      }
+
+      lastMsg.loading = {
+        ...lastMsg.loading,
+        round: true,
+        roundNumber: action.payload.data?.round_number ?? null,
+        roundType,
+      };
+
+      // Initialize streaming state for responses round (council-specific)
       if (action.payload.data?.models) {
         lastMsg.streaming = {
           models: action.payload.data.models,
@@ -136,10 +141,11 @@ export function conversationReducer(state, action) {
           },
         };
       }
+
       return { ...state, messages };
     }
 
-    case 'stage1_token': {
+    case 'model_token': {
       const { messages, lastMsg } = cloneLastMessage(state);
       const { model, token } = action.payload.data;
       lastMsg.streaming = {
@@ -152,7 +158,7 @@ export function conversationReducer(state, action) {
       return { ...state, messages };
     }
 
-    case 'stage1_model_response': {
+    case 'model_response': {
       const { messages, lastMsg } = cloneLastMessage(state);
       const newTokens = { ...lastMsg.streaming.tokens };
       delete newTokens[action.payload.data.model];
@@ -164,82 +170,15 @@ export function conversationReducer(state, action) {
       return { ...state, messages };
     }
 
-    case 'stage1_progress': {
+    case 'round_progress': {
       const { messages, lastMsg } = cloneLastMessage(state);
       lastMsg.streaming = { ...lastMsg.streaming, progress: action.payload.data };
       return { ...state, messages };
     }
 
-    case 'stage1_model_error': {
+    case 'model_error': {
       const { messages, lastMsg } = cloneLastMessage(state);
       lastMsg.errors = [...(lastMsg.errors || []), action.payload.data];
-      return { ...state, messages };
-    }
-
-    case 'stage1_complete': {
-      const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.stage1 = action.payload.data;
-      lastMsg.loading = { ...lastMsg.loading, stage1: false };
-      if (action.payload.errors?.length) {
-        lastMsg.errors = [...(lastMsg.errors || []), ...action.payload.errors];
-      }
-      return { ...state, messages };
-    }
-
-    // ── SSE: Council Stage 2 ─────────────────────────────────────────────
-
-    case 'stage2_start': {
-      const { messages, lastMsg } = cloneLastMessage(state);
-      // Clear downstream data (supports retry from stage 2)
-      lastMsg.stage2 = null;
-      lastMsg.stage3 = null;
-      lastMsg.loading = { ...lastMsg.loading, stage2: true, stage3: false };
-      return { ...state, messages };
-    }
-
-    case 'stage2_complete': {
-      const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.stage2 = action.payload.data;
-      lastMsg.metadata = action.payload.metadata;
-      lastMsg.loading = { ...lastMsg.loading, stage2: false };
-      if (action.payload.errors?.length) {
-        lastMsg.errors = [...(lastMsg.errors || []), ...action.payload.errors];
-      }
-      return { ...state, messages };
-    }
-
-    // ── SSE: Council Stage 3 ─────────────────────────────────────────────
-
-    case 'stage3_start': {
-      const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.stage3 = null; // Clear stale error from previous attempt
-      lastMsg.loading = { ...lastMsg.loading, stage3: true };
-      return { ...state, messages };
-    }
-
-    case 'stage3_complete': {
-      const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.stage3 = action.payload.data;
-      lastMsg.loading = { ...lastMsg.loading, stage3: false };
-      return { ...state, messages };
-    }
-
-    // ── SSE: Arena events ────────────────────────────────────────────────
-
-    case 'arena_start': {
-      const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.arenaInfo = action.payload.data;
-      return { ...state, messages };
-    }
-
-    case 'round_start': {
-      const { messages, lastMsg } = cloneLastMessage(state);
-      lastMsg.loading = {
-        ...lastMsg.loading,
-        round: true,
-        roundNumber: action.payload.data.round_number,
-        roundType: action.payload.data.round_type,
-      };
       return { ...state, messages };
     }
 
@@ -252,11 +191,15 @@ export function conversationReducer(state, action) {
         roundNumber: null,
         roundType: null,
       };
+      if (action.payload.data?.errors?.length) {
+        lastMsg.errors = [...(lastMsg.errors || []), ...action.payload.data.errors];
+      }
       return { ...state, messages };
     }
 
     case 'synthesis_start': {
       const { messages, lastMsg } = cloneLastMessage(state);
+      lastMsg.synthesis = null; // Clear stale on retry
       lastMsg.loading = { ...lastMsg.loading, synthesis: true };
       return { ...state, messages };
     }
@@ -264,12 +207,18 @@ export function conversationReducer(state, action) {
     case 'synthesis_complete': {
       const { messages, lastMsg } = cloneLastMessage(state);
       lastMsg.synthesis = action.payload.data;
-      lastMsg.participant_mapping = action.payload.participant_mapping;
+      lastMsg.participant_mapping = action.payload.participant_mapping ?? null;
       lastMsg.loading = { ...lastMsg.loading, synthesis: false };
       return { ...state, messages };
     }
 
-    // ── SSE: Extend debate ───────────────────────────────────────────────
+    // ── SSE: Arena-specific events ───────────────────────────────────────
+
+    case 'arena_start': {
+      const { messages, lastMsg } = cloneLastMessage(state);
+      lastMsg.arenaInfo = action.payload.data;
+      return { ...state, messages };
+    }
 
     case 'extend_start': {
       const { messages, lastMsg } = cloneLastMessage(state);

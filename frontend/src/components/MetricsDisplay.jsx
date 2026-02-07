@@ -4,6 +4,7 @@ import './MetricsDisplay.css';
 
 /**
  * Display aggregated metrics (cost, tokens, latency) for a council response.
+ * Supports both new keys (responses/rankings/synthesis) and legacy keys (stage1/stage2/stage3).
  */
 export default function MetricsDisplay({ metrics }) {
   const [expanded, setExpanded] = useState(false);
@@ -11,6 +12,10 @@ export default function MetricsDisplay({ metrics }) {
   if (!metrics || metrics.total_cost === 0) return null;
 
   const byStage = metrics.by_stage || {};
+  // Support both new and legacy keys for backward compat with old conversations
+  const responses = byStage.responses || byStage.stage1 || {};
+  const rankings = byStage.rankings || byStage.stage2 || {};
+  const synthesis = byStage.synthesis || byStage.stage3 || {};
 
   return (
     <div className="metrics-display">
@@ -41,29 +46,29 @@ export default function MetricsDisplay({ metrics }) {
         <div className="metrics-details">
           <div className="stage-metrics">
             <div className="stage-row">
-              <span className="stage-name">Stage 1 (Responses)</span>
-              <span className="stage-cost">{formatCostAlways(byStage.stage1?.cost || 0)}</span>
-              <span className="stage-tokens">{formatTokens(byStage.stage1?.tokens || 0)} tokens</span>
-              <span className="stage-latency">{formatLatency(byStage.stage1?.latency_ms || 0)}</span>
+              <span className="stage-name">Responses</span>
+              <span className="stage-cost">{formatCostAlways(responses.cost || 0)}</span>
+              <span className="stage-tokens">{formatTokens(responses.tokens || 0)} tokens</span>
+              <span className="stage-latency">{formatLatency(responses.latency_ms || 0)}</span>
             </div>
             <div className="stage-row">
-              <span className="stage-name">Stage 2 (Rankings)</span>
-              <span className="stage-cost">{formatCostAlways(byStage.stage2?.cost || 0)}</span>
-              <span className="stage-tokens">{formatTokens(byStage.stage2?.tokens || 0)} tokens</span>
-              <span className="stage-latency">{formatLatency(byStage.stage2?.latency_ms || 0)}</span>
+              <span className="stage-name">Rankings</span>
+              <span className="stage-cost">{formatCostAlways(rankings.cost || 0)}</span>
+              <span className="stage-tokens">{formatTokens(rankings.tokens || 0)} tokens</span>
+              <span className="stage-latency">{formatLatency(rankings.latency_ms || 0)}</span>
             </div>
             <div className="stage-row">
-              <span className="stage-name">Stage 3 (Synthesis)</span>
-              <span className="stage-cost">{formatCostAlways(byStage.stage3?.cost || 0)}</span>
-              <span className="stage-tokens">{formatTokens(byStage.stage3?.tokens || 0)} tokens</span>
-              <span className="stage-latency">{formatLatency(byStage.stage3?.latency_ms || 0)}</span>
+              <span className="stage-name">Synthesis</span>
+              <span className="stage-cost">{formatCostAlways(synthesis.cost || 0)}</span>
+              <span className="stage-tokens">{formatTokens(synthesis.tokens || 0)} tokens</span>
+              <span className="stage-latency">{formatLatency(synthesis.latency_ms || 0)}</span>
             </div>
           </div>
 
-          {(byStage.stage1?.models?.length > 0 || byStage.stage2?.models?.length > 0) && (
+          {(responses.models?.length > 0 || rankings.models?.length > 0) && (
             <div className="model-metrics">
               <div className="model-metrics-header">Per-Model Breakdown</div>
-              {byStage.stage1?.models?.map((m, i) => (
+              {responses.models?.map((m, i) => (
                 <div key={`s1-${i}`} className="model-row">
                   <span className="model-name" title={m.model}>{m.model?.split('/').pop()}</span>
                   <span className="model-cost">{formatCostAlways(m.cost)}</span>

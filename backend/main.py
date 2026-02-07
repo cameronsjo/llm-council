@@ -75,9 +75,9 @@ from .council import (
 )
 from .council_stream import (
     CouncilPipelineInput,
-    retry_stage1_pipeline,
-    retry_stage2_pipeline,
-    retry_stage3_pipeline,
+    retry_all_pipeline,
+    retry_rankings_pipeline,
+    retry_synthesis_pipeline,
     run_council_pipeline,
 )
 from .export import export_to_json, export_to_markdown
@@ -781,15 +781,15 @@ async def send_message_stream(
     )
 
 
-@app.post("/api/conversations/{conversation_id}/retry-stage3/stream")
-async def retry_stage3_stream(
+@app.post("/api/conversations/{conversation_id}/retry-synthesis/stream")
+async def retry_synthesis_stream(
     conversation_id: str,
     user: User | None = Depends(get_optional_user),
 ):
-    """Re-run Stage 3 synthesis using existing Stage 1+2 data."""
+    """Re-run synthesis using existing responses + rankings data."""
     user_id = user.username if user else None
     logger.info(
-        "Beginning retry-stage3 endpoint. ConversationId: %s, UserId: %s",
+        "Beginning retry-synthesis endpoint. ConversationId: %s, UserId: %s",
         conversation_id, user_id,
     )
     _council_models, chairman_model = storage.get_conversation_config(
@@ -799,7 +799,7 @@ async def retry_stage3_stream(
     async def event_generator():
         shutdown_coordinator.register_stream()
         try:
-            async for event in retry_stage3_pipeline(
+            async for event in retry_synthesis_pipeline(
                 conversation_id, chairman_model, user_id=user_id
             ):
                 if shutdown_coordinator.is_shutting_down:
@@ -820,15 +820,15 @@ async def retry_stage3_stream(
     )
 
 
-@app.post("/api/conversations/{conversation_id}/retry-stage2/stream")
-async def retry_stage2_stream(
+@app.post("/api/conversations/{conversation_id}/retry-rankings/stream")
+async def retry_rankings_stream(
     conversation_id: str,
     user: User | None = Depends(get_optional_user),
 ):
-    """Re-run Stage 2 ranking + Stage 3 synthesis using existing Stage 1 data."""
+    """Re-run rankings + synthesis using existing responses data."""
     user_id = user.username if user else None
     logger.info(
-        "Beginning retry-stage2 endpoint. ConversationId: %s, UserId: %s",
+        "Beginning retry-rankings endpoint. ConversationId: %s, UserId: %s",
         conversation_id, user_id,
     )
     council_models, chairman_model = storage.get_conversation_config(
@@ -838,7 +838,7 @@ async def retry_stage2_stream(
     async def event_generator():
         shutdown_coordinator.register_stream()
         try:
-            async for event in retry_stage2_pipeline(
+            async for event in retry_rankings_pipeline(
                 conversation_id, council_models, chairman_model, user_id=user_id
             ):
                 if shutdown_coordinator.is_shutting_down:
@@ -859,15 +859,15 @@ async def retry_stage2_stream(
     )
 
 
-@app.post("/api/conversations/{conversation_id}/retry-stage1/stream")
-async def retry_stage1_stream(
+@app.post("/api/conversations/{conversation_id}/retry-all/stream")
+async def retry_all_stream(
     conversation_id: str,
     user: User | None = Depends(get_optional_user),
 ):
-    """Re-run all 3 stages, replacing the last council message."""
+    """Re-run all stages, replacing the last council message."""
     user_id = user.username if user else None
     logger.info(
-        "Beginning retry-stage1 endpoint. ConversationId: %s, UserId: %s",
+        "Beginning retry-all endpoint. ConversationId: %s, UserId: %s",
         conversation_id, user_id,
     )
     council_models, chairman_model = storage.get_conversation_config(
@@ -877,7 +877,7 @@ async def retry_stage1_stream(
     async def event_generator():
         shutdown_coordinator.register_stream()
         try:
-            async for event in retry_stage1_pipeline(
+            async for event in retry_all_pipeline(
                 conversation_id, council_models, chairman_model, user_id=user_id
             ):
                 if shutdown_coordinator.is_shutting_down:

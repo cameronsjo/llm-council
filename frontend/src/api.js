@@ -499,52 +499,52 @@ export const api = {
   },
 
   /**
-   * Retry Stage 3 synthesis on a conversation where it previously failed.
-   * Re-uses existing Stage 1+2 data, only re-runs the chairman call.
+   * Retry synthesis on a conversation where it previously failed.
+   * Re-uses existing responses + rankings data, only re-runs the chairman call.
    */
-  async retryStage3Stream(conversationId, onEvent, signal = null) {
+  async retrySynthesisStream(conversationId, onEvent, signal = null) {
     const response = await fetchSSE(
-      `${API_BASE}/api/conversations/${conversationId}/retry-stage3/stream`,
+      `${API_BASE}/api/conversations/${conversationId}/retry-synthesis/stream`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry Stage 3',
+      'Failed to retry synthesis',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
   },
 
   /**
-   * Retry Stage 2 ranking + Stage 3 synthesis using existing Stage 1 data.
+   * Retry rankings + synthesis using existing responses data.
    */
-  async retryStage2Stream(conversationId, onEvent, signal = null) {
+  async retryRankingsStream(conversationId, onEvent, signal = null) {
     const response = await fetchSSE(
-      `${API_BASE}/api/conversations/${conversationId}/retry-stage2/stream`,
+      `${API_BASE}/api/conversations/${conversationId}/retry-rankings/stream`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry Stage 2',
+      'Failed to retry rankings',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
   },
 
   /**
-   * Retry all 3 stages, replacing the last council message entirely.
+   * Retry all stages, replacing the last council message entirely.
    */
-  async retryStage1Stream(conversationId, onEvent, signal = null) {
+  async retryAllStream(conversationId, onEvent, signal = null) {
     const response = await fetchSSE(
-      `${API_BASE}/api/conversations/${conversationId}/retry-stage1/stream`,
+      `${API_BASE}/api/conversations/${conversationId}/retry-all/stream`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry Stage 1',
+      'Failed to retry all stages',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);

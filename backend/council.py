@@ -539,13 +539,13 @@ def aggregate_metrics(
         'total_tokens': 0,
         'total_latency_ms': 0,
         'by_stage': {
-            'stage1': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0, 'models': []},
-            'stage2': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0, 'models': []},
-            'stage3': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0},
+            'responses': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0, 'models': []},
+            'rankings': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0, 'models': []},
+            'synthesis': {'cost': 0.0, 'tokens': 0, 'latency_ms': 0},
         }
     }
 
-    # Aggregate Stage 1 metrics
+    # Aggregate responses metrics
     for result in stage1_results:
         m = result.get('metrics', {})
         cost = m.get('cost', 0.0) or 0.0
@@ -556,12 +556,12 @@ def aggregate_metrics(
         metrics['total_tokens'] += tokens
         metrics['total_latency_ms'] = max(metrics['total_latency_ms'], latency)  # Parallel, so take max
 
-        metrics['by_stage']['stage1']['cost'] += cost
-        metrics['by_stage']['stage1']['tokens'] += tokens
-        metrics['by_stage']['stage1']['latency_ms'] = max(
-            metrics['by_stage']['stage1']['latency_ms'], latency
+        metrics['by_stage']['responses']['cost'] += cost
+        metrics['by_stage']['responses']['tokens'] += tokens
+        metrics['by_stage']['responses']['latency_ms'] = max(
+            metrics['by_stage']['responses']['latency_ms'], latency
         )
-        metrics['by_stage']['stage1']['models'].append({
+        metrics['by_stage']['responses']['models'].append({
             'model': result.get('model'),
             'cost': cost,
             'tokens': tokens,
@@ -569,7 +569,7 @@ def aggregate_metrics(
             'provider': m.get('provider'),
         })
 
-    # Aggregate Stage 2 metrics
+    # Aggregate rankings metrics
     for result in stage2_results:
         m = result.get('metrics', {})
         cost = m.get('cost', 0.0) or 0.0
@@ -578,13 +578,13 @@ def aggregate_metrics(
 
         metrics['total_cost'] += cost
         metrics['total_tokens'] += tokens
-        # Stage 2 runs in parallel after Stage 1
-        metrics['by_stage']['stage2']['cost'] += cost
-        metrics['by_stage']['stage2']['tokens'] += tokens
-        metrics['by_stage']['stage2']['latency_ms'] = max(
-            metrics['by_stage']['stage2']['latency_ms'], latency
+        # Rankings run in parallel after responses
+        metrics['by_stage']['rankings']['cost'] += cost
+        metrics['by_stage']['rankings']['tokens'] += tokens
+        metrics['by_stage']['rankings']['latency_ms'] = max(
+            metrics['by_stage']['rankings']['latency_ms'], latency
         )
-        metrics['by_stage']['stage2']['models'].append({
+        metrics['by_stage']['rankings']['models'].append({
             'model': result.get('model'),
             'cost': cost,
             'tokens': tokens,
@@ -592,10 +592,10 @@ def aggregate_metrics(
             'provider': m.get('provider'),
         })
 
-    # Add Stage 2 latency to total (sequential with Stage 1)
-    metrics['total_latency_ms'] += metrics['by_stage']['stage2']['latency_ms']
+    # Add rankings latency to total (sequential with responses)
+    metrics['total_latency_ms'] += metrics['by_stage']['rankings']['latency_ms']
 
-    # Aggregate Stage 3 metrics
+    # Aggregate synthesis metrics
     m = stage3_result.get('metrics', {})
     cost = m.get('cost', 0.0) or 0.0
     tokens = m.get('total_tokens', 0) or 0
@@ -605,15 +605,15 @@ def aggregate_metrics(
     metrics['total_tokens'] += tokens
     metrics['total_latency_ms'] += latency  # Sequential
 
-    metrics['by_stage']['stage3']['cost'] = cost
-    metrics['by_stage']['stage3']['tokens'] = tokens
-    metrics['by_stage']['stage3']['latency_ms'] = latency
+    metrics['by_stage']['synthesis']['cost'] = cost
+    metrics['by_stage']['synthesis']['tokens'] = tokens
+    metrics['by_stage']['synthesis']['latency_ms'] = latency
 
     # Round cost for display
     metrics['total_cost'] = round(metrics['total_cost'], 6)
-    metrics['by_stage']['stage1']['cost'] = round(metrics['by_stage']['stage1']['cost'], 6)
-    metrics['by_stage']['stage2']['cost'] = round(metrics['by_stage']['stage2']['cost'], 6)
-    metrics['by_stage']['stage3']['cost'] = round(metrics['by_stage']['stage3']['cost'], 6)
+    metrics['by_stage']['responses']['cost'] = round(metrics['by_stage']['responses']['cost'], 6)
+    metrics['by_stage']['rankings']['cost'] = round(metrics['by_stage']['rankings']['cost'], 6)
+    metrics['by_stage']['synthesis']['cost'] = round(metrics['by_stage']['synthesis']['cost'], 6)
 
     return metrics
 

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.council_stream import _extract_stage_data, retry_stage3_pipeline
+from backend.council_stream import _extract_stage_data, retry_synthesis_pipeline
 from backend.storage import update_last_council_stage3
 
 
@@ -219,7 +219,7 @@ class TestRetryStage3PipelineErrors:
         storage = _make_mock_storage(conversation=None)
 
         events = await _collect_events(
-            retry_stage3_pipeline("conv-missing", "model-chairman", storage=storage)
+            retry_synthesis_pipeline("conv-missing", "model-chairman", storage=storage)
         )
 
         assert len(events) == 1
@@ -236,7 +236,7 @@ class TestRetryStage3PipelineErrors:
         storage = _make_mock_storage(conversation=conversation)
 
         events = await _collect_events(
-            retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+            retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
         )
 
         assert len(events) == 1
@@ -250,7 +250,7 @@ class TestRetryStage3PipelineErrors:
         storage = _make_mock_storage(conversation=conversation)
 
         events = await _collect_events(
-            retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+            retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
         )
 
         assert len(events) == 1
@@ -264,7 +264,7 @@ class TestRetryStage3PipelineErrors:
         storage = _make_mock_storage(conversation=conversation)
 
         events = await _collect_events(
-            retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+            retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
         )
 
         assert len(events) == 1
@@ -278,7 +278,7 @@ class TestRetryStage3PipelineErrors:
         storage = _make_mock_storage(conversation=conversation)
 
         events = await _collect_events(
-            retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+            retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
         )
 
         assert len(events) == 1
@@ -291,7 +291,7 @@ class TestRetryStage3PipelineSuccess:
 
     @pytest.mark.asyncio
     async def test_yields_stage3_start_complete_metrics_complete(self):
-        """Successful retry emits stage3_start, stage3_complete, metrics_complete, complete."""
+        """Successful retry emits synthesis_start, synthesis_complete, metrics_complete, complete."""
         conversation = _make_conversation()
         storage = _make_mock_storage(conversation=conversation)
         new_stage3 = {
@@ -312,11 +312,11 @@ class TestRetryStage3PipelineSuccess:
             ),
         ):
             events = await _collect_events(
-                retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
             )
 
         types = _event_types(events)
-        assert types == ["stage3_start", "stage3_complete", "metrics_complete", "complete"]
+        assert types == ["synthesis_start", "synthesis_complete", "metrics_complete", "complete"]
 
     @pytest.mark.asyncio
     async def test_stage3_complete_contains_result_data(self):
@@ -338,10 +338,10 @@ class TestRetryStage3PipelineSuccess:
             patch("backend.council_stream.aggregate_metrics", return_value={}),
         ):
             events = await _collect_events(
-                retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
             )
 
-        s3_event = _find_event(events, "stage3_complete")
+        s3_event = _find_event(events, "synthesis_complete")
         assert s3_event is not None
         assert s3_event["data"]["response"] == "Excellent synthesis"
 
@@ -369,7 +369,7 @@ class TestRetryStage3PipelineSuccess:
             ),
         ):
             await _collect_events(
-                retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
             )
 
         storage.update_last_council_stage3.assert_called_once_with(
@@ -392,7 +392,7 @@ class TestRetryStage3PipelineSuccess:
             patch("backend.council_stream.aggregate_metrics", return_value={}),
         ):
             await _collect_events(
-                retry_stage3_pipeline(
+                retry_synthesis_pipeline(
                     "conv-123", "m", user_id="bob", storage=storage,
                 )
             )
@@ -418,18 +418,18 @@ class TestRetryStage3PipelineSuccess:
             patch("backend.council_stream.aggregate_metrics", return_value={}) as mock_agg,
         ):
             await _collect_events(
-                retry_stage3_pipeline("conv-123", "m", storage=storage)
+                retry_synthesis_pipeline("conv-123", "m", storage=storage)
             )
 
         mock_agg.assert_called_once_with(STAGE1_RESULTS, STAGE2_RESULTS, new_stage3)
 
 
 class TestRetryStage3PipelineChairmanFailsAgain:
-    """When the chairman fails again, pipeline yields stage3_complete then error."""
+    """When the chairman fails again, pipeline yields synthesis_complete then error."""
 
     @pytest.mark.asyncio
     async def test_yields_stage3_complete_then_error_on_chairman_failure(self):
-        """Error response from chairman yields stage3_complete (with error data) then error."""
+        """Error response from chairman yields synthesis_complete (with error data) then error."""
         conversation = _make_conversation()
         storage = _make_mock_storage(conversation=conversation)
         failed_stage3 = {
@@ -444,13 +444,13 @@ class TestRetryStage3PipelineChairmanFailsAgain:
             return_value=failed_stage3,
         ):
             events = await _collect_events(
-                retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
             )
 
         types = _event_types(events)
-        assert types == ["stage3_start", "stage3_complete", "error"]
+        assert types == ["synthesis_start", "synthesis_complete", "error"]
 
-        s3_event = _find_event(events, "stage3_complete")
+        s3_event = _find_event(events, "synthesis_complete")
         assert s3_event["data"]["response"].startswith("Error:")
 
         error_event = _find_event(events, "error")
@@ -473,7 +473,7 @@ class TestRetryStage3PipelineChairmanFailsAgain:
             return_value=failed_stage3,
         ):
             await _collect_events(
-                retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
             )
 
         storage.update_last_council_stage3.assert_not_called()
@@ -494,11 +494,11 @@ class TestRetryStage3PipelineUnexpectedException:
             side_effect=RuntimeError("OpenRouter timeout"),
         ):
             events = await _collect_events(
-                retry_stage3_pipeline("conv-123", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-123", "model-chairman", storage=storage)
             )
 
         types = _event_types(events)
-        assert "stage3_start" in types
+        assert "synthesis_start" in types
         assert types[-1] == "error"
         assert "OpenRouter timeout" in events[-1]["message"]
 
@@ -686,11 +686,11 @@ class TestRetryStage3PipelineUnified:
             patch("backend.council_stream.aggregate_metrics", return_value={"total_cost": 0.01}),
         ):
             events = await _collect_events(
-                retry_stage3_pipeline("conv-unified", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-unified", "model-chairman", storage=storage)
             )
 
         types = _event_types(events)
-        assert types == ["stage3_start", "stage3_complete", "metrics_complete", "complete"]
+        assert types == ["synthesis_start", "synthesis_complete", "metrics_complete", "complete"]
 
         # Verify stage3_synthesize_final received properly converted data
         call_args = mock_s3.call_args
@@ -714,7 +714,7 @@ class TestRetryStage3PipelineUnified:
             patch("backend.council_stream.aggregate_metrics", return_value={}),
         ):
             await _collect_events(
-                retry_stage3_pipeline("conv-unified", "model-chairman", storage=storage)
+                retry_synthesis_pipeline("conv-unified", "model-chairman", storage=storage)
             )
 
         storage.update_last_council_stage3.assert_called_once()

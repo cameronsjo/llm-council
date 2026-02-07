@@ -14,8 +14,6 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import {
-  convertCouncilToRounds,
-  convertSynthesis,
   getParticipantMapping,
   getMessageText,
   canRetryMessage,
@@ -33,9 +31,9 @@ export default function ChatInterface({
   onDismissInterrupted,
   onForkConversation,
   onExtendDebate,
-  onRetryStage3,
-  onRetryStage2,
-  onRetryStage1,
+  onRetrySynthesis,
+  onRetryRankings,
+  onRetryAll,
   onCancel,
   isLoading,
   isExtendingDebate,
@@ -190,7 +188,9 @@ export default function ChatInterface({
         {conversation.pendingInterrupted &&
           conversation.pendingInfo &&
           (() => {
-            const hasStage1 = conversation.pendingInfo.partial_data?.stage1?.length > 0;
+            const hasStage1 =
+              (conversation.pendingInfo.partial_data?.responses?.length > 0) ||
+              (conversation.pendingInfo.partial_data?.stage1?.length > 0);
             const canResume = hasStage1 && conversation.pendingInfo.mode === 'council';
             return (
               <div className="interrupted-banner">
@@ -400,8 +400,8 @@ export default function ChatInterface({
                     <ModelErrors
                       errors={msg.errors}
                       onRetry={
-                        !isLoading && onRetryStage1
-                          ? () => onRetryStage1(conversation.id)
+                        !isLoading && onRetryAll
+                          ? () => onRetryAll(conversation.id)
                           : undefined
                       }
                     />
@@ -410,8 +410,8 @@ export default function ChatInterface({
                   {/* Unified Round Display - Works for both Arena and Council modes */}
                   {(() => {
                     const isArena = msg.mode === 'arena';
-                    const rounds = isArena ? msg.rounds : convertCouncilToRounds(msg);
-                    const synthesis = convertSynthesis(msg);
+                    const rounds = msg.rounds || [];
+                    const synthesis = msg.synthesis;
                     const participantMapping = getParticipantMapping(msg);
                     const mode = isArena ? 'arena' : 'council';
 
@@ -419,40 +419,44 @@ export default function ChatInterface({
                       <>
                         {/* Progress Stepper for Council mode */}
                         {!isArena &&
-                          (msg.loading?.stage1 ||
-                            msg.loading?.stage2 ||
-                            msg.loading?.stage3 ||
-                            msg.stage1) && (
+                          (msg.loading?.round ||
+                            msg.loading?.synthesis ||
+                            rounds.length > 0) && (
                             <div
                               className="council-progress"
                               role="progressbar"
                               aria-label="Council deliberation progress"
                             >
-                              <div
-                                className={`progress-step ${msg.stage1 ? 'complete' : ''} ${msg.loading?.stage1 ? 'active' : ''}`}
-                              >
-                                <div className="step-indicator">{msg.stage1 ? '✓' : '1'}</div>
-                                <span className="step-label">Responses</span>
-                              </div>
-                              <div className="step-connector"></div>
-                              <div
-                                className={`progress-step ${msg.stage2 ? 'complete' : ''} ${msg.loading?.stage2 ? 'active' : ''}`}
-                              >
-                                <div className="step-indicator">{msg.stage2 ? '✓' : '2'}</div>
-                                <span className="step-label">Rankings</span>
-                              </div>
-                              <div className="step-connector"></div>
-                              <div
-                                className={`progress-step ${msg.stage3 ? 'complete' : ''} ${msg.loading?.stage3 ? 'active' : ''}`}
-                              >
-                                <div className="step-indicator">{msg.stage3 ? '✓' : '3'}</div>
-                                <span className="step-label">Synthesis</span>
-                              </div>
+                              {(() => {
+                                const hasResponses = rounds.some(r => r.round_type === 'responses');
+                                const hasRankings = rounds.some(r => r.round_type === 'rankings');
+                                const loadingResponses = msg.loading?.round && msg.loading?.roundType === 'responses';
+                                const loadingRankings = msg.loading?.round && msg.loading?.roundType === 'rankings';
+                                const loadingSynthesis = msg.loading?.synthesis;
+                                return (
+                                  <>
+                                    <div className={`progress-step ${hasResponses ? 'complete' : ''} ${loadingResponses ? 'active' : ''}`}>
+                                      <div className="step-indicator">{hasResponses ? '✓' : '1'}</div>
+                                      <span className="step-label">Responses</span>
+                                    </div>
+                                    <div className="step-connector"></div>
+                                    <div className={`progress-step ${hasRankings ? 'complete' : ''} ${loadingRankings ? 'active' : ''}`}>
+                                      <div className="step-indicator">{hasRankings ? '✓' : '2'}</div>
+                                      <span className="step-label">Rankings</span>
+                                    </div>
+                                    <div className="step-connector"></div>
+                                    <div className={`progress-step ${synthesis ? 'complete' : ''} ${loadingSynthesis ? 'active' : ''}`}>
+                                      <div className="step-indicator">{synthesis ? '✓' : '3'}</div>
+                                      <span className="step-label">Synthesis</span>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           )}
 
                         {/* Loading states */}
-                        {msg.loading?.stage1 && (
+                        {msg.loading?.round && msg.loading?.roundType === 'responses' && (
                           <div className="stage-loading streaming" role="status" aria-live="polite">
                             {msg.streaming?.progress ? (
                               <>
@@ -500,13 +504,13 @@ export default function ChatInterface({
                             )}
                           </div>
                         )}
-                        {msg.loading?.stage2 && (
+                        {msg.loading?.round && msg.loading?.roundType === 'rankings' && (
                           <div className="stage-loading" role="status" aria-live="polite">
                             <div className="spinner" aria-hidden="true"></div>
                             <span>Peer rankings in progress...</span>
                           </div>
                         )}
-                        {msg.loading?.round && (
+                        {msg.loading?.round && !['responses', 'rankings'].includes(msg.loading?.roundType) && (
                           <div className="stage-loading" role="status" aria-live="polite">
                             <div className="spinner" aria-hidden="true"></div>
                             <span>
@@ -530,7 +534,7 @@ export default function ChatInterface({
                         ))}
 
                         {/* Synthesis loading */}
-                        {(msg.loading?.stage3 || msg.loading?.synthesis) && (
+                        {msg.loading?.synthesis && (
                           <div className="stage-loading" role="status" aria-live="polite">
                             <div className="spinner" aria-hidden="true"></div>
                             <span>
@@ -550,7 +554,7 @@ export default function ChatInterface({
                             conversationId={conversation?.id}
                             onForkConversation={onForkConversation}
                             onExtendDebate={isArena ? onExtendDebate : undefined}
-                            onRetryStage3={!isArena ? onRetryStage3 : undefined}
+                            onRetrySynthesis={!isArena ? onRetrySynthesis : undefined}
                             isExtending={isExtendingDebate}
                             isLoading={isLoading}
                             mode={mode}
@@ -567,7 +571,7 @@ export default function ChatInterface({
 
         {isLoading && (() => {
           const last = conversation.messages[conversation.messages.length - 1];
-          const hasStageLoading = last?.loading?.stage1 || last?.loading?.stage2 || last?.loading?.stage3;
+          const hasStageLoading = last?.loading?.round || last?.loading?.synthesis;
           return !hasStageLoading;
         })() && (
           <div className="loading-indicator">

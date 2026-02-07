@@ -12,7 +12,7 @@ export default function Synthesis({
   conversationId,
   onForkConversation,
   onExtendDebate,
-  onRetryStage3,
+  onRetrySynthesis,
   isExtending = false,
   isLoading = false,
   mode = 'council',
@@ -116,10 +116,10 @@ export default function Synthesis({
       {/* Action buttons */}
       <div className="synthesis-actions">
         {/* Retry synthesis button when chairman failed */}
-        {isSynthesisError && onRetryStage3 && (
+        {isSynthesisError && onRetrySynthesis && (
           <button
             className="retry-synthesis-btn"
-            onClick={onRetryStage3}
+            onClick={onRetrySynthesis}
             disabled={isLoading}
             title="Re-run the chairman synthesis using existing Stage 1 and Stage 2 data"
           >
