@@ -117,7 +117,8 @@
   border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--color-text-muted);
-  transition: all var(--transition-fast);
+  transition: background, border-color, color;
+  transition-duration: var(--transition-fast);
 }
 
 .council-action-btn:hover {
@@ -206,6 +207,7 @@
     background var(--transition-fast),
     transform var(--transition-fast);
   animation: memberSlideIn 0.3s ease-out backwards;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes memberSlideIn {
@@ -231,7 +233,8 @@
   background: var(--color-sage);
   border: 2px solid var(--color-text-muted);
   flex-shrink: 0;
-  transition: all var(--transition-fast);
+  transition: border-color, background, box-shadow;
+  transition-duration: var(--transition-fast);
 }
 
 .council-member:hover .member-indicator {

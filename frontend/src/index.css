@@ -451,6 +451,7 @@ body::before {
   border: 1px solid var(--tab-border-color, var(--color-border));
   box-shadow: var(--shadow-subtle);
   animation: tabContentFade 0.2s ease-out;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes tabContentFade {
@@ -479,7 +480,7 @@ body::before {
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--color-text-secondary);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;

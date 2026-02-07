@@ -10,7 +10,8 @@
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background, color;
+  transition-duration: var(--transition-fast);
 }
 
 .version-trigger:hover {
@@ -31,6 +32,7 @@
   justify-content: center;
   z-index: 1000;
   animation: fadeIn 0.2s ease-out;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes fadeIn {
@@ -51,6 +53,7 @@
   max-width: 360px;
   margin: var(--space-lg);
   animation: slideUp 0.25s ease-out;
+  -webkit-backface-visibility: hidden;
   overflow: hidden;
 }
 
@@ -93,7 +96,8 @@
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background, color;
+  transition-duration: var(--transition-fast);
 }
 
 .version-close:hover {

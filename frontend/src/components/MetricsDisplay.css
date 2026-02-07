@@ -77,7 +77,7 @@
   cursor: pointer;
   padding: var(--space-xs) var(--space-sm);
   font-family: var(--font-mono);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .expand-btn:hover {
@@ -91,6 +91,7 @@
   padding: var(--space-lg);
   background: var(--color-surface);
   animation: slideDown 0.2s ease-out;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes slideDown {

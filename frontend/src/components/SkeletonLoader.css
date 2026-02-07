@@ -18,28 +18,41 @@
   background: linear-gradient(135deg, #f0fff0 0%, #e8f5e8 100%);
 }
 
-/* Shimmer animation base */
+/* Shimmer animation base - uses transform for GPU acceleration */
 .skeleton-stage-title,
 .skeleton-tab,
 .skeleton-header,
 .skeleton-line {
+  background: var(--color-sage-light);
+  border-radius: var(--radius-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-stage-title::after,
+.skeleton-tab::after,
+.skeleton-header::after,
+.skeleton-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
-    var(--color-sage-light) 0%,
+    transparent 0%,
     var(--color-cream) 50%,
-    var(--color-sage-light) 100%
+    transparent 100%
   );
-  background-size: 200% 100%;
+  transform: translateX(-100%);
   animation: shimmer 1.5s ease-in-out infinite;
-  border-radius: var(--radius-sm);
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes shimmer {
   0% {
-    background-position: 200% 0;
+    transform: translateX(-100%);
   }
   100% {
-    background-position: -200% 0;
+    transform: translateX(100%);
   }
 }
 
@@ -102,22 +115,22 @@
 }
 
 /* Staggered animation delay for lines */
-.skeleton-line:nth-child(1) { animation-delay: 0s; }
-.skeleton-line:nth-child(2) { animation-delay: 0.1s; }
-.skeleton-line:nth-child(3) { animation-delay: 0.2s; }
-.skeleton-line:nth-child(4) { animation-delay: 0.3s; }
-.skeleton-line:nth-child(5) { animation-delay: 0.4s; }
-.skeleton-line:nth-child(6) { animation-delay: 0.5s; }
-.skeleton-line:nth-child(7) { animation-delay: 0.6s; }
-.skeleton-line:nth-child(8) { animation-delay: 0.7s; }
+.skeleton-line:nth-child(1)::after { animation-delay: 0s; }
+.skeleton-line:nth-child(2)::after { animation-delay: 0.1s; }
+.skeleton-line:nth-child(3)::after { animation-delay: 0.2s; }
+.skeleton-line:nth-child(4)::after { animation-delay: 0.3s; }
+.skeleton-line:nth-child(5)::after { animation-delay: 0.4s; }
+.skeleton-line:nth-child(6)::after { animation-delay: 0.5s; }
+.skeleton-line:nth-child(7)::after { animation-delay: 0.6s; }
+.skeleton-line:nth-child(8)::after { animation-delay: 0.7s; }
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  .skeleton-stage-title,
-  .skeleton-tab,
-  .skeleton-header,
-  .skeleton-line {
+  .skeleton-stage-title::after,
+  .skeleton-tab::after,
+  .skeleton-header::after,
+  .skeleton-line::after {
     animation: none;
-    background: var(--color-sage-light);
+    display: none;
   }
 }

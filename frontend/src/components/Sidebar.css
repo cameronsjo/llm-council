@@ -50,7 +50,7 @@
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .sidebar-close-btn:hover {
@@ -113,7 +113,7 @@
   font-family: var(--font-body);
   font-size: 0.875rem;
   font-weight: 500;
-  transition: all var(--transition-medium);
+  transition: background var(--transition-medium), box-shadow var(--transition-medium), transform var(--transition-medium);
   box-shadow: var(--shadow-subtle);
   display: flex;
   align-items: center;
@@ -205,6 +205,7 @@
   background: rgba(220, 53, 69, 0.1);
   border-color: rgba(220, 53, 69, 0.3);
   animation: deleteShake 0.4s ease;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes deleteShake {
@@ -264,7 +265,7 @@
   cursor: pointer;
   font-size: 0.75rem;
   opacity: 0.6;
-  transition: all var(--transition-fast);
+  transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 
 .action-btn:hover {
@@ -360,7 +361,7 @@
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .confirm-yes {
@@ -390,13 +391,13 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(42, 37, 32, 0.4);
-  backdrop-filter: blur(4px);
+  background: rgba(42, 37, 32, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   animation: fadeIn 0.2s ease-out;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes fadeIn {
@@ -414,6 +415,7 @@
   min-height: 600px;
   overflow: hidden;
   animation: modalSlideIn 0.3s ease-out;
+  -webkit-backface-visibility: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -456,7 +458,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .modal-close-btn:hover {
@@ -490,7 +492,7 @@
   border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .theme-toggle:hover {

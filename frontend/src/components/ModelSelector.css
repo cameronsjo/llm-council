@@ -24,7 +24,8 @@
   font-size: 0.875rem;
   background: var(--color-surface);
   color: var(--color-text-primary);
-  transition: all var(--transition-fast);
+  transition: border-color, box-shadow;
+  transition-duration: var(--transition-fast);
 }
 
 .search-input:focus {
@@ -53,7 +54,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: background, color;
+  transition-duration: var(--transition-fast);
 }
 
 .search-clear:hover {
@@ -80,7 +82,9 @@
   color: var(--color-text-secondary);
   background: var(--color-ivory);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background, border-color, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
   user-select: none;
 }
 
@@ -149,7 +153,8 @@
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background, border-color, color;
+  transition-duration: var(--transition-fast);
 }
 
 .refresh-btn:hover:not(:disabled) {
@@ -198,7 +203,8 @@
   cursor: pointer;
   font-family: var(--font-body);
   font-size: 0.8125rem;
-  transition: all var(--transition-fast);
+  transition: background;
+  transition-duration: var(--transition-fast);
 }
 
 .retry-btn:hover {
@@ -265,7 +271,8 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition-medium);
+  transition: background, color, border-color, box-shadow, transform, opacity;
+  transition-duration: var(--transition-medium);
 }
 
 .cancel-btn {

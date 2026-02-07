@@ -58,7 +58,9 @@
   cursor: pointer;
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm);
-  transition: all 0.15s ease;
+  transition: background, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -138,7 +140,9 @@
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background, border-color, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }
 
 .curation-results .refresh-btn:hover:not(:disabled) {
@@ -191,7 +195,9 @@
   font-size: 0.875rem;
   cursor: pointer;
   color: var(--color-text-secondary);
-  transition: all 0.15s ease;
+  transition: background, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }
 
 .curation-footer .cancel-btn:hover:not(:disabled) {
@@ -208,7 +214,9 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }
 
 .curation-footer .save-btn:hover:not(:disabled) {
@@ -242,7 +250,9 @@
   font-size: 0.875rem;
   background: var(--color-surface);
   color: var(--color-text-primary);
-  transition: all 0.15s ease;
+  transition: border-color, box-shadow;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }
 
 .curation-body .search-input:focus {
@@ -291,7 +301,9 @@
   color: var(--color-text-secondary);
   background: var(--color-ivory);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background, border-color, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
   user-select: none;
 }
 
