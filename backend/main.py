@@ -10,12 +10,14 @@ from typing import Any
 
 import sentry_sdk
 
+_sentry_dsn = os.environ.get("SENTRY_DSN") or None
+
 sentry_sdk.init(
-    dsn=os.environ.get("SENTRY_DSN", ""),
+    dsn=_sentry_dsn,
     environment=os.environ.get("SENTRY_ENVIRONMENT", "development"),
     traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
     profiles_sample_rate=float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
-    enable_tracing=True,
+    enable_tracing=bool(_sentry_dsn),
 )
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
