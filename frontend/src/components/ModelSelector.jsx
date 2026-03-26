@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { useModels, useCuratedModels, useModelFiltering, useExpandableGroups } from '../hooks';
+import { useModelFiltering, useExpandableGroups } from '../hooks';
+import { useAvailableModels, useCuratedModels, useRefreshModels } from '../hooks/queries';
 import { ModelSearchBox, FilterChips, ModelGroups } from './models/index.js';
 import './ModelSelector.css';
 
@@ -19,8 +20,15 @@ export default function ModelSelector({
   const [saving, setSaving] = useState(false);
 
   // Fetch models and curated list
-  const { models, loading, refreshing, error, refetch, refresh } = useModels();
-  const { curatedIds, loading: curatedLoading } = useCuratedModels();
+  const { data: modelsData, isLoading: loading, error: modelsError, refetch } = useAvailableModels();
+  const models = modelsData?.models || [];
+  const error = modelsError ? 'Failed to load models' : null;
+  const refreshModels = useRefreshModels();
+  const refreshing = refreshModels.isPending;
+  const refresh = () => refreshModels.mutate();
+
+  const { data: curatedData, isLoading: curatedLoading } = useCuratedModels();
+  const curatedIds = useMemo(() => new Set(curatedData?.curated_models || []), [curatedData]);
 
   // Filtering — restore saved filters or use curated defaults
   const filtering = useModelFiltering(models, curatedIds, filterStateRef?.current ?? {

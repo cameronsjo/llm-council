@@ -7,22 +7,25 @@ import ModelCuration from './ModelCuration';
 import VersionInfo from './VersionInfo';
 import { useTheme } from '../hooks';
 import { getUserInitial, getUserDisplayName, getThemeLabel } from '../lib/sidebarUtils';
+import { useUIStore } from '../stores/uiStore';
+import { useConfig, useUserInfo, useConversations, useDeleteConversation, useRenameConversation, useUpdateConfig } from '../hooks/queries';
+import { api } from '../api';
 
 export default function Sidebar({
-  conversations,
-  currentConversationId,
   onSelectConversation,
   onNewConversation,
-  onDeleteConversation,
-  onRenameConversation,
-  onExportConversation,
-  councilModels = [],
-  chairmanModel = '',
-  onConfigChange,
-  userInfo = null,
-  isOpen = true,
-  onClose,
 }) {
+  const { data: conversations = [] } = useConversations();
+  const currentConversationId = useUIStore((s) => s.currentConversationId);
+  const { data: config } = useConfig();
+  const councilModels = config?.council_models || [];
+  const chairmanModel = config?.chairman_model || '';
+  const { data: userInfo } = useUserInfo();
+  const { sidebarOpen, setSidebarOpen } = useUIStore();
+
+  const deleteConversation = useDeleteConversation();
+  const renameConversation = useRenameConversation();
+  const updateConfig = useUpdateConfig();
   const [showConfigUI, setShowConfigUI] = useState(false);
   const [showCuration, setShowCuration] = useState(false);
   const [pendingCouncil, setPendingCouncil] = useState(councilModels);
@@ -80,9 +83,7 @@ export default function Sidebar({
   };
 
   const handleSaveConfig = async () => {
-    if (onConfigChange) {
-      await onConfigChange(pendingCouncil, pendingChairman);
-    }
+    await updateConfig.mutateAsync({ councilModels: pendingCouncil, chairmanModel: pendingChairman });
     setShowConfigUI(false);
   };
 
@@ -90,20 +91,42 @@ export default function Sidebar({
     setShowConfigUI(false);
   };
 
+  const handleExportConversation = async (id, format) => {
+    try {
+      const blob = format === 'markdown'
+        ? await api.exportMarkdown(id)
+        : await api.exportJson(id);
+
+      const conv = conversations.find((c) => c.id === id);
+      const title = (conv?.title || 'conversation').replace(/[^a-zA-Z0-9]/g, '_');
+      const extension = format === 'markdown' ? 'md' : 'json';
+      const filename = `${title}.${extension}`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export conversation:', error);
+    }
+  };
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-title-row">
           <h1>LLM Council</h1>
-          {onClose && (
-            <button
+          <button
               className="sidebar-close-btn"
-              onClick={onClose}
+              onClick={() => setSidebarOpen(false)}
               aria-label="Close sidebar"
             >
               <X size={20} />
             </button>
-          )}
         </div>
         {userInfo?.authenticated && (
           <div className="user-info">
@@ -130,9 +153,9 @@ export default function Sidebar({
               conversation={conv}
               isActive={conv.id === currentConversationId}
               onSelect={onSelectConversation}
-              onRename={onRenameConversation}
-              onDelete={onDeleteConversation}
-              onExport={onExportConversation}
+              onRename={(id, title) => renameConversation.mutate({ id, title })}
+              onDelete={(id) => deleteConversation.mutate(id)}
+              onExport={handleExportConversation}
             />
           ))
         )}

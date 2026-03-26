@@ -118,11 +118,12 @@ const SSE_INACTIVITY_TIMEOUT = 120_000;
  */
 function readWithTimeout(reader, timeoutMs) {
   if (!timeoutMs || timeoutMs <= 0) return reader.read();
+  let timerId;
   return Promise.race([
-    reader.read(),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new SSETimeoutError(timeoutMs)), timeoutMs),
-    ),
+    reader.read().then(result => { clearTimeout(timerId); return result; }),
+    new Promise((_, reject) => {
+      timerId = setTimeout(() => reject(new SSETimeoutError(timeoutMs)), timeoutMs);
+    }),
   ]);
 }
 

@@ -282,10 +282,17 @@ async def query_models_parallel(
                 model_messages = messages
             else:
                 raise ValueError(f"No messages provided for model {model}")
-            tasks.append(query_model(model, model_messages))
+            tasks.append(asyncio.create_task(query_model(model, model_messages)))
 
         # Wait for all to complete
-        responses = await asyncio.gather(*tasks)
+        try:
+            responses = await asyncio.gather(*tasks)
+        except BaseException:
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
         # Map models to their responses
         result = dict(zip(models, responses))
@@ -577,28 +584,35 @@ async def query_models_progressive(
 
         # Process tasks as they complete — asyncio.wait preserves Task identity
         pending: set[asyncio.Task] = set(task_to_model.keys())
-        while pending:
-            done, pending = await asyncio.wait(
-                pending, return_when=asyncio.FIRST_COMPLETED
-            )
-            for completed_task in done:
-                result = completed_task.result()
-                model = task_to_model[completed_task]
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                for completed_task in done:
+                    result = completed_task.result()
+                    model = task_to_model[completed_task]
 
-                results[model] = result
-                pending_models.remove(model)
-                completed_models.append(model)
+                    results[model] = result
+                    pending_models.remove(model)
+                    completed_models.append(model)
 
-                if on_model_complete:
-                    await on_model_complete(model, result)
+                    if on_model_complete:
+                        await on_model_complete(model, result)
 
-                if on_progress:
-                    await on_progress(
-                        len(completed_models),
-                        len(models),
-                        completed_models.copy(),
-                        pending_models.copy()
-                    )
+                    if on_progress:
+                        await on_progress(
+                            len(completed_models),
+                            len(models),
+                            completed_models.copy(),
+                            pending_models.copy()
+                        )
+        except BaseException:
+            for t in pending:
+                t.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            raise
 
         # Record success/failure counts
         success_count = sum(1 for r in results.values() if not is_model_error(r) and r is not None)

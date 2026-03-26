@@ -151,14 +151,19 @@ async def _stream_stage1(
             await event_queue.put(None)
 
     task = asyncio.create_task(run())
-
-    while True:
-        event = await event_queue.get()
-        if event is None:
-            break
-        yield event
-
-    await task
+    try:
+        while True:
+            event = await event_queue.get()
+            if event is None:
+                break
+            yield event
+    finally:
+        if not task.done():
+            task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 async def run_council_pipeline(
@@ -270,6 +275,12 @@ async def run_council_pipeline(
                 stage1_errors,
             ):
                 yield event
+                if event.get("type") == "model_response":
+                    storage.update_pending_progress(
+                        input.conversation_id,
+                        {"responses": list(stage1_results)},
+                        user_id=input.user_id,
+                    )
 
             stage1_duration = time.monotonic() - stage1_start
             logger.info(
@@ -277,11 +288,6 @@ async def run_council_pipeline(
                 input.conversation_id, len(stage1_results), len(input.council_models),
                 len(stage1_errors), stage1_duration,
             )
-            yield {
-                "type": "round_complete",
-                "data": {"round_type": "responses", "responses": stage1_results, "errors": stage1_errors},
-            }
-
             if len(stage1_results) == 0:
                 logger.error(
                     "All models failed in Stage 1. ConversationId: %s, Errors: %d",
@@ -300,6 +306,10 @@ async def run_council_pipeline(
                 {"responses": stage1_results},
                 user_id=input.user_id,
             )
+            yield {
+                "type": "round_complete",
+                "data": {"round_type": "responses", "responses": stage1_results, "errors": stage1_errors},
+            }
 
         # --- Title generation (parallel, non-blocking) ---
         title_task = None
@@ -329,16 +339,6 @@ async def run_council_pipeline(
             "web_search_used": web_search_context is not None,
             "web_search_error": web_search_error,
         }
-        yield {
-            "type": "round_complete",
-            "data": {
-                "round_type": "rankings",
-                "responses": stage2_results,
-                "metadata": metadata,
-                "errors": stage2_errors,
-            },
-        }
-
         storage.update_pending_progress(
             input.conversation_id,
             {
@@ -348,6 +348,15 @@ async def run_council_pipeline(
             },
             user_id=input.user_id,
         )
+        yield {
+            "type": "round_complete",
+            "data": {
+                "round_type": "rankings",
+                "responses": stage2_results,
+                "metadata": metadata,
+                "errors": stage2_errors,
+            },
+        }
 
         # --- Stage 3: Chairman synthesis ---
         yield {"type": "synthesis_start"}

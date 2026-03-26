@@ -21,6 +21,8 @@ import {
   getMessageText,
   canRetryMessage,
 } from '../lib/messageUtils';
+import { useUIStore } from '../stores/uiStore';
+import { useConfig } from '../hooks/queries';
 import Round from './Round';
 import Synthesis from './Synthesis';
 import ModelErrors from './ModelErrors';
@@ -40,18 +42,20 @@ export default function ChatInterface({
   onCancel,
   isLoading,
   isExtendingDebate,
-  webSearchAvailable,
-  searchProvider,
-  useWebSearch,
-  onToggleWebSearch,
-  mode,
-  onModeChange,
-  arenaRoundCount,
-  onArenaRoundCountChange,
-  arenaConfig,
-  pendingForkContext,
-  onDismissForkContext,
 }) {
+  const { data: config } = useConfig();
+  const webSearchAvailable = config?.web_search_available;
+  const searchProvider = config?.search_provider || '';
+  const arenaConfig = config?.arena || { default_rounds: 3, min_rounds: 2, max_rounds: 10 };
+
+  const mode = useUIStore((s) => s.mode);
+  const setMode = useUIStore((s) => s.setMode);
+  const useWebSearch = useUIStore((s) => s.useWebSearch);
+  const toggleWebSearch = useUIStore((s) => s.toggleWebSearch);
+  const arenaRoundCount = useUIStore((s) => s.arenaRoundCount);
+  const setArenaRoundCount = useUIStore((s) => s.setArenaRoundCount);
+  const pendingForkContext = useUIStore((s) => s.pendingForkContext);
+  const setPendingForkContext = useUIStore((s) => s.setPendingForkContext);
   const [input, setInput] = useState('');
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [attachments, setAttachments] = useState([]);
@@ -604,7 +608,7 @@ export default function ChatInterface({
             <button
               type="button"
               className="fork-context-dismiss"
-              onClick={onDismissForkContext}
+              onClick={() => setPendingForkContext(null)}
               aria-label="Dismiss context"
             >
               <X size={14} />
@@ -654,7 +658,7 @@ export default function ChatInterface({
             role="radio"
             aria-checked={mode === 'council'}
             className={`mode-btn ${mode === 'council' ? 'active' : ''}`}
-            onClick={() => onModeChange('council')}
+            onClick={() => setMode('council')}
             disabled={isLoading}
           >
             Council Mode
@@ -664,7 +668,7 @@ export default function ChatInterface({
             role="radio"
             aria-checked={mode === 'arena'}
             className={`mode-btn ${mode === 'arena' ? 'active' : ''}`}
-            onClick={() => onModeChange('arena')}
+            onClick={() => setMode('arena')}
             disabled={isLoading}
           >
             Arena Debate
@@ -681,7 +685,7 @@ export default function ChatInterface({
                 min={arenaConfig.min_rounds}
                 max={arenaConfig.max_rounds}
                 value={arenaRoundCount}
-                onChange={(e) => onArenaRoundCountChange(parseInt(e.target.value))}
+                onChange={(e) => setArenaRoundCount(parseInt(e.target.value))}
                 disabled={isLoading}
                 className="rounds-slider"
               />
@@ -745,7 +749,7 @@ export default function ChatInterface({
               <input
                 type="checkbox"
                 checked={useWebSearch}
-                onChange={onToggleWebSearch}
+                onChange={toggleWebSearch}
                 disabled={isLoading}
               />
               <span className="toggle-label">

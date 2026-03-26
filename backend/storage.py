@@ -13,7 +13,7 @@ from .deliberation import DeliberationResult
 logger = logging.getLogger(__name__)
 
 # Timeout for stale pending responses (10 minutes)
-PENDING_STALE_TIMEOUT_SECONDS = 600
+PENDING_STALE_TIMEOUT_SECONDS = 120
 
 
 def get_user_data_dir(user_id: str) -> str:

@@ -2,24 +2,26 @@
  * Custom hook that owns conversation state (via useReducer),
  * an AbortController for cancellation, and the streaming API calls.
  *
- * Side effects (e.g. refreshing the sidebar) are delegated to
- * callbacks passed in via the options object.
+ * Query invalidation is handled internally via useStreamInvalidation.
+ * The optional onComplete callback is called after invalidation for
+ * any additional side effects the caller needs.
  */
 import { useCallback, useReducer, useRef } from 'react';
 import * as Sentry from '@sentry/browser';
 import { api, AuthRedirectError, SSETimeoutError } from '../api';
 import { conversationReducer, buildAssistantMessage } from './conversationReducer';
+import { useStreamInvalidation } from './queries';
 
 /**
  * @param {Object} options
- * @param {() => void} [options.onComplete]        Called when a stream finishes successfully.
- * @param {() => void} [options.onTitleComplete]    Called when backend generates a title.
+ * @param {() => void} [options.onComplete]        Called after stream completes and queries are invalidated.
  * @param {() => void} [options.onAuthExpired]      Called when an auth redirect is detected.
  * @param {(msg: string) => void} [options.onServerShutdown]  Called when server is restarting mid-stream.
  */
-export function useConversationStream({ onComplete, onTitleComplete, onAuthExpired, onServerShutdown } = {}) {
+export function useConversationStream({ onComplete, onAuthExpired, onServerShutdown } = {}) {
   const [conversation, dispatch] = useReducer(conversationReducer, null);
   const abortRef = useRef(null);
+  const invalidateStream = useStreamInvalidation();
 
   // ── Derived state ──────────────────────────────────────────────────────
   const isLoading = conversation?._isLoading ?? false;
@@ -82,11 +84,11 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
               Sentry.addBreadcrumb({ category: 'sse', message: eventType, level: 'info' });
               dispatch({ type: eventType, payload: event });
 
-              if (eventType === 'title_complete') onTitleComplete?.();
               if (eventType === 'complete') {
                 receivedTerminal = true;
                 console.info('[stream] sendMessage complete. ConversationId: %s', conversationId);
                 dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                invalidateStream(conversationId);
                 onComplete?.();
               }
               if (eventType === 'error') {
@@ -110,6 +112,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
           if (!receivedTerminal && !controller.signal.aborted) {
             console.warn('[stream] sendMessage stream ended without terminal event. ConversationId: %s', conversationId);
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            invalidateStream(conversationId);
             onComplete?.();
           }
         } catch (error) {
@@ -129,7 +132,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onTitleComplete, onAuthExpired, onServerShutdown]);
+  }, [invalidateStream, onComplete, onAuthExpired, onServerShutdown]);
 
   // ── Extend debate ──────────────────────────────────────────────────────
 
@@ -157,6 +160,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
                 receivedTerminal = true;
                 console.info('[stream] extendDebate complete. ConversationId: %s', conversationId);
                 dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
+                invalidateStream(conversationId);
                 onComplete?.();
               }
               if (eventType === 'error') {
@@ -177,6 +181,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
           if (!receivedTerminal && !controller.signal.aborted) {
             console.warn('[stream] extendDebate stream ended without terminal event. ConversationId: %s', conversationId);
             dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
+            invalidateStream(conversationId);
             onComplete?.();
           }
         } catch (error) {
@@ -195,7 +200,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onAuthExpired, onServerShutdown]);
+  }, [invalidateStream, onComplete, onAuthExpired, onServerShutdown]);
 
   // ── Retry Synthesis ────────────────────────────────────────────────────
 
@@ -224,6 +229,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
                 receivedTerminal = true;
                 console.info('[stream] retrySynthesis complete. ConversationId: %s', conversationId);
                 dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                invalidateStream(conversationId);
                 onComplete?.();
               }
               if (eventType === 'error') {
@@ -244,6 +250,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
           if (!receivedTerminal && !controller.signal.aborted) {
             console.warn('[stream] retrySynthesis stream ended without terminal event. ConversationId: %s', conversationId);
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            invalidateStream(conversationId);
             onComplete?.();
           }
         } catch (error) {
@@ -262,7 +269,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onAuthExpired, onServerShutdown]);
+  }, [invalidateStream, onComplete, onAuthExpired, onServerShutdown]);
 
   // ── Retry Rankings ────────────────────────────────────────────────────
 
@@ -291,6 +298,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
                 receivedTerminal = true;
                 console.info('[stream] retryRankings complete. ConversationId: %s', conversationId);
                 dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                invalidateStream(conversationId);
                 onComplete?.();
               }
               if (eventType === 'error') {
@@ -309,6 +317,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
 
           if (!receivedTerminal && !controller.signal.aborted) {
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            invalidateStream(conversationId);
             onComplete?.();
           }
         } catch (error) {
@@ -326,7 +335,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onAuthExpired, onServerShutdown]);
+  }, [invalidateStream, onComplete, onAuthExpired, onServerShutdown]);
 
   // ── Retry All (full re-run) ───────────────────────────────────────────
 
@@ -355,6 +364,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
                 receivedTerminal = true;
                 console.info('[stream] retryAll complete. ConversationId: %s', conversationId);
                 dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+                invalidateStream(conversationId);
                 onComplete?.();
               }
               if (eventType === 'error') {
@@ -373,6 +383,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
 
           if (!receivedTerminal && !controller.signal.aborted) {
             dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+            invalidateStream(conversationId);
             onComplete?.();
           }
         } catch (error) {
@@ -390,7 +401,7 @@ export function useConversationStream({ onComplete, onTitleComplete, onAuthExpir
         }
       },
     );
-  }, [onComplete, onAuthExpired, onServerShutdown]);
+  }, [invalidateStream, onComplete, onAuthExpired, onServerShutdown]);
 
   // ── Public API ─────────────────────────────────────────────────────────
 
