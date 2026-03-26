@@ -1,8 +1,11 @@
 """JSON-based storage for conversations."""
 
+import fcntl
 import json
 import logging
 import os
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -554,16 +557,43 @@ def load_pending_messages(user_id: str | None = None) -> dict[str, Any]:
 def save_pending_messages(
     pending: dict[str, Any], user_id: str | None = None
 ) -> None:
-    """Save pending messages to file.
+    """Save pending messages to file using atomic write.
+
+    Writes to a temporary file then renames, preventing partial writes
+    from corrupting the file if the process is interrupted.
 
     Args:
         pending: Dict of pending messages
         user_id: Optional username for user-scoped storage
     """
     path = get_pending_file_path(user_id)
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(pending, f, indent=2)
+    parent = Path(path).parent
+    parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=str(parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(pending, f, indent=2)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+@contextmanager
+def _pending_lock(user_id: str | None = None):
+    """Acquire an exclusive lock on the pending file for read-modify-write."""
+    lock_path = get_pending_file_path(user_id) + ".lock"
+    Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
 
 
 def mark_response_pending(
@@ -580,15 +610,16 @@ def mark_response_pending(
         user_content: The user's original question
         user_id: Optional username for user-scoped storage
     """
-    pending = load_pending_messages(user_id)
-    pending[conversation_id] = {
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "mode": mode,
-        "user_content": user_content,
-        "partial_data": {},
-        "last_update": datetime.now(timezone.utc).isoformat(),
-    }
-    save_pending_messages(pending, user_id)
+    with _pending_lock(user_id):
+        pending = load_pending_messages(user_id)
+        pending[conversation_id] = {
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "mode": mode,
+            "user_content": user_content,
+            "partial_data": {},
+            "last_update": datetime.now(timezone.utc).isoformat(),
+        }
+        save_pending_messages(pending, user_id)
 
 
 def update_pending_progress(
@@ -603,11 +634,12 @@ def update_pending_progress(
         partial_data: Partial results to store
         user_id: Optional username for user-scoped storage
     """
-    pending = load_pending_messages(user_id)
-    if conversation_id in pending:
-        pending[conversation_id]["partial_data"] = partial_data
-        pending[conversation_id]["last_update"] = datetime.now(timezone.utc).isoformat()
-        save_pending_messages(pending, user_id)
+    with _pending_lock(user_id):
+        pending = load_pending_messages(user_id)
+        if conversation_id in pending:
+            pending[conversation_id]["partial_data"] = partial_data
+            pending[conversation_id]["last_update"] = datetime.now(timezone.utc).isoformat()
+            save_pending_messages(pending, user_id)
 
 
 def clear_pending(
@@ -619,10 +651,11 @@ def clear_pending(
         conversation_id: Conversation identifier
         user_id: Optional username for user-scoped storage
     """
-    pending = load_pending_messages(user_id)
-    if conversation_id in pending:
-        del pending[conversation_id]
-        save_pending_messages(pending, user_id)
+    with _pending_lock(user_id):
+        pending = load_pending_messages(user_id)
+        if conversation_id in pending:
+            del pending[conversation_id]
+            save_pending_messages(pending, user_id)
 
 
 def get_pending_message(

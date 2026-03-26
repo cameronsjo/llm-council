@@ -484,6 +484,10 @@ async def retry_synthesis_pipeline(
             yield {"type": "error", "message": "Could not find original user query"}
             return
 
+        storage.mark_response_pending(
+            conversation_id, "council", user_query, user_id=user_id,
+        )
+
         # Re-run Stage 3 only
         yield {"type": "synthesis_start"}
         stage3_result = await stage3_synthesize_final(
@@ -516,6 +520,7 @@ async def retry_synthesis_pipeline(
             "Successfully completed Stage 3 retry. ConversationId: %s, Chairman: %s, Duration: %.2fs",
             conversation_id, chairman_model, retry_duration,
         )
+        storage.clear_pending(conversation_id, user_id=user_id)
         yield {"type": "complete"}
 
     except Exception as e:
@@ -523,6 +528,9 @@ async def retry_synthesis_pipeline(
         logger.exception(
             "Failed Stage 3 retry. ConversationId: %s, Duration: %.2fs, Error: %s",
             conversation_id, retry_duration, e,
+        )
+        storage.update_pending_progress(
+            conversation_id, {"error": str(e)}, user_id=user_id,
         )
         yield {"type": "error", "message": str(e)}
 
@@ -586,6 +594,10 @@ async def retry_rankings_pipeline(
             yield {"type": "error", "message": "Could not find original user query"}
             return
 
+        storage.mark_response_pending(
+            conversation_id, "council", user_query, user_id=user_id,
+        )
+
         # Re-run Stage 2
         yield {"type": "round_start", "data": {"round_type": "rankings"}}
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
@@ -596,6 +608,11 @@ async def retry_rankings_pipeline(
             "label_to_model": label_to_model,
             "aggregate_rankings": aggregate_rankings,
         }
+        storage.update_pending_progress(
+            conversation_id,
+            {"responses": stage1_results, "rankings": stage2_results, "metadata": metadata},
+            user_id=user_id,
+        )
         yield {
             "type": "round_complete",
             "data": {
@@ -633,6 +650,7 @@ async def retry_rankings_pipeline(
             "Successfully completed Stage 2 retry. ConversationId: %s, Duration: %.2fs",
             conversation_id, retry_duration,
         )
+        storage.clear_pending(conversation_id, user_id=user_id)
         yield {"type": "complete"}
 
     except Exception as e:
@@ -640,6 +658,9 @@ async def retry_rankings_pipeline(
         logger.exception(
             "Failed Stage 2 retry. ConversationId: %s, Duration: %.2fs, Error: %s",
             conversation_id, retry_duration, e,
+        )
+        storage.update_pending_progress(
+            conversation_id, {"error": str(e)}, user_id=user_id,
         )
         yield {"type": "error", "message": str(e)}
 
@@ -698,6 +719,10 @@ async def retry_all_pipeline(
             yield {"type": "error", "message": "Could not find original user query"}
             return
 
+        storage.mark_response_pending(
+            conversation_id, "council", user_query, user_id=user_id,
+        )
+
         # Stage 1: Progressive streaming
         yield {"type": "round_start", "data": {"round_type": "responses", "models": council_models}}
         stage1_results: list[dict] = []
@@ -706,7 +731,18 @@ async def retry_all_pipeline(
             user_query, None, council_models, stage1_results, stage1_errors,
         ):
             yield event
+            if event.get("type") == "model_response":
+                storage.update_pending_progress(
+                    conversation_id,
+                    {"responses": list(stage1_results)},
+                    user_id=user_id,
+                )
 
+        storage.update_pending_progress(
+            conversation_id,
+            {"responses": stage1_results},
+            user_id=user_id,
+        )
         yield {
             "type": "round_complete",
             "data": {"round_type": "responses", "responses": stage1_results, "errors": stage1_errors},
@@ -726,6 +762,11 @@ async def retry_all_pipeline(
             "label_to_model": label_to_model,
             "aggregate_rankings": aggregate_rankings,
         }
+        storage.update_pending_progress(
+            conversation_id,
+            {"responses": stage1_results, "rankings": stage2_results, "metadata": metadata},
+            user_id=user_id,
+        )
         yield {
             "type": "round_complete",
             "data": {
@@ -766,6 +807,7 @@ async def retry_all_pipeline(
             "Successfully completed Stage 1 retry. ConversationId: %s, Duration: %.2fs",
             conversation_id, retry_duration,
         )
+        storage.clear_pending(conversation_id, user_id=user_id)
         yield {"type": "complete"}
 
     except Exception as e:
@@ -773,5 +815,8 @@ async def retry_all_pipeline(
         logger.exception(
             "Failed Stage 1 retry. ConversationId: %s, Duration: %.2fs, Error: %s",
             conversation_id, retry_duration, e,
+        )
+        storage.update_pending_progress(
+            conversation_id, {"error": str(e)}, user_id=user_id,
         )
         yield {"type": "error", "message": str(e)}
