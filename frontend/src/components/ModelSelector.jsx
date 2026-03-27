@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useModelFiltering, useExpandableGroups } from '../hooks';
 import { useAvailableModels, useCuratedModels, useRefreshModels } from '../hooks/queries';
@@ -18,6 +18,14 @@ export default function ModelSelector({
   filterStateRef = null,
 }) {
   const [saving, setSaving] = useState(false);
+  const searchInputRef = useRef(null);
+
+  // Auto-focus the search input when the modal opens
+  useEffect(() => {
+    // Delay slightly so the modal animation completes and focus trap doesn't override
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Fetch models and curated list
   const { data: modelsData, isLoading: loading, error: modelsError, refetch } = useAvailableModels();
@@ -154,6 +162,7 @@ export default function ModelSelector({
         <p className="selector-help">Select 2+ models to participate in the council</p>
 
         <ModelSearchBox
+          ref={searchInputRef}
           value={searchQuery}
           onChange={setSearchQuery}
         />

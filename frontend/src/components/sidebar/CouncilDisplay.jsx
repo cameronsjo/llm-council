@@ -94,6 +94,7 @@ export function CouncilDisplay({
             title="Configure council"
           >
             <Settings size={14} />
+            <span className="config-model-count">{councilModels.length}</span>
           </button>
         </div>
       </div>

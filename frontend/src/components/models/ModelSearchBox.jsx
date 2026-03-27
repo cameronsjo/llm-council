@@ -1,18 +1,20 @@
+import { forwardRef } from 'react';
 import { Search, X } from 'lucide-react';
 
 /**
  * Search input with clear button for filtering models.
  */
-export function ModelSearchBox({
+export const ModelSearchBox = forwardRef(function ModelSearchBox({
   value,
   onChange,
   placeholder = 'Search models...',
   showIcon = false,
-}) {
+}, ref) {
   return (
     <div className="search-box">
       {showIcon && <Search size={16} className="search-icon" />}
       <input
+        ref={ref}
         type="text"
         placeholder={placeholder}
         value={value}
@@ -30,4 +32,4 @@ export function ModelSearchBox({
       )}
     </div>
   );
-}
+});

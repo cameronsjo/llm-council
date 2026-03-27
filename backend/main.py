@@ -627,75 +627,113 @@ async def send_message_stream(
                 conversation_id, user_id=user_id
             )
 
-            # Add user message
-            storage.add_user_message(conversation_id, request.content, user_id=user_id)
-
-            # Mark as pending
-            storage.mark_response_pending(
-                conversation_id, "arena", request.content, user_id=user_id
-            )
+            from .arena import ArenaRound
 
             # Get arena configuration
             arena_config = request.arena_config or ArenaConfig()
             round_count = arena_config.round_count
 
-            # Start title generation in parallel
-            title_task = None
-            if is_first_message:
-                title_task = asyncio.create_task(
-                    generate_conversation_title(request.content)
+            # --- Resume check ---
+            pending_data = storage.get_pending_message(conversation_id, user_id=user_id)
+            partial_data = pending_data.get("partial_data", {}) if pending_data else {}
+            cached_rounds_data = partial_data.get("rounds", [])
+            can_resume = request.resume and pending_data is not None and len(cached_rounds_data) > 0
+
+            if can_resume:
+                logger.info(
+                    "Resuming arena from round %d. ConversationId: %s",
+                    len(cached_rounds_data) + 1, conversation_id,
+                )
+                # Reconstruct ArenaRound objects from cached data
+                rounds: list[ArenaRound] = [
+                    ArenaRound(
+                        round_number=r["round_number"],
+                        round_type=r["round_type"],
+                        responses=r["responses"],
+                    )
+                    for r in cached_rounds_data
+                ]
+
+                # Rebuild participant mapping from the same models
+                participant_mapping = create_participant_mapping(council_models)
+                combined_context: str | None = None
+                title_task = None
+
+                # Re-emit cached rounds so the frontend picks them up
+                yield f"data: {json.dumps({'type': 'arena_start', 'data': {'participant_count': len(participant_mapping), 'round_count': round_count, 'participants': list(participant_mapping.keys())}})}\n\n"
+                yield f"data: {json.dumps({'type': 'resume_start', 'data': {'from_round': len(rounds) + 1}})}\n\n"
+                for cached_round in cached_rounds_data:
+                    yield f"data: {json.dumps({'type': 'round_complete', 'data': cached_round})}\n\n"
+            else:
+                # --- Normal (non-resume) flow ---
+                # Add user message
+                storage.add_user_message(conversation_id, request.content, user_id=user_id)
+
+                # Mark as pending
+                storage.mark_response_pending(
+                    conversation_id, "arena", request.content, user_id=user_id
                 )
 
-            # Process attachments if any
-            attachment_context = ""
-            if request.attachments:
-                attachment_dicts = [a.model_dump() for a in request.attachments]
-                text_context, _ = process_attachments(attachment_dicts, user_id)
-                if text_context:
-                    attachment_context = f"## Attached Documents\n\n{text_context}\n\n---\n\n"
+                # Start title generation in parallel
+                title_task = None
+                if is_first_message:
+                    title_task = asyncio.create_task(
+                        generate_conversation_title(request.content)
+                    )
 
-            # Optionally perform web search
-            web_search_context = None
-            web_search_error = None
-            if request.use_web_search:
-                yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
-                web_search_context, web_search_error = await perform_web_search(
-                    request.content
+                # Process attachments if any
+                attachment_context = ""
+                if request.attachments:
+                    attachment_dicts = [a.model_dump() for a in request.attachments]
+                    text_context, _ = process_attachments(attachment_dicts, user_id)
+                    if text_context:
+                        attachment_context = f"## Attached Documents\n\n{text_context}\n\n---\n\n"
+
+                # Optionally perform web search
+                web_search_context = None
+                web_search_error = None
+                if request.use_web_search:
+                    yield f"data: {json.dumps({'type': 'web_search_start'})}\n\n"
+                    web_search_context, web_search_error = await perform_web_search(
+                        request.content
+                    )
+                    yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
+
+                # Combine attachment and web search context
+                combined_context = attachment_context
+                if web_search_context:
+                    combined_context += web_search_context
+
+                # Create participant mapping
+                participant_mapping = create_participant_mapping(council_models)
+
+                # Send arena start event
+                yield f"data: {json.dumps({'type': 'arena_start', 'data': {'participant_count': len(participant_mapping), 'round_count': round_count, 'participants': list(participant_mapping.keys())}})}\n\n"
+
+                rounds: list[ArenaRound] = []
+
+            # --- Run remaining rounds ---
+            start_round = len(rounds) + 1
+
+            # Round 1 (initial positions) if not already completed
+            if start_round == 1:
+                yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': 1, 'round_type': 'initial'}})}\n\n"
+                round1 = await round1_initial_positions(
+                    request.content, participant_mapping, round_count, combined_context or None
                 )
-                yield f"data: {json.dumps({'type': 'web_search_complete', 'data': {'found': web_search_context is not None, 'error': web_search_error}})}\n\n"
+                rounds.append(round1)
+                yield f"data: {json.dumps({'type': 'round_complete', 'data': round1.to_dict()})}\n\n"
 
-            # Combine attachment and web search context
-            combined_context = attachment_context
-            if web_search_context:
-                combined_context += web_search_context
+                # Update pending progress after round 1
+                storage.update_pending_progress(
+                    conversation_id,
+                    {"rounds": [round1.to_dict()]},
+                    user_id=user_id,
+                )
+                start_round = 2
 
-            # Create participant mapping
-            participant_mapping = create_participant_mapping(council_models)
-
-            # Send arena start event
-            yield f"data: {json.dumps({'type': 'arena_start', 'data': {'participant_count': len(participant_mapping), 'round_count': round_count, 'participants': list(participant_mapping.keys())}})}\n\n"
-
-            from .arena import ArenaRound
-
-            rounds: list[ArenaRound] = []
-
-            # Round 1: Initial positions
-            yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': 1, 'round_type': 'initial'}})}\n\n"
-            round1 = await round1_initial_positions(
-                request.content, participant_mapping, round_count, combined_context or None
-            )
-            rounds.append(round1)
-            yield f"data: {json.dumps({'type': 'round_complete', 'data': round1.to_dict()})}\n\n"
-
-            # Update pending progress after round 1
-            storage.update_pending_progress(
-                conversation_id,
-                {"rounds": [round1.to_dict()]},
-                user_id=user_id,
-            )
-
-            # Rounds 2-N: Deliberation
-            for round_num in range(2, round_count + 1):
+            # Remaining deliberation rounds
+            for round_num in range(start_round, round_count + 1):
                 yield f"data: {json.dumps({'type': 'round_start', 'data': {'round_number': round_num, 'round_type': 'deliberation'}})}\n\n"
                 deliberation_round = await round_n_deliberation(
                     request.content, round_num, round_count, rounds, participant_mapping

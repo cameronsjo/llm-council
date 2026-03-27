@@ -142,6 +142,26 @@
   outline-offset: 2px;
 }
 
+/* Configure button widens to show model count */
+.council-action-btn.configure {
+  width: auto;
+  gap: 3px;
+  padding: 0 6px;
+}
+
+.config-model-count {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  transition: color;
+  transition-duration: var(--transition-fast);
+}
+
+.council-action-btn.configure:hover .config-model-count {
+  color: var(--color-burgundy);
+}
+
 /* Collapsible Content */
 .council-panel-content {
   overflow: hidden;
