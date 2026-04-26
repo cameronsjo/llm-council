@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace stale `google/gemini-3-pro-preview` defaults in `DEFAULT_COUNCIL_MODELS`
+  and `DEFAULT_CHAIRMAN_MODEL` with `google/gemini-2.5-pro`. The preview-tagged
+  model no longer has live OpenRouter endpoints (404 "No endpoints found"); the
+  GA model is the right long-term default.
+
 ## [0.7.0] - 2024-12-21
 
 ### Added
