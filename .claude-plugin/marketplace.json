@@ -1,0 +1,14 @@
+{
+  "name": "llm-council",
+  "owner": {
+    "name": "Cameron Sjo",
+    "github": "cameronsjo"
+  },
+  "plugins": [
+    {
+      "name": "llm-council",
+      "source": "./.claude-plugin",
+      "description": "Multi-LLM deliberation web app with Council and Arena debate modes"
+    }
+  ]
+}

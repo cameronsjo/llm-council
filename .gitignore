@@ -25,3 +25,6 @@ frontend/.vite/
 
 # Git worktrees
 .worktrees/
+
+# Review loop state (local, per-machine)
+*.local.md

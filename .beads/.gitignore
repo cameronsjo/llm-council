@@ -1,12 +1,15 @@
 # Dolt database (managed by Dolt, not git)
 dolt/
 dolt-access.lock
+embeddeddolt/
+backup/
 
 # Runtime files
 bd.sock
 bd.sock.startlock
 sync-state.json
 last-touched
+daemon-error
 
 # Local version tracking (prevents upgrade notification spam after git ops)
 .local_version
