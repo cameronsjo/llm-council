@@ -20,6 +20,7 @@ from .council import (
     stage3_synthesize_final,
 )
 from .openrouter import ModelError, is_model_error
+from .rankings_storage import record_stage2_matches
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +328,20 @@ async def run_council_pipeline(
         aggregate_rankings = calculate_aggregate_rankings(
             stage2_results, label_to_model
         )
+        # Tap point for persistent ELO ratings — wrapped in try/except so a
+        # storage failure never breaks the streaming response.
+        try:
+            recorded = record_stage2_matches(
+                stage2_results, label_to_model,
+                conversation_id=input.conversation_id,
+                user_id=input.user_id,
+            )
+            logger.info(
+                "Recorded %d pairwise matches for conversation %s",
+                recorded, input.conversation_id,
+            )
+        except Exception as exc:
+            logger.warning("rankings persist failed: %s", exc, exc_info=True)
         stage2_duration = time.monotonic() - stage2_start
         logger.info(
             "Stage 2 complete. ConversationId: %s, Rankings: %d/%d, Errors: %d, Duration: %.2fs",
