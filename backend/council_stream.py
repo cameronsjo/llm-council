@@ -25,6 +25,36 @@ from .rankings_storage import record_stage2_matches
 logger = logging.getLogger(__name__)
 
 
+def _persist_stage2_matches_safely(
+    stage2_results: list[dict[str, Any]],
+    label_to_model: dict[str, str],
+    conversation_id: str,
+    user_id: str | None,
+) -> None:
+    """Persist Stage 2 matches without ever breaking the SSE stream.
+
+    Logs context (conversation_id, user_id) on failure so multi-user
+    triage doesn't require correlating timestamps. The broad ``except``
+    is deliberate (BLE001) — rankings persistence is strictly best-effort
+    and must not propagate any exception class up the streaming pipeline.
+    """
+    try:
+        recorded = record_stage2_matches(
+            stage2_results, label_to_model,
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
+        logger.info(
+            "Recorded %d pairwise matches. ConversationId: %s, UserId: %s",
+            recorded, conversation_id, user_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort; never fail the stream
+        logger.warning(
+            "rankings persist failed. ConversationId: %s, UserId: %s, Error: %s",
+            conversation_id, user_id, exc, exc_info=True,
+        )
+
+
 def _extract_stage_data(
     msg: dict[str, Any],
 ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
@@ -328,20 +358,9 @@ async def run_council_pipeline(
         aggregate_rankings = calculate_aggregate_rankings(
             stage2_results, label_to_model
         )
-        # Tap point for persistent ELO ratings — wrapped in try/except so a
-        # storage failure never breaks the streaming response.
-        try:
-            recorded = record_stage2_matches(
-                stage2_results, label_to_model,
-                conversation_id=input.conversation_id,
-                user_id=input.user_id,
-            )
-            logger.info(
-                "Recorded %d pairwise matches for conversation %s",
-                recorded, input.conversation_id,
-            )
-        except Exception as exc:
-            logger.warning("rankings persist failed: %s", exc, exc_info=True)
+        _persist_stage2_matches_safely(
+            stage2_results, label_to_model, input.conversation_id, input.user_id,
+        )
         stage2_duration = time.monotonic() - stage2_start
         logger.info(
             "Stage 2 complete. ConversationId: %s, Rankings: %d/%d, Errors: %d, Duration: %.2fs",
@@ -619,6 +638,9 @@ async def retry_rankings_pipeline(
             user_query, stage1_results, council_models
         )
         aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        _persist_stage2_matches_safely(
+            stage2_results, label_to_model, conversation_id, user_id,
+        )
         metadata = {
             "label_to_model": label_to_model,
             "aggregate_rankings": aggregate_rankings,
@@ -773,6 +795,9 @@ async def retry_all_pipeline(
             user_query, stage1_results, council_models
         )
         aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        _persist_stage2_matches_safely(
+            stage2_results, label_to_model, conversation_id, user_id,
+        )
         metadata = {
             "label_to_model": label_to_model,
             "aggregate_rankings": aggregate_rankings,

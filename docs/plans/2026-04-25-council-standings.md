@@ -12,7 +12,7 @@ Every Council Stage 2 round produces rich peer-review signal: each model ranks a
 
 ## Architecture
 
-```
+```text
 Stage 2 result (council_stream.py:324)
         ↓
 record_stage2_matches()  ← new: extract pairwise comparisons, append to JSONL, update ratings
@@ -49,9 +49,10 @@ Mirrors `storage.py` patterns: `user_id` param, fcntl locking, atomic-write via 
   - Append all to `matches.jsonl` (single fcntl-locked append)
   - Update `ratings.json` (read-modify-write under same lock)
 - `load_ratings(user_id) -> dict` — leaderboard data
-- `replay_history(user_id, model_filter=None) -> list[dict]` — walks JSONL, yields `{timestamp, model, rating}` snapshots
+- `replay_history(user_id, model_filter=None) -> dict[str, list[dict]]` — walks JSONL, returns `{model_id: [{ts, rating, games}, ...]}` per-model snapshots
 
 **Match record schema** (one JSON object per line):
+
 ```json
 {"ts": "2026-04-25T18:52:00Z", "conversation_id": "abc", "voter": "openai/gpt-5.1", "winner": "anthropic/claude-opus", "loser": "google/gemini-pro"}
 ```
@@ -89,7 +90,7 @@ async def get_rankings_history(
     model: str | None = None,
     user: User | None = Depends(get_optional_user)
 ) -> dict
-    # Returns {model: [{ts, rating}, ...]} — all models, or filtered to one
+    # Returns {history: {model: [{ts, rating, games}, ...]}} — all models, or filtered to one
 ```
 
 Both readonly, both honor `user_id = user.username if user else None`.

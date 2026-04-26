@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -9,7 +9,7 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { Trophy } from 'lucide-react';
+import { Trophy, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useRankings, useRankingsHistory } from '../hooks/queries';
 import './Standings.css';
 
@@ -21,6 +21,14 @@ const SERIES_COLORS = [
   'var(--color-burgundy)',
   'var(--color-gold-dark)',
   'var(--color-burgundy-light)',
+];
+
+const SORTABLE_COLUMNS = [
+  { key: 'rank', label: 'Rank', numeric: true },
+  { key: 'model', label: 'Model', numeric: false },
+  { key: 'rating', label: 'Rating', numeric: true },
+  { key: 'games', label: 'Games', numeric: true },
+  { key: 'last_updated', label: 'Last seen', numeric: false },
 ];
 
 function formatModel(id) {
@@ -42,36 +50,76 @@ function formatTimestamp(iso) {
   }
 }
 
+/**
+ * Group history snapshots by timestamp so each x-step represents one real
+ * match event, not one per-model snapshot. Without this grouping a single
+ * pairwise match (which updates two models simultaneously) would create
+ * two x-steps and distort the trend.
+ */
 function buildChartSeries(history) {
-  // history: { model: [{ts, rating, games}, ...] }
-  // Recharts wants a flat array with { idx, [model1]: r1, [model2]: r2, ... }
-  // We index by global match number across ALL series so lines align.
-  const allEvents = [];
+  const eventsByTs = new Map();
   Object.entries(history).forEach(([model, snapshots]) => {
     snapshots.forEach((s) => {
-      allEvents.push({ ...s, model });
+      if (!eventsByTs.has(s.ts)) eventsByTs.set(s.ts, {});
+      eventsByTs.get(s.ts)[model] = s.rating;
     });
   });
-  allEvents.sort((a, b) => (a.ts > b.ts ? 1 : a.ts < b.ts ? -1 : 0));
-
+  const sortedTs = [...eventsByTs.keys()].sort();
   const lastRatings = {};
-  const series = [];
-  allEvents.forEach((event, idx) => {
-    lastRatings[event.model] = event.rating;
-    series.push({ idx: idx + 1, ts: event.ts, ...lastRatings });
+  return sortedTs.map((ts, i) => {
+    Object.assign(lastRatings, eventsByTs.get(ts));
+    return { idx: i + 1, ts, ...lastRatings };
   });
-  return series;
 }
 
 export default function Standings() {
   const { data: rankingsData, isLoading: leaderboardLoading, error: leaderboardError } = useRankings();
   const [selectedModel, setSelectedModel] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: 'rating', dir: 'desc' });
   const { data: historyData, isLoading: historyLoading } = useRankingsHistory(selectedModel);
 
   const leaderboard = rankingsData?.leaderboard || [];
   const history = historyData?.history || {};
-  const chartData = buildChartSeries(history);
+  const chartData = useMemo(() => buildChartSeries(history), [history]);
   const modelKeys = Object.keys(history);
+
+  const sortedLeaderboard = useMemo(() => {
+    const { key, dir } = sortConfig;
+    const sorted = [...leaderboard].sort((a, b) => {
+      const av = a[key];
+      const bv = b[key];
+      if (av === bv) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = av < bv ? -1 : 1;
+      return dir === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+  }, [leaderboard, sortConfig]);
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key !== key) {
+        // First click on a new column: numeric defaults to desc, text to asc.
+        const col = SORTABLE_COLUMNS.find((c) => c.key === key);
+        return { key, dir: col?.numeric ? 'desc' : 'asc' };
+      }
+      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+    });
+  };
+
+  const toggleSelection = (model) => {
+    setSelectedModel((current) => (current === model ? null : model));
+  };
+
+  const sortIcon = (key) => {
+    if (sortConfig.key !== key) {
+      return <ArrowUpDown size={12} aria-hidden="true" className="sort-icon inactive" />;
+    }
+    return sortConfig.dir === 'asc'
+      ? <ArrowUp size={12} aria-hidden="true" className="sort-icon" />
+      : <ArrowDown size={12} aria-hidden="true" className="sort-icon" />;
+  };
 
   return (
     <main className="standings">
@@ -103,21 +151,48 @@ export default function Standings() {
           <table className="standings-table">
             <thead>
               <tr>
-                <th scope="col">Rank</th>
-                <th scope="col">Model</th>
-                <th scope="col" className="num">Rating</th>
-                <th scope="col" className="num">Games</th>
-                <th scope="col">Last seen</th>
+                {SORTABLE_COLUMNS.map((col) => {
+                  const isActive = sortConfig.key === col.key;
+                  return (
+                    <th
+                      key={col.key}
+                      scope="col"
+                      className={col.numeric ? 'num' : ''}
+                      aria-sort={
+                        isActive
+                          ? sortConfig.dir === 'asc' ? 'ascending' : 'descending'
+                          : 'none'
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="sort-header-btn"
+                        onClick={() => handleSort(col.key)}
+                      >
+                        <span>{col.label}</span>
+                        {sortIcon(col.key)}
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {leaderboard.map((row) => (
+              {sortedLeaderboard.map((row) => (
                 <tr
                   key={row.model}
                   className={selectedModel === row.model ? 'selected' : ''}
-                  onClick={() =>
-                    setSelectedModel(selectedModel === row.model ? null : row.model)
-                  }
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={selectedModel === row.model}
+                  aria-label={`Filter trend chart to ${formatModel(row.model)}`}
+                  onClick={() => toggleSelection(row.model)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleSelection(row.model);
+                    }
+                  }}
                 >
                   <td className="rank">{row.rank}</td>
                   <td className="model" title={row.model}>{formatModel(row.model)}</td>
@@ -131,7 +206,7 @@ export default function Standings() {
         )}
         {selectedModel && (
           <p className="standings-filter-hint">
-            Filtered to <strong>{formatModel(selectedModel)}</strong> — click again to clear.
+            Filtered to <strong>{formatModel(selectedModel)}</strong> — click or press Enter on the row again to clear.
           </p>
         )}
       </section>

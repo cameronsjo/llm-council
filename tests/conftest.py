@@ -15,5 +15,8 @@ os.environ.setdefault("OPENROUTER_API_KEY", "test-key-not-real")
 # test session. Any test that accidentally exercises a real I/O code path
 # (e.g., the rankings tap point inside the council stream pipeline) writes
 # to this temp dir instead of polluting developer state.
-_TEST_DATA_DIR = tempfile.mkdtemp(prefix="llmcouncil-tests-")
-os.environ.setdefault("LLMCOUNCIL_DATA_DIR", _TEST_DATA_DIR)
+# Only allocate a tempdir if the env var isn't already set — otherwise
+# CI runners or external orchestrators can pin the location, and we avoid
+# leaving orphan tempdirs on every test run.
+if "LLMCOUNCIL_DATA_DIR" not in os.environ:
+    os.environ["LLMCOUNCIL_DATA_DIR"] = tempfile.mkdtemp(prefix="llmcouncil-tests-")

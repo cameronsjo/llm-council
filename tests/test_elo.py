@@ -130,3 +130,17 @@ class TestApplyMatch:
         # Sanity: K=32 is the classic value, drift if anyone changes it
         assert K_FACTOR == 32.0
         assert INITIAL_RATING == 1500.0
+
+    def test_self_match_is_no_op(self):
+        # winner == loser would alias to the same dict and double-increment games.
+        # Defensive: ignore the bad pair entirely.
+        ratings: dict = {}
+        apply_match(ratings, "model-x", "model-x", "t")
+        assert ratings == {}
+
+    def test_self_match_does_not_corrupt_existing_state(self):
+        ratings: dict = {}
+        apply_match(ratings, "alpha", "beta", "t1")
+        snapshot = {k: dict(v) for k, v in ratings.items()}
+        apply_match(ratings, "alpha", "alpha", "t2")
+        assert ratings == snapshot

@@ -16,6 +16,7 @@ import fcntl
 import json
 import logging
 import os
+import re
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -30,10 +31,30 @@ logger = logging.getLogger(__name__)
 RATINGS_VERSION = 1
 
 
+_USER_ID_RE = re.compile(r"^[A-Za-z0-9_.\-@]+$")
+
+
+def _safe_user_id(user_id: str | None) -> str | None:
+    """Validate that a user_id is safe to interpolate into a filesystem path.
+
+    Rejects empty strings, anything containing path separators, ``..``,
+    or characters outside a conservative allowlist (alnum, underscore,
+    dash, dot, at-sign — covers usernames and email-style identifiers).
+    Returns the user_id on success, raises ValueError on rejection.
+    Returns None unchanged for the unauthenticated case.
+    """
+    if user_id is None:
+        return None
+    if not user_id or not _USER_ID_RE.match(user_id) or ".." in user_id:
+        raise ValueError(f"Unsafe user_id for filesystem path: {user_id!r}")
+    return user_id
+
+
 def _rankings_dir(user_id: str | None) -> Path:
     """Resolve the per-user (or global) rankings directory."""
-    if user_id:
-        return Path(DATA_BASE_DIR) / "users" / user_id / "rankings"
+    safe = _safe_user_id(user_id)
+    if safe:
+        return Path(DATA_BASE_DIR) / "users" / safe / "rankings"
     return Path(DATA_BASE_DIR) / "rankings"
 
 
@@ -85,17 +106,55 @@ def _atomic_write_json(path: Path, data: Any) -> None:
         raise
 
 
+def _rebuild_ratings_from_log(user_id: str | None) -> dict[str, Any]:
+    """Reconstruct ratings.json state by replaying matches.jsonl from scratch.
+
+    Used as a fallback when ratings.json is missing or unreadable but the
+    match log is intact. Preserves the "matches.jsonl is authoritative"
+    invariant: the leaderboard never silently empties when ratings.json
+    disappears, as long as the log survives.
+    """
+    matches = _matches_path(user_id)
+    ratings: dict[str, dict[str, Any]] = {}
+    if not matches.exists():
+        return {"version": RATINGS_VERSION, "ratings": ratings}
+    try:
+        with open(matches) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                winner, loser, ts = rec.get("winner"), rec.get("loser"), rec.get("ts")
+                if winner and loser and ts:
+                    apply_match(ratings, winner, loser, ts)
+    except OSError as exc:
+        logger.warning("matches.jsonl unreadable for user=%s: %s", user_id, exc)
+    return {"version": RATINGS_VERSION, "ratings": ratings}
+
+
 def load_ratings(user_id: str | None = None) -> dict[str, Any]:
-    """Load current ratings. Returns empty container if no file yet."""
+    """Load current ratings.
+
+    If ratings.json is missing or corrupt, rebuilds from matches.jsonl
+    so the "matches.jsonl is authoritative" invariant always holds.
+    Returns the empty container only when neither file exists.
+    """
     path = _ratings_path(user_id)
     if not path.exists():
-        return {"version": RATINGS_VERSION, "ratings": {}}
+        return _rebuild_ratings_from_log(user_id)
     try:
         with open(path) as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("ratings.json unreadable for user=%s: %s", user_id, exc)
-        return {"version": RATINGS_VERSION, "ratings": {}}
+        logger.warning(
+            "ratings.json unreadable for user=%s: %s; rebuilding from match log",
+            user_id, exc,
+        )
+        return _rebuild_ratings_from_log(user_id)
 
 
 def record_stage2_matches(
@@ -139,7 +198,14 @@ def record_stage2_matches(
         return 0
 
     with _rankings_lock(user_id):
-        # 1. Append to JSONL — source of truth.
+        # 1. Load pre-existing ratings BEFORE writing the new matches.
+        # load_ratings() rebuilds from matches.jsonl when ratings.json is
+        # missing — if we loaded after appending we'd double-count the new
+        # records (rebuild sees them in the log AND we apply_match() below).
+        state = load_ratings(user_id)
+        ratings = state.setdefault("ratings", {})
+
+        # 2. Append to JSONL — source of truth.
         matches_file = _matches_path(user_id)
         matches_file.parent.mkdir(parents=True, exist_ok=True)
         with open(matches_file, "a") as f:
@@ -153,9 +219,7 @@ def record_stage2_matches(
                 }
                 f.write(json.dumps(record) + "\n")
 
-        # 2. Update derived ratings.json.
-        state = load_ratings(user_id)
-        ratings = state.setdefault("ratings", {})
+        # 3. Apply matches to the loaded state and persist.
         for _voter, winner, loser in pending_pairs:
             apply_match(ratings, winner, loser, timestamp)
         state["version"] = RATINGS_VERSION

@@ -87,7 +87,13 @@ def apply_match(
         winner: Model id that ranked higher.
         loser: Model id that ranked lower.
         timestamp: ISO 8601 timestamp to record on both entries.
+
+    No-op when winner == loser. Self-matches would alias `w` and `l` to
+    the same dict and double-increment `games`, silently corrupting state.
+    Stray self-pairs from upstream parsing should be ignored, not recorded.
     """
+    if winner == loser:
+        return
     w = ratings.setdefault(
         winner, {"rating": INITIAL_RATING, "games": 0, "last_updated": timestamp}
     )

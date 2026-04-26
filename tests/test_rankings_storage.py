@@ -143,6 +143,52 @@ class TestGetLeaderboard:
         assert board[0]["rating"] > board[1]["rating"]
 
 
+class TestLoadRatings:
+    def test_rebuilds_from_log_when_ratings_json_missing(self, isolated_data_dir):
+        """If ratings.json is deleted but matches.jsonl exists, leaderboard rebuilds."""
+        label_to_model = {"Response A": "alpha", "Response B": "beta"}
+        rankings_storage.record_stage2_matches(
+            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            label_to_model, "c", None,
+        )
+        ratings_file = Path(isolated_data_dir) / "rankings" / "ratings.json"
+        ratings_file.unlink()
+        state = rankings_storage.load_ratings()
+        assert state["ratings"]["alpha"]["games"] == 1
+        assert state["ratings"]["alpha"]["rating"] > 1500
+
+    def test_rebuilds_from_log_when_ratings_json_corrupt(self, isolated_data_dir):
+        label_to_model = {"Response A": "alpha", "Response B": "beta"}
+        rankings_storage.record_stage2_matches(
+            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            label_to_model, "c", None,
+        )
+        ratings_file = Path(isolated_data_dir) / "rankings" / "ratings.json"
+        ratings_file.write_text("not valid json {{{")
+        state = rankings_storage.load_ratings()
+        assert "alpha" in state["ratings"]
+        assert state["ratings"]["alpha"]["games"] == 1
+
+
+class TestUserIdValidation:
+    def test_rejects_path_separator(self, isolated_data_dir):
+        with pytest.raises(ValueError, match="Unsafe user_id"):
+            rankings_storage.load_ratings(user_id="../etc/passwd")
+
+    def test_rejects_dotdot(self, isolated_data_dir):
+        with pytest.raises(ValueError, match="Unsafe user_id"):
+            rankings_storage.load_ratings(user_id="..")
+
+    def test_rejects_empty_string(self, isolated_data_dir):
+        with pytest.raises(ValueError, match="Unsafe user_id"):
+            rankings_storage.load_ratings(user_id="")
+
+    def test_accepts_normal_usernames(self, isolated_data_dir):
+        rankings_storage.load_ratings(user_id="alice")
+        rankings_storage.load_ratings(user_id="user_42")
+        rankings_storage.load_ratings(user_id="alice@example.com")
+
+
 class TestReplayHistory:
     def test_returns_empty_when_no_log(self, isolated_data_dir):
         assert rankings_storage.replay_history() == {}
