@@ -1,5 +1,5 @@
 ---
-name: llm-council
+name: onboard
 description: "Get started with LLM Council -- what it is, how to set it up, and how to use it"
 ---
 
@@ -43,7 +43,7 @@ Walk the user through initial setup:
 
 3. Run `make help` to see all available targets.
 
-**Docker alternative:** If the user prefers Docker, they can run `docker compose up -d` after configuring `.env`. The app will be at http://localhost:3000.
+**Docker alternative:** If the user prefers Docker, they can run `make docker` (which executes `docker compose up --build`) after configuring `.env`. The app will be at http://localhost:3000.
 
 ## First Use
 

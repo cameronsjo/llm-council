@@ -28,12 +28,12 @@ Built this to scratch my own itch: I wanted a quick way to scan open issues and 
 - GitHub Action converts `.beads/issues.jsonl` to JSON array and deploys to Pages
 - Edit the HTML directly to customize — no build step needed
 
-**Drop-in recipe:**
+**Drop-in recipe** (replace `{owner}/{repo}` in the last command with your repo, e.g. `acme/widgets`):
 
 ```bash
 mkdir -p docs/beadspace
 curl -sL https://raw.githubusercontent.com/cameronsjo/beadspace/main/index.html > docs/beadspace/index.html
-curl -sL https://raw.githubusercontent.com/cameronsjo/beadspace/main/workflows/beadspace.yml > .github/workflows/beadspace.yml
+curl -sL https://raw.githubusercontent.com/cameronsjo/beadspace/main/.github/workflows/beadspace.yml > .github/workflows/beadspace.yml
 bd export | jq -s '.' > docs/beadspace/issues.json
 gh api repos/{owner}/{repo}/pages -X POST -f "build_type=workflow"
 ```
