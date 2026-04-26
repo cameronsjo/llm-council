@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+import backend.openrouter as openrouter_module
 from backend.openrouter import (
     MAX_RETRIES,
     RETRYABLE_STATUS_CODES,
@@ -15,6 +16,7 @@ from backend.openrouter import (
     get_shared_client,
     is_model_error,
     query_model,
+    query_model_streaming,
 )
 
 
@@ -252,9 +254,11 @@ class TestQueryModelLogLevels:
         """A 404 on a single model (e.g., deprecated endpoint) is gracefully handled."""
         mock_post = AsyncMock(side_effect=self._make_status_error(404))
 
-        with patch.object(get_shared_client(), "post", mock_post):
-            with caplog.at_level("DEBUG", logger="backend.openrouter"):
-                result = await query_model("dead-model", [{"role": "user", "content": "hi"}])
+        with (
+            patch.object(get_shared_client(), "post", mock_post),
+            caplog.at_level("DEBUG", logger="backend.openrouter"),
+        ):
+            result = await query_model("dead-model", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
         error_records = [
@@ -271,9 +275,11 @@ class TestQueryModelLogLevels:
         """A non-retryable 5xx on a single model is gracefully handled."""
         mock_post = AsyncMock(side_effect=self._make_status_error(500))
 
-        with patch.object(get_shared_client(), "post", mock_post):
-            with caplog.at_level("DEBUG", logger="backend.openrouter"):
-                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+        with (
+            patch.object(get_shared_client(), "post", mock_post),
+            caplog.at_level("DEBUG", logger="backend.openrouter"),
+        ):
+            result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
         error_records = [
@@ -290,9 +296,11 @@ class TestQueryModelLogLevels:
         """Auth failures affect every request and warrant Sentry escalation."""
         mock_post = AsyncMock(side_effect=self._make_status_error(401))
 
-        with patch.object(get_shared_client(), "post", mock_post):
-            with caplog.at_level("DEBUG", logger="backend.openrouter"):
-                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+        with (
+            patch.object(get_shared_client(), "post", mock_post),
+            caplog.at_level("DEBUG", logger="backend.openrouter"),
+        ):
+            result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
         error_records = [
@@ -306,9 +314,11 @@ class TestQueryModelLogLevels:
         """Billing failures affect every request and warrant Sentry escalation."""
         mock_post = AsyncMock(side_effect=self._make_status_error(402))
 
-        with patch.object(get_shared_client(), "post", mock_post):
-            with caplog.at_level("DEBUG", logger="backend.openrouter"):
-                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+        with (
+            patch.object(get_shared_client(), "post", mock_post),
+            caplog.at_level("DEBUG", logger="backend.openrouter"),
+        ):
+            result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
         error_records = [
@@ -322,9 +332,11 @@ class TestQueryModelLogLevels:
         """Per-model timeout is gracefully handled, not a Sentry-grade error."""
         mock_post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
 
-        with patch.object(get_shared_client(), "post", mock_post):
-            with caplog.at_level("DEBUG", logger="backend.openrouter"):
-                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+        with (
+            patch.object(get_shared_client(), "post", mock_post),
+            caplog.at_level("DEBUG", logger="backend.openrouter"),
+        ):
+            result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
         error_records = [
@@ -341,9 +353,11 @@ class TestQueryModelLogLevels:
         """Unknown/unexpected exceptions deserve full Sentry visibility."""
         mock_post = AsyncMock(side_effect=RuntimeError("something broke"))
 
-        with patch.object(get_shared_client(), "post", mock_post):
-            with caplog.at_level("DEBUG", logger="backend.openrouter"):
-                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+        with (
+            patch.object(get_shared_client(), "post", mock_post),
+            caplog.at_level("DEBUG", logger="backend.openrouter"),
+        ):
+            result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
         error_records = [
@@ -351,3 +365,170 @@ class TestQueryModelLogLevels:
             if r.levelname == "ERROR" and r.name == "backend.openrouter"
         ]
         assert len(error_records) >= 1, "Unexpected exceptions must still log at ERROR"
+
+
+class TestQueryModelStreamingLogLevels:
+    """Mirror TestQueryModelLogLevels for the streaming code path.
+
+    The streaming function has its own HTTP error / timeout / unexpected-exception
+    branches. They must follow the same severity policy as the parallel path:
+    per-model failures are warnings, cross-cutting failures (auth/billing/unknown)
+    stay at error.
+    """
+
+    def _install_streaming_handler(self, handler):
+        """Replace the shared client with one whose transport is driven by ``handler``.
+
+        Returns a teardown callable that restores the previous client.
+        """
+        prev = openrouter_module._shared_client
+        transport = httpx.MockTransport(handler)
+        openrouter_module._shared_client = httpx.AsyncClient(transport=transport)
+
+        async def teardown():
+            await openrouter_module._shared_client.aclose()
+            openrouter_module._shared_client = prev
+
+        return teardown
+
+    @pytest.mark.asyncio
+    async def test_streaming_404_logs_at_warning_not_error(self, caplog):
+        """Streaming-mode 404 (deprecated model) is gracefully handled."""
+        teardown = self._install_streaming_handler(
+            lambda req: httpx.Response(404, json={"error": {"message": "no endpoints"}}),
+        )
+        try:
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model_streaming(
+                    "dead-model", [{"role": "user", "content": "hi"}],
+                )
+        finally:
+            await teardown()
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert error_records == [], (
+            f"Streaming-mode per-model 404 must not log at ERROR; got: "
+            f"{[r.getMessage() for r in error_records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_500_logs_at_warning_not_error(self, caplog):
+        """Streaming-mode non-retryable 5xx is gracefully handled."""
+        teardown = self._install_streaming_handler(
+            lambda req: httpx.Response(500, text="server error"),
+        )
+        try:
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model_streaming(
+                    "model-a", [{"role": "user", "content": "hi"}],
+                )
+        finally:
+            await teardown()
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert error_records == [], (
+            f"Streaming-mode per-model 500 must not log at ERROR; got: "
+            f"{[r.getMessage() for r in error_records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_401_still_logs_at_error(self, caplog):
+        """Streaming-mode auth failures keep ERROR severity."""
+        teardown = self._install_streaming_handler(
+            lambda req: httpx.Response(401, json={"error": {"message": "unauthorized"}}),
+        )
+        try:
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model_streaming(
+                    "model-a", [{"role": "user", "content": "hi"}],
+                )
+        finally:
+            await teardown()
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert len(error_records) >= 1, "Streaming 401 must still log at ERROR"
+
+    @pytest.mark.asyncio
+    async def test_streaming_402_still_logs_at_error(self, caplog):
+        """Streaming-mode billing failures keep ERROR severity."""
+        teardown = self._install_streaming_handler(
+            lambda req: httpx.Response(402, json={"error": {"message": "insufficient credits"}}),
+        )
+        try:
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model_streaming(
+                    "model-a", [{"role": "user", "content": "hi"}],
+                )
+        finally:
+            await teardown()
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert len(error_records) >= 1, "Streaming 402 must still log at ERROR"
+
+    @pytest.mark.asyncio
+    async def test_streaming_timeout_logs_at_warning(self, caplog):
+        """Streaming-mode post-retry timeout is gracefully handled."""
+
+        def raise_timeout(req: httpx.Request) -> httpx.Response:
+            raise httpx.TimeoutException("timed out", request=req)
+
+        teardown = self._install_streaming_handler(raise_timeout)
+        try:
+            with (
+                caplog.at_level("DEBUG", logger="backend.openrouter"),
+                patch("backend.openrouter.RETRY_BASE_DELAY", 0),
+            ):
+                result = await query_model_streaming(
+                    "model-a", [{"role": "user", "content": "hi"}],
+                )
+        finally:
+            await teardown()
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert error_records == [], (
+            f"Streaming-mode per-model timeout must not log at ERROR; got: "
+            f"{[r.getMessage() for r in error_records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_unexpected_exception_still_logs_at_error(self, caplog):
+        """Streaming-mode unexpected exceptions keep ERROR severity."""
+
+        def raise_runtime(req: httpx.Request) -> httpx.Response:
+            raise RuntimeError("something broke")
+
+        teardown = self._install_streaming_handler(raise_runtime)
+        try:
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model_streaming(
+                    "model-a", [{"role": "user", "content": "hi"}],
+                )
+        finally:
+            await teardown()
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert len(error_records) >= 1, "Streaming unexpected exceptions must still log at ERROR"
