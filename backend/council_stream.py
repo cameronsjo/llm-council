@@ -637,9 +637,11 @@ async def retry_rankings_pipeline(
         )
 
         # Re-run Stage 2
+        # Only successful Stage 1 models should rank — see council-wuj.
         yield {"type": "round_start", "data": {"round_type": "rankings"}}
+        ranking_models = [r["model"] for r in stage1_results]
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
-            user_query, stage1_results, council_models
+            user_query, stage1_results, ranking_models
         )
         aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
         _persist_stage2_matches_safely(
@@ -794,9 +796,11 @@ async def retry_all_pipeline(
             return
 
         # Stage 2: Rankings
+        # Only successful Stage 1 models should rank — see council-wuj.
         yield {"type": "round_start", "data": {"round_type": "rankings"}}
+        ranking_models = [r["model"] for r in stage1_results]
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
-            user_query, stage1_results, council_models
+            user_query, stage1_results, ranking_models
         )
         aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
         _persist_stage2_matches_safely(
