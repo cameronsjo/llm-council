@@ -368,7 +368,7 @@ async def run_council_pipeline(
         stage2_duration = time.monotonic() - stage2_start
         logger.info(
             "Stage 2 complete. ConversationId: %s, Rankings: %d/%d, Errors: %d, Duration: %.2fs",
-            input.conversation_id, len(stage2_results), len(input.council_models),
+            input.conversation_id, len(stage2_results), len(ranking_models),
             len(stage2_errors), stage2_duration,
         )
         metadata = {
