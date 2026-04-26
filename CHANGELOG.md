@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Streaming-mode HTTP errors now surface OpenRouter's error message detail (e.g.
+  `"No endpoints found for <model>"`) instead of the bare `"HTTP {status}"` fallback.
+  The response body is now buffered inside the streaming context manager before it
+  closes, so the parallel and streaming paths log identical detail for the same status.
+
 ## [0.7.0] - 2024-12-21
 
 ### Added

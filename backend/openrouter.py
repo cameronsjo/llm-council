@@ -378,6 +378,13 @@ async def query_model_streaming(
                     headers=headers,
                     json=payload
                 ) as response:
+                    # Buffer the error body before the stream context closes.
+                    # Once the `async with` exits via HTTPStatusError, the underlying
+                    # connection closes and the response body becomes unreadable —
+                    # `_extract_error_message` would then fall back to bare "HTTP {status}"
+                    # instead of the OpenRouter detail. See council-rkt.
+                    if not response.is_success:
+                        await response.aread()
                     response.raise_for_status()
 
                     # Extract metadata from first chunk
