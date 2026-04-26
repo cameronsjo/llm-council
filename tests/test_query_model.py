@@ -261,10 +261,15 @@ class TestQueryModelLogLevels:
             result = await query_model("dead-model", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
+        warning_records = [
+            r for r in caplog.records
+            if r.levelname == "WARNING" and r.name == "backend.openrouter"
+        ]
         error_records = [
             r for r in caplog.records
             if r.levelname == "ERROR" and r.name == "backend.openrouter"
         ]
+        assert warning_records, "Per-model 404 should still emit a WARNING breadcrumb"
         assert error_records == [], (
             f"Per-model 404 must not log at ERROR (Sentry noise); got: "
             f"{[r.getMessage() for r in error_records]}"
@@ -282,10 +287,15 @@ class TestQueryModelLogLevels:
             result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
+        warning_records = [
+            r for r in caplog.records
+            if r.levelname == "WARNING" and r.name == "backend.openrouter"
+        ]
         error_records = [
             r for r in caplog.records
             if r.levelname == "ERROR" and r.name == "backend.openrouter"
         ]
+        assert warning_records, "Per-model 500 should still emit a WARNING breadcrumb"
         assert error_records == [], (
             f"Per-model 500 must not log at ERROR; got: "
             f"{[r.getMessage() for r in error_records]}"
@@ -339,10 +349,15 @@ class TestQueryModelLogLevels:
             result = await query_model("model-a", [{"role": "user", "content": "hi"}])
 
         assert is_model_error(result)
+        warning_records = [
+            r for r in caplog.records
+            if r.levelname == "WARNING" and r.name == "backend.openrouter"
+        ]
         error_records = [
             r for r in caplog.records
             if r.levelname == "ERROR" and r.name == "backend.openrouter"
         ]
+        assert warning_records, "Per-model timeout should still emit a WARNING breadcrumb"
         assert error_records == [], (
             f"Per-model timeout must not log at ERROR; got: "
             f"{[r.getMessage() for r in error_records]}"
@@ -406,10 +421,15 @@ class TestQueryModelStreamingLogLevels:
             await teardown()
 
         assert is_model_error(result)
+        warning_records = [
+            r for r in caplog.records
+            if r.levelname == "WARNING" and r.name == "backend.openrouter"
+        ]
         error_records = [
             r for r in caplog.records
             if r.levelname == "ERROR" and r.name == "backend.openrouter"
         ]
+        assert warning_records, "Streaming-mode 404 should still emit a WARNING breadcrumb"
         assert error_records == [], (
             f"Streaming-mode per-model 404 must not log at ERROR; got: "
             f"{[r.getMessage() for r in error_records]}"
@@ -430,10 +450,15 @@ class TestQueryModelStreamingLogLevels:
             await teardown()
 
         assert is_model_error(result)
+        warning_records = [
+            r for r in caplog.records
+            if r.levelname == "WARNING" and r.name == "backend.openrouter"
+        ]
         error_records = [
             r for r in caplog.records
             if r.levelname == "ERROR" and r.name == "backend.openrouter"
         ]
+        assert warning_records, "Streaming-mode 500 should still emit a WARNING breadcrumb"
         assert error_records == [], (
             f"Streaming-mode per-model 500 must not log at ERROR; got: "
             f"{[r.getMessage() for r in error_records]}"
@@ -501,10 +526,15 @@ class TestQueryModelStreamingLogLevels:
             await teardown()
 
         assert is_model_error(result)
+        warning_records = [
+            r for r in caplog.records
+            if r.levelname == "WARNING" and r.name == "backend.openrouter"
+        ]
         error_records = [
             r for r in caplog.records
             if r.levelname == "ERROR" and r.name == "backend.openrouter"
         ]
+        assert warning_records, "Streaming-mode timeout should still emit a WARNING breadcrumb"
         assert error_records == [], (
             f"Streaming-mode per-model timeout must not log at ERROR; got: "
             f"{[r.getMessage() for r in error_records]}"
