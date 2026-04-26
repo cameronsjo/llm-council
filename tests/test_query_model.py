@@ -261,6 +261,11 @@ def _assert_log_severity(
     error_records = _records(caplog, "ERROR")
     if expect_warning:
         assert warning_records, f"{context} should emit a WARNING breadcrumb"
+    else:
+        assert warning_records == [], (
+            f"{context} should not emit WARNING; got: "
+            f"{[r.getMessage() for r in warning_records]}"
+        )
     if expect_error:
         assert error_records, f"{context} should log at ERROR for Sentry visibility"
     else:
