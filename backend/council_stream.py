@@ -350,10 +350,14 @@ async def run_council_pipeline(
             )
 
         # --- Stage 2: Collect rankings ---
+        # Only models that produced a Stage 1 response should be asked to rank;
+        # otherwise failed models (e.g., deprecated endpoints) get re-queried and
+        # generate duplicate errors — see issue council-wuj.
         yield {"type": "round_start", "data": {"round_type": "rankings"}}
         stage2_start = time.monotonic()
+        ranking_models = [r["model"] for r in stage1_results]
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
-            input.content, stage1_results, input.council_models
+            input.content, stage1_results, ranking_models
         )
         aggregate_rankings = calculate_aggregate_rankings(
             stage2_results, label_to_model

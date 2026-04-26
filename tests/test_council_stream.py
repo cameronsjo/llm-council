@@ -225,6 +225,60 @@ class TestCouncilPipelineResume:
         mock_s1.assert_not_called()
 
 
+class TestCouncilPipelineStageWiring:
+    """Pipeline wires successful Stage 1 models forward — failed models do not rank."""
+
+    @pytest.mark.asyncio
+    async def test_stage2_receives_only_models_that_succeeded_in_stage1(self):
+        """Stage 2 must rank using only the models that produced Stage 1 responses.
+
+        Regression test for council-wuj: a deprecated model (e.g. google/gemini-3-pro-preview)
+        that 404s in Stage 1 was still being asked to rank in Stage 2, generating duplicate
+        Sentry events and wasted API calls per request.
+        """
+        inp = make_input(council_models=["model-a", "model-b", "dead-model"])
+        storage = make_mock_storage()
+
+        # Stage 1 simulates dead-model failing — it does not appear in stage1_results.
+        surviving_results = [
+            {"model": "model-a", "response": "Answer A", "metrics": {}},
+            {"model": "model-b", "response": "Answer B", "metrics": {}},
+        ]
+
+        with (
+            patch("backend.council_stream.stage1_collect_responses", new_callable=AsyncMock) as mock_s1,
+            patch("backend.council_stream.stage2_collect_rankings", new_callable=AsyncMock) as mock_s2,
+            patch("backend.council_stream.stage3_synthesize_final", new_callable=AsyncMock) as mock_s3,
+            patch("backend.council_stream.generate_conversation_title", new_callable=AsyncMock),
+            patch("backend.council_stream.calculate_aggregate_rankings") as mock_agg,
+            patch("backend.council_stream.aggregate_metrics") as mock_metrics,
+            patch("backend.council_stream.convert_to_unified_result") as mock_convert,
+            patch("backend.council_stream.process_attachments") as mock_attach,
+        ):
+            async def fake_stage1(content, context, models, **kwargs):
+                cb = kwargs.get("on_model_response")
+                if cb:
+                    for r in surviving_results:
+                        await cb(r["model"], r)
+                return surviving_results
+
+            mock_s1.side_effect = fake_stage1
+            mock_s2.return_value = (STAGE2_RESULTS, LABEL_TO_MODEL, [])
+            mock_s3.return_value = STAGE3_RESULT
+            mock_agg.return_value = []
+            mock_metrics.return_value = {}
+            mock_convert.return_value = MagicMock()
+            mock_attach.return_value = ("", [])
+
+            await collect_events(run_council_pipeline(inp, storage=storage))
+
+        mock_s2.assert_called_once()
+        passed_models = mock_s2.call_args.args[2]
+        assert passed_models == ["model-a", "model-b"], (
+            f"Stage 2 received {passed_models!r}; dead-model must not be asked to rank"
+        )
+
+
 class TestCouncilPipelineErrors:
     """Error handling behavior."""
 
