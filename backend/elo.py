@@ -63,11 +63,11 @@ def extract_pairwise(
         if model and model not in resolved:
             resolved.append(model)
 
-    pairs: list[tuple[str, str]] = []
-    for i, winner in enumerate(resolved):
-        for loser in resolved[i + 1:]:
-            pairs.append((winner, loser))
-    return pairs
+    return [
+        (winner, loser)
+        for i, winner in enumerate(resolved)
+        for loser in resolved[i + 1:]
+    ]
 
 
 def apply_match(

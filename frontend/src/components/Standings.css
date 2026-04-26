@@ -232,6 +232,10 @@
     padding: var(--space-sm);
     font-size: 0.8125rem;
   }
+  /* Hide both header and body for the "Last seen" column on small screens
+     to keep the columns aligned — hiding only .ts (body cells) leaves the
+     header behind and shifts the whole row by one column. */
+  .standings-table th:nth-child(5),
   .standings-table .ts {
     display: none;
   }

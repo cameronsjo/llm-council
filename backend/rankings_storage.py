@@ -18,7 +18,7 @@ import logging
 import os
 import re
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -99,10 +99,8 @@ def _atomic_write_json(path: Path, data: Any) -> None:
             json.dump(data, f, indent=2)
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
 
 

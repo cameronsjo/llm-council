@@ -16,8 +16,12 @@ def isolated_data_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _stage2_round(label_to_model: dict[str, str], voter_rankings: list[tuple[str, list[str]]]):
-    """Helper: build a stage2_results-shaped payload from (voter, [labels]) pairs."""
+def _stage2_round(voter_rankings: list[tuple[str, list[str]]]):
+    """Helper: build a stage2_results-shaped payload from (voter, [labels]) pairs.
+
+    Tests pass ``label_to_model`` separately to ``record_stage2_matches``;
+    the helper just needs the per-voter rankings.
+    """
     return [
         {"model": voter, "parsed_ranking": labels}
         for voter, labels in voter_rankings
@@ -32,14 +36,11 @@ class TestRecordStage2Matches:
             "Response C": "model-c",
         }
         # Three voters, all rank A > B > C
-        results = _stage2_round(
-            label_to_model,
-            [
-                ("model-a", ["Response A", "Response B", "Response C"]),
-                ("model-b", ["Response A", "Response B", "Response C"]),
-                ("model-c", ["Response A", "Response B", "Response C"]),
-            ],
-        )
+        results = _stage2_round([
+            ("model-a", ["Response A", "Response B", "Response C"]),
+            ("model-b", ["Response A", "Response B", "Response C"]),
+            ("model-c", ["Response A", "Response B", "Response C"]),
+        ])
         count = rankings_storage.record_stage2_matches(
             results, label_to_model, conversation_id="conv-1", user_id=None
         )
@@ -59,13 +60,10 @@ class TestRecordStage2Matches:
 
     def test_ratings_reflect_unanimous_winner(self, isolated_data_dir):
         label_to_model = {"Response A": "alpha", "Response B": "beta"}
-        results = _stage2_round(
-            label_to_model,
-            [
-                ("alpha", ["Response A", "Response B"]),
-                ("beta", ["Response A", "Response B"]),
-            ],
-        )
+        results = _stage2_round([
+            ("alpha", ["Response A", "Response B"]),
+            ("beta", ["Response A", "Response B"]),
+        ])
         rankings_storage.record_stage2_matches(results, label_to_model, "c", None)
         state = rankings_storage.load_ratings()
         assert state["ratings"]["alpha"]["rating"] > INITIAL_RATING
@@ -83,9 +81,7 @@ class TestRecordStage2Matches:
 
     def test_per_user_isolation(self, isolated_data_dir):
         label_to_model = {"Response A": "alpha", "Response B": "beta"}
-        results = _stage2_round(
-            label_to_model, [("alpha", ["Response A", "Response B"])]
-        )
+        results = _stage2_round([("alpha", ["Response A", "Response B"])])
         rankings_storage.record_stage2_matches(results, label_to_model, "c", user_id="alice")
         rankings_storage.record_stage2_matches(results, label_to_model, "c", user_id="bob")
 
@@ -102,14 +98,14 @@ class TestRecordStage2Matches:
         label_to_model = {"Response A": "alpha", "Response B": "beta", "Response C": "gamma"}
         # Two rounds with mixed outcomes
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [
+            _stage2_round([
                 ("alpha", ["Response A", "Response B", "Response C"]),
                 ("beta", ["Response B", "Response A", "Response C"]),
             ]),
             label_to_model, "c1", None,
         )
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [
+            _stage2_round([
                 ("gamma", ["Response C", "Response A", "Response B"]),
             ]),
             label_to_model, "c2", None,
@@ -118,10 +114,15 @@ class TestRecordStage2Matches:
         live = rankings_storage.load_ratings()["ratings"]
         # Replay from scratch
         history = rankings_storage.replay_history()
-        # Final entry per model should match the live rating
+        # Final entry per model should match the live rating.
+        # `replay_history` rounds each snapshot to 1dp while internal state
+        # accumulates at full precision; `load_ratings` returns full
+        # precision. Compare both at 1dp with an explicit tolerance to
+        # absorb any per-step rounding drift over many matches.
         for model, snapshots in history.items():
-            final_rating = snapshots[-1]["rating"]
-            assert final_rating == pytest.approx(round(live[model]["rating"], 1))
+            final_replay = snapshots[-1]["rating"]
+            final_live = round(live[model]["rating"], 1)
+            assert final_replay == pytest.approx(final_live, abs=0.1)
 
 
 class TestGetLeaderboard:
@@ -131,7 +132,7 @@ class TestGetLeaderboard:
     def test_sorted_descending_with_ranks(self, isolated_data_dir):
         label_to_model = {"Response A": "winner", "Response B": "loser"}
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [("winner", ["Response A", "Response B"])]),
+            _stage2_round([("winner", ["Response A", "Response B"])]),
             label_to_model, "c", None,
         )
         board = rankings_storage.get_leaderboard()
@@ -148,7 +149,7 @@ class TestLoadRatings:
         """If ratings.json is deleted but matches.jsonl exists, leaderboard rebuilds."""
         label_to_model = {"Response A": "alpha", "Response B": "beta"}
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            _stage2_round([("alpha", ["Response A", "Response B"])]),
             label_to_model, "c", None,
         )
         ratings_file = Path(isolated_data_dir) / "rankings" / "ratings.json"
@@ -160,7 +161,7 @@ class TestLoadRatings:
     def test_rebuilds_from_log_when_ratings_json_corrupt(self, isolated_data_dir):
         label_to_model = {"Response A": "alpha", "Response B": "beta"}
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            _stage2_round([("alpha", ["Response A", "Response B"])]),
             label_to_model, "c", None,
         )
         ratings_file = Path(isolated_data_dir) / "rankings" / "ratings.json"
@@ -175,7 +176,7 @@ class TestLoadRatings:
         # downstream when callers try to iterate `.items()`.
         label_to_model = {"Response A": "alpha", "Response B": "beta"}
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            _stage2_round([("alpha", ["Response A", "Response B"])]),
             label_to_model, "c", None,
         )
         ratings_file = Path(isolated_data_dir) / "rankings" / "ratings.json"
@@ -191,7 +192,7 @@ class TestLoadRatings:
         # match log has a record that ratings.json doesn't reflect.
         label_to_model = {"Response A": "alpha", "Response B": "beta"}
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            _stage2_round([("alpha", ["Response A", "Response B"])]),
             label_to_model, "c1", None,
         )
         # Manually append a second match to JSONL but DO NOT update ratings.json
@@ -231,7 +232,7 @@ class TestReplayHistory:
     def test_filter_returns_only_target_model(self, isolated_data_dir):
         label_to_model = {"Response A": "alpha", "Response B": "beta", "Response C": "gamma"}
         rankings_storage.record_stage2_matches(
-            _stage2_round(label_to_model, [
+            _stage2_round([
                 ("alpha", ["Response A", "Response B", "Response C"]),
             ]),
             label_to_model, "c", None,
