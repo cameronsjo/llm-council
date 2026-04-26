@@ -16,6 +16,10 @@ export const useUIStore = create((set) => ({
   mode: 'council',
   setMode: (mode) => set({ mode }),
 
+  // Top-level view ('chat' | 'standings')
+  currentView: 'chat',
+  setCurrentView: (view) => set({ currentView: view }),
+
   // Arena
   arenaRoundCount: 3,
   setArenaRoundCount: (count) => set({ arenaRoundCount: count }),

@@ -85,6 +85,7 @@ from .council_stream import (
 from .export import export_to_json, export_to_markdown
 from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
 from .openrouter import close_shared_client
+from .rankings_storage import get_leaderboard, replay_history
 from .shutdown import shutdown_coordinator
 from .websearch import get_search_provider, is_web_search_available
 
@@ -347,6 +348,34 @@ async def refresh_available_models():
     invalidate_models_cache()
     models = await fetch_available_models()
     return {"models": models, "refreshed": True}
+
+
+@app.get("/api/rankings")
+async def get_rankings(user: User | None = Depends(get_optional_user)) -> dict[str, Any]:
+    """Council ELO leaderboard.
+
+    Returns models sorted by current rating, descending. Empty list if no
+    Stage 2 rounds have been recorded yet for this user (or globally when
+    auth is disabled).
+    """
+    user_id = user.username if user else None
+    return {"leaderboard": get_leaderboard(user_id)}
+
+
+@app.get("/api/rankings/history")
+async def get_rankings_history(
+    model: str | None = None,
+    user: User | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    """Per-model ELO trend over time, replayed from the match log.
+
+    Args:
+        model: optional model id to filter the response. The full log is
+               always replayed so opponent ratings are accurate; this just
+               trims the returned series.
+    """
+    user_id = user.username if user else None
+    return {"history": replay_history(user_id, model_filter=model)}
 
 
 @app.post("/api/attachments")
