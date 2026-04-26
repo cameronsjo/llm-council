@@ -1,0 +1,7 @@
+{
+  "name": "llm-council",
+  "description": "Multi-LLM deliberation web app with Council and Arena debate modes",
+  "author": {
+    "name": "cameronsjo"
+  }
+}
