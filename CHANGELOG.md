@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Per-model HTTP and timeout failures now log at `warning` instead of `error`. When the
+  council pipeline gracefully degrades (some models fail, others succeed), individual
+  model failures no longer escalate to Sentry. Auth (401), billing (402), and unexpected
+  exceptions still log at `error`. The aggregate "all models failed" path remains the
+  Sentry escalation point.
+
 ## [0.7.0] - 2024-12-21
 
 ### Added

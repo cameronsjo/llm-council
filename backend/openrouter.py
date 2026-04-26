@@ -211,7 +211,10 @@ async def query_model(
                         model, error_msg,
                     )
                 else:
-                    logger.error(
+                    # Per-model HTTP error (e.g., 404 for a deprecated model). The pipeline
+                    # gracefully degrades, so this is warning-level noise rather than a
+                    # Sentry-grade error. The aggregate "all models failed" path escalates.
+                    logger.warning(
                         "HTTP error querying %s (status %d). Detail: %s",
                         model, status, error_msg,
                     )
@@ -223,7 +226,8 @@ async def query_model(
                 return ModelError(model, status, _classify_error(status), error_msg)
 
             except httpx.TimeoutException as e:
-                logger.error("Timeout querying %s after %.0fs: %s", model, timeout, e)
+                # Per-model timeout — pipeline degrades; aggregate failure escalates.
+                logger.warning("Timeout querying %s after %.0fs: %s", model, timeout, e)
                 if is_telemetry_enabled():
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
@@ -475,7 +479,8 @@ async def query_model_streaming(
                         model, error_msg,
                     )
                 else:
-                    logger.error(
+                    # Per-model HTTP error — gracefully handled; see parallel-path note.
+                    logger.warning(
                         "HTTP error streaming %s (status %d). Detail: %s",
                         model, status, error_msg,
                     )
@@ -496,7 +501,8 @@ async def query_model_streaming(
                     await asyncio.sleep(delay)
                     continue
 
-                logger.error("Timeout streaming %s after %d attempts (%.0fs each): %s", model, MAX_RETRIES, timeout, e)
+                # Per-model timeout post-retries — gracefully handled.
+                logger.warning("Timeout streaming %s after %d attempts (%.0fs each): %s", model, MAX_RETRIES, timeout, e)
                 if is_telemetry_enabled():
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode

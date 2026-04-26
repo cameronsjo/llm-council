@@ -228,3 +228,126 @@ class TestQueryModel:
         assert result.status_code is None
         assert result.category == "unknown"
         assert "something broke" in result.message
+
+
+class TestQueryModelLogLevels:
+    """Per-model failures that the pipeline gracefully handles must not log at ERROR.
+
+    Sentry's LoggingIntegration captures ERROR-level records as events. When the
+    council pipeline degrades gracefully (some models fail, others succeed), each
+    per-model failure becoming a Sentry event is noise. Genuine cross-cutting
+    failures (auth, billing, unexpected exceptions) still escalate to ERROR.
+    """
+
+    def _make_status_error(self, status_code: int) -> httpx.HTTPStatusError:
+        resp = httpx.Response(
+            status_code=status_code,
+            text="error",
+            request=httpx.Request("POST", "https://example.com"),
+        )
+        return httpx.HTTPStatusError("err", request=resp.request, response=resp)
+
+    @pytest.mark.asyncio
+    async def test_404_logs_at_warning_not_error(self, caplog):
+        """A 404 on a single model (e.g., deprecated endpoint) is gracefully handled."""
+        mock_post = AsyncMock(side_effect=self._make_status_error(404))
+
+        with patch.object(get_shared_client(), "post", mock_post):
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model("dead-model", [{"role": "user", "content": "hi"}])
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert error_records == [], (
+            f"Per-model 404 must not log at ERROR (Sentry noise); got: "
+            f"{[r.getMessage() for r in error_records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_500_logs_at_warning_not_error(self, caplog):
+        """A non-retryable 5xx on a single model is gracefully handled."""
+        mock_post = AsyncMock(side_effect=self._make_status_error(500))
+
+        with patch.object(get_shared_client(), "post", mock_post):
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert error_records == [], (
+            f"Per-model 500 must not log at ERROR; got: "
+            f"{[r.getMessage() for r in error_records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_401_still_logs_at_error(self, caplog):
+        """Auth failures affect every request and warrant Sentry escalation."""
+        mock_post = AsyncMock(side_effect=self._make_status_error(401))
+
+        with patch.object(get_shared_client(), "post", mock_post):
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert len(error_records) >= 1, "401 must still log at ERROR for Sentry visibility"
+
+    @pytest.mark.asyncio
+    async def test_402_still_logs_at_error(self, caplog):
+        """Billing failures affect every request and warrant Sentry escalation."""
+        mock_post = AsyncMock(side_effect=self._make_status_error(402))
+
+        with patch.object(get_shared_client(), "post", mock_post):
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert len(error_records) >= 1, "402 must still log at ERROR for Sentry visibility"
+
+    @pytest.mark.asyncio
+    async def test_timeout_logs_at_warning(self, caplog):
+        """Per-model timeout is gracefully handled, not a Sentry-grade error."""
+        mock_post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
+
+        with patch.object(get_shared_client(), "post", mock_post):
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert error_records == [], (
+            f"Per-model timeout must not log at ERROR; got: "
+            f"{[r.getMessage() for r in error_records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_still_logs_at_error(self, caplog):
+        """Unknown/unexpected exceptions deserve full Sentry visibility."""
+        mock_post = AsyncMock(side_effect=RuntimeError("something broke"))
+
+        with patch.object(get_shared_client(), "post", mock_post):
+            with caplog.at_level("DEBUG", logger="backend.openrouter"):
+                result = await query_model("model-a", [{"role": "user", "content": "hi"}])
+
+        assert is_model_error(result)
+        error_records = [
+            r for r in caplog.records
+            if r.levelname == "ERROR" and r.name == "backend.openrouter"
+        ]
+        assert len(error_records) >= 1, "Unexpected exceptions must still log at ERROR"
