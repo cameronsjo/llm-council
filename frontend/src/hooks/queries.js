@@ -70,6 +70,22 @@ export function useCuratedModels() {
   });
 }
 
+export function useRankings() {
+  return useQuery({
+    queryKey: ['rankings'],
+    queryFn: () => api.getRankings(),
+    staleTime: 30_000,
+  });
+}
+
+export function useRankingsHistory(model) {
+  return useQuery({
+    queryKey: ['rankingsHistory', model],
+    queryFn: () => api.getRankingsHistory(model),
+    staleTime: 30_000,
+  });
+}
+
 // ── Mutations ────────────────────────────────────────────────────────────────
 
 export function useCreateConversation() {

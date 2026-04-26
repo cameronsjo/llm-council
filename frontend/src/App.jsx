@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import Standings from './components/Standings';
 import { api, AuthRedirectError } from './api';
 import { useConversationStream } from './hooks/useConversationStream';
 import { useUIStore } from './stores/uiStore';
@@ -25,6 +26,7 @@ function App() {
   const setAuthExpired = useUIStore((s) => s.setAuthExpired);
   const currentConversationId = useUIStore((s) => s.currentConversationId);
   const setCurrentConversationId = useUIStore((s) => s.setCurrentConversationId);
+  const currentView = useUIStore((s) => s.currentView);
   const mode = useUIStore((s) => s.mode);
   const setMode = useUIStore((s) => s.setMode);
   const arenaRoundCount = useUIStore((s) => s.arenaRoundCount);
@@ -343,21 +345,25 @@ function App() {
         onSelectConversation={handleSelectConversationMobile}
         onNewConversation={handleNewConversation}
       />
-      <ChatInterface
-        conversation={currentConversation}
-        isLoading={isLoading}
-        isExtendingDebate={isExtendingDebate}
-        onSendMessage={handleSendMessage}
-        onRetry={handleRetry}
-        onRetryInterrupted={handleRetryInterrupted}
-        onDismissInterrupted={handleDismissInterrupted}
-        onForkConversation={handleForkConversation}
-        onExtendDebate={handleExtendDebate}
-        onRetrySynthesis={handleRetrySynthesis}
-        onRetryRankings={handleRetryRankings}
-        onRetryAll={handleRetryAll}
-        onCancel={cancelStream}
-      />
+      {currentView === 'standings' ? (
+        <Standings />
+      ) : (
+        <ChatInterface
+          conversation={currentConversation}
+          isLoading={isLoading}
+          isExtendingDebate={isExtendingDebate}
+          onSendMessage={handleSendMessage}
+          onRetry={handleRetry}
+          onRetryInterrupted={handleRetryInterrupted}
+          onDismissInterrupted={handleDismissInterrupted}
+          onForkConversation={handleForkConversation}
+          onExtendDebate={handleExtendDebate}
+          onRetrySynthesis={handleRetrySynthesis}
+          onRetryRankings={handleRetryRankings}
+          onRetryAll={handleRetryAll}
+          onCancel={cancelStream}
+        />
+      )}
     </div>
   );
 }

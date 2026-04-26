@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Moon, Sun, Monitor, X } from 'lucide-react';
+import { Moon, Sun, Monitor, X, MessageSquare, Trophy } from 'lucide-react';
 import './Sidebar.css';
 import { ConversationItem, CouncilDisplay } from './sidebar/index.js';
 import ModelSelector from './ModelSelector';
@@ -22,6 +22,8 @@ export default function Sidebar({
   const chairmanModel = config?.chairman_model || '';
   const { data: userInfo } = useUserInfo();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const currentView = useUIStore((s) => s.currentView);
+  const setCurrentView = useUIStore((s) => s.setCurrentView);
 
   const deleteConversation = useDeleteConversation();
   const renameConversation = useRenameConversation();
@@ -141,6 +143,26 @@ export default function Sidebar({
         <button className="new-conversation-btn" onClick={onNewConversation}>
           + New Conversation
         </button>
+        <nav className="sidebar-views" aria-label="Top-level views">
+          <button
+            type="button"
+            className={`sidebar-view-btn ${currentView === 'chat' ? 'active' : ''}`}
+            onClick={() => setCurrentView('chat')}
+            aria-pressed={currentView === 'chat'}
+          >
+            <MessageSquare size={14} aria-hidden="true" />
+            <span>Chat</span>
+          </button>
+          <button
+            type="button"
+            className={`sidebar-view-btn ${currentView === 'standings' ? 'active' : ''}`}
+            onClick={() => setCurrentView('standings')}
+            aria-pressed={currentView === 'standings'}
+          >
+            <Trophy size={14} aria-hidden="true" />
+            <span>Standings</span>
+          </button>
+        </nav>
       </div>
 
       <div className="conversation-list">

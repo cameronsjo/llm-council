@@ -287,6 +287,22 @@ export const api = {
   },
 
   /**
+   * Council standings — leaderboard sorted by current ELO rating.
+   */
+  async getRankings() {
+    return fetchJSON(`${API_BASE}/api/rankings`, {}, 'Failed to get rankings');
+  },
+
+  /**
+   * Per-model ELO history. If `model` is provided, narrow the response to
+   * that single model; otherwise return all series.
+   */
+  async getRankingsHistory(model = null) {
+    const qs = model ? `?model=${encodeURIComponent(model)}` : '';
+    return fetchJSON(`${API_BASE}/api/rankings/history${qs}`, {}, 'Failed to get rankings history');
+  },
+
+  /**
    * List all conversations.
    */
   async listConversations() {
