@@ -25,6 +25,16 @@ from .rankings_storage import record_stage2_matches
 logger = logging.getLogger(__name__)
 
 
+def _derive_ranking_models(stage1_results: list[dict[str, Any]]) -> list[str]:
+    """Return the list of model IDs that produced Stage 1 outputs.
+
+    Stage 2 ranks only models that successfully responded in Stage 1 — see
+    council-wuj. Centralizing this derivation prevents drift across the main
+    pipeline and the two retry pipelines.
+    """
+    return [r["model"] for r in stage1_results]
+
+
 def _persist_stage2_matches_safely(
     stage2_results: list[dict[str, Any]],
     label_to_model: dict[str, str],
@@ -355,7 +365,7 @@ async def run_council_pipeline(
         # generate duplicate errors — see issue council-wuj.
         yield {"type": "round_start", "data": {"round_type": "rankings"}}
         stage2_start = time.monotonic()
-        ranking_models = [r["model"] for r in stage1_results]
+        ranking_models = _derive_ranking_models(stage1_results)
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
             input.content, stage1_results, ranking_models
         )
@@ -639,7 +649,7 @@ async def retry_rankings_pipeline(
         # Re-run Stage 2
         # Only successful Stage 1 models should rank — see council-wuj.
         yield {"type": "round_start", "data": {"round_type": "rankings"}}
-        ranking_models = [r["model"] for r in stage1_results]
+        ranking_models = _derive_ranking_models(stage1_results)
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
             user_query, stage1_results, ranking_models
         )
@@ -798,7 +808,7 @@ async def retry_all_pipeline(
         # Stage 2: Rankings
         # Only successful Stage 1 models should rank — see council-wuj.
         yield {"type": "round_start", "data": {"round_type": "rankings"}}
-        ranking_models = [r["model"] for r in stage1_results]
+        ranking_models = _derive_ranking_models(stage1_results)
         stage2_results, label_to_model, stage2_errors = await stage2_collect_rankings(
             user_query, stage1_results, ranking_models
         )
