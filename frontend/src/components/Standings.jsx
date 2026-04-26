@@ -76,7 +76,11 @@ export default function Standings() {
   const { data: rankingsData, isLoading: leaderboardLoading, error: leaderboardError } = useRankings();
   const [selectedModel, setSelectedModel] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'rating', dir: 'desc' });
-  const { data: historyData, isLoading: historyLoading } = useRankingsHistory(selectedModel);
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    error: historyError,
+  } = useRankingsHistory(selectedModel);
 
   const leaderboard = rankingsData?.leaderboard || [];
   const history = historyData?.history || {};
@@ -133,16 +137,14 @@ export default function Standings() {
         </div>
       </header>
 
-      {leaderboardError && (
-        <div className="standings-error" role="alert">
-          Failed to load standings: {leaderboardError.message}
-        </div>
-      )}
-
       <section className="standings-section">
         <h2>Leaderboard</h2>
         {leaderboardLoading ? (
           <div className="standings-empty">Loading…</div>
+        ) : leaderboardError ? (
+          <div className="standings-error" role="alert">
+            Failed to load leaderboard: {leaderboardError.message || 'Unknown error'}
+          </div>
         ) : leaderboard.length === 0 ? (
           <div className="standings-empty">
             No matches recorded yet. Run a council round to start tracking ratings.
@@ -178,35 +180,38 @@ export default function Standings() {
               </tr>
             </thead>
             <tbody>
-              {sortedLeaderboard.map((row) => (
-                <tr
-                  key={row.model}
-                  className={selectedModel === row.model ? 'selected' : ''}
-                  tabIndex={0}
-                  role="button"
-                  aria-pressed={selectedModel === row.model}
-                  aria-label={`Filter trend chart to ${formatModel(row.model)}`}
-                  onClick={() => toggleSelection(row.model)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      toggleSelection(row.model);
-                    }
-                  }}
-                >
-                  <td className="rank">{row.rank}</td>
-                  <td className="model" title={row.model}>{formatModel(row.model)}</td>
-                  <td className="num">{Math.round(row.rating)}</td>
-                  <td className="num">{row.games}</td>
-                  <td className="ts">{formatTimestamp(row.last_updated)}</td>
-                </tr>
-              ))}
+              {sortedLeaderboard.map((row) => {
+                const isSelected = selectedModel === row.model;
+                return (
+                  <tr key={row.model} className={isSelected ? 'selected' : ''}>
+                    <td className="rank">{row.rank}</td>
+                    <td className="model" title={row.model}>
+                      <button
+                        type="button"
+                        className="model-select-btn"
+                        aria-pressed={isSelected}
+                        aria-label={
+                          isSelected
+                            ? `Clear filter on ${formatModel(row.model)}`
+                            : `Filter trend chart to ${formatModel(row.model)}`
+                        }
+                        onClick={() => toggleSelection(row.model)}
+                      >
+                        {formatModel(row.model)}
+                      </button>
+                    </td>
+                    <td className="num">{Math.round(row.rating)}</td>
+                    <td className="num">{row.games}</td>
+                    <td className="ts">{formatTimestamp(row.last_updated)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
         {selectedModel && (
           <p className="standings-filter-hint">
-            Filtered to <strong>{formatModel(selectedModel)}</strong> — click or press Enter on the row again to clear.
+            Filtered to <strong>{formatModel(selectedModel)}</strong> — click the model name again to clear.
           </p>
         )}
       </section>
@@ -215,6 +220,10 @@ export default function Standings() {
         <h2>Trend</h2>
         {historyLoading ? (
           <div className="standings-empty">Loading…</div>
+        ) : historyError ? (
+          <div className="standings-error" role="alert">
+            Failed to load trend history: {historyError.message || 'Unknown error'}
+          </div>
         ) : modelKeys.length === 0 ? (
           <div className="standings-empty">No history yet.</div>
         ) : (

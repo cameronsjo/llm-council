@@ -169,6 +169,41 @@ class TestLoadRatings:
         assert "alpha" in state["ratings"]
         assert state["ratings"]["alpha"]["games"] == 1
 
+    def test_rebuilds_when_ratings_json_has_invalid_shape(self, isolated_data_dir):
+        # Parseable JSON, wrong shape (ratings should be a dict, not a list).
+        # Without schema validation this passes load_ratings and explodes
+        # downstream when callers try to iterate `.items()`.
+        label_to_model = {"Response A": "alpha", "Response B": "beta"}
+        rankings_storage.record_stage2_matches(
+            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            label_to_model, "c", None,
+        )
+        ratings_file = Path(isolated_data_dir) / "rankings" / "ratings.json"
+        ratings_file.write_text('{"version": 1, "ratings": []}')  # valid JSON, invalid shape
+        state = rankings_storage.load_ratings()
+        # Should have rebuilt from the log
+        assert isinstance(state["ratings"], dict)
+        assert "alpha" in state["ratings"]
+        assert state["ratings"]["alpha"]["games"] == 1
+
+    def test_rebuilds_when_ratings_json_is_stale(self, isolated_data_dir):
+        # Simulate crash after JSONL append but before ratings.json write:
+        # match log has a record that ratings.json doesn't reflect.
+        label_to_model = {"Response A": "alpha", "Response B": "beta"}
+        rankings_storage.record_stage2_matches(
+            _stage2_round(label_to_model, [("alpha", ["Response A", "Response B"])]),
+            label_to_model, "c1", None,
+        )
+        # Manually append a second match to JSONL but DO NOT update ratings.json
+        matches_file = Path(isolated_data_dir) / "rankings" / "matches.jsonl"
+        with open(matches_file, "a") as f:
+            f.write('{"ts": "2026-04-26T00:00:00Z", "conversation_id": "c2", '
+                    '"voter": "alpha", "winner": "alpha", "loser": "beta"}\n')
+        state = rankings_storage.load_ratings()
+        # Stale detection should have triggered a rebuild including the second match
+        assert state["ratings"]["alpha"]["games"] == 2
+        assert state["ratings"]["beta"]["games"] == 2
+
 
 class TestUserIdValidation:
     def test_rejects_path_separator(self, isolated_data_dir):

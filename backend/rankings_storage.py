@@ -106,6 +106,61 @@ def _atomic_write_json(path: Path, data: Any) -> None:
         raise
 
 
+def _is_valid_ratings_state(state: Any) -> bool:
+    """Validate the shape of a loaded ratings.json payload.
+
+    Parseable JSON isn't enough — a file with ``[]`` or
+    ``{"ratings": []}`` parses cleanly but breaks every downstream
+    operation. We treat any shape mismatch as corruption and let the
+    caller rebuild from the log.
+    """
+    if not isinstance(state, dict):
+        return False
+    ratings = state.get("ratings")
+    if not isinstance(ratings, dict):
+        return False
+    for entry in ratings.values():
+        if not isinstance(entry, dict):
+            return False
+        if not isinstance(entry.get("rating"), (int, float)):
+            return False
+        if not isinstance(entry.get("games"), int):
+            return False
+    return True
+
+
+def _count_log_matches(user_id: str | None) -> int:
+    """Count the well-formed (winner, loser, ts) records in the match log."""
+    path = _matches_path(user_id)
+    if not path.exists():
+        return 0
+    try:
+        with open(path) as f:
+            count = 0
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("winner") and rec.get("loser") and rec.get("ts"):
+                    count += 1
+            return count
+    except OSError as exc:
+        logger.warning("match log unreadable for user=%s: %s", user_id, exc)
+        return 0
+
+
+def _ratings_total_games(state: dict[str, Any]) -> int:
+    """Sum the games counter across all models. Each match contributes 2 (winner+loser)."""
+    return sum(
+        entry.get("games", 0)
+        for entry in state.get("ratings", {}).values()
+    )
+
+
 def _rebuild_ratings_from_log(user_id: str | None) -> dict[str, Any]:
     """Reconstruct ratings.json state by replaying matches.jsonl from scratch.
 
@@ -139,22 +194,50 @@ def _rebuild_ratings_from_log(user_id: str | None) -> dict[str, Any]:
 def load_ratings(user_id: str | None = None) -> dict[str, Any]:
     """Load current ratings.
 
-    If ratings.json is missing or corrupt, rebuilds from matches.jsonl
-    so the "matches.jsonl is authoritative" invariant always holds.
-    Returns the empty container only when neither file exists.
+    Falls back to rebuilding from matches.jsonl in three cases, all of
+    which preserve the "matches.jsonl is authoritative" invariant:
+    1. ratings.json is missing entirely.
+    2. ratings.json is unreadable or unparseable (OSError, JSONDecodeError).
+    3. ratings.json parses but has the wrong shape (validator rejects it).
+    4. ratings.json appears stale relative to the match log — i.e. the log
+       has more matches than the ratings reflect, suggesting a crash between
+       the JSONL append and the ratings.json write. Without this check the
+       leaderboard would silently miss those matches forever.
     """
     path = _ratings_path(user_id)
     if not path.exists():
         return _rebuild_ratings_from_log(user_id)
+
     try:
         with open(path) as f:
-            return json.load(f)
+            state = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning(
             "ratings.json unreadable for user=%s: %s; rebuilding from match log",
             user_id, exc,
         )
         return _rebuild_ratings_from_log(user_id)
+
+    if not _is_valid_ratings_state(state):
+        logger.warning(
+            "ratings.json has invalid shape for user=%s; rebuilding from match log",
+            user_id,
+        )
+        return _rebuild_ratings_from_log(user_id)
+
+    # Staleness check: each match in the log contributes 2 to total games
+    # (winner + loser, both incremented). Drift indicates the writer crashed
+    # mid-write and ratings.json never caught up to the authoritative log.
+    expected_games = _count_log_matches(user_id) * 2
+    if _ratings_total_games(state) < expected_games:
+        logger.warning(
+            "ratings.json stale relative to match log for user=%s "
+            "(games=%d, expected≥%d); rebuilding",
+            user_id, _ratings_total_games(state), expected_games,
+        )
+        return _rebuild_ratings_from_log(user_id)
+
+    return state
 
 
 def record_stage2_matches(
@@ -275,28 +358,36 @@ def replay_history(
     ratings: dict[str, dict[str, Any]] = {}
     history: dict[str, list[dict[str, Any]]] = {}
 
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                logger.warning("skipping malformed match record")
-                continue
-            winner = rec.get("winner")
-            loser = rec.get("loser")
-            ts = rec.get("ts")
-            if not (winner and loser and ts):
-                continue
-            apply_match(ratings, winner, loser, ts)
-            for model in (winner, loser):
-                if model_filter and model != model_filter:
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
                     continue
-                history.setdefault(model, []).append({
-                    "ts": ts,
-                    "rating": round(ratings[model]["rating"], 1),
-                    "games": ratings[model]["games"],
-                })
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("skipping malformed match record")
+                    continue
+                winner = rec.get("winner")
+                loser = rec.get("loser")
+                ts = rec.get("ts")
+                if not (winner and loser and ts):
+                    continue
+                apply_match(ratings, winner, loser, ts)
+                for model in (winner, loser):
+                    if model_filter and model != model_filter:
+                        continue
+                    history.setdefault(model, []).append({
+                        "ts": ts,
+                        "rating": round(ratings[model]["rating"], 1),
+                        "games": ratings[model]["games"],
+                    })
+    except OSError as exc:
+        # Degrade gracefully: callers (the /api/rankings/history endpoint)
+        # should still get a meaningful empty response rather than a 500.
+        logger.warning(
+            "match log read failed mid-replay for user=%s: %s",
+            user_id, exc,
+        )
     return history

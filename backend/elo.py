@@ -88,22 +88,24 @@ def apply_match(
         loser: Model id that ranked lower.
         timestamp: ISO 8601 timestamp to record on both entries.
 
-    No-op when winner == loser. Self-matches would alias `w` and `l` to
-    the same dict and double-increment `games`, silently corrupting state.
-    Stray self-pairs from upstream parsing should be ignored, not recorded.
+    No-op when winner == loser. Self-matches would alias both state dicts
+    and double-increment `games`, silently corrupting state. Stray self-pairs
+    from upstream parsing should be ignored, not recorded.
     """
     if winner == loser:
         return
-    w = ratings.setdefault(
+    winner_state = ratings.setdefault(
         winner, {"rating": INITIAL_RATING, "games": 0, "last_updated": timestamp}
     )
-    l = ratings.setdefault(
+    loser_state = ratings.setdefault(
         loser, {"rating": INITIAL_RATING, "games": 0, "last_updated": timestamp}
     )
-    new_w, new_l = update_pair(w["rating"], l["rating"], score_a=1.0)
-    w["rating"] = new_w
-    w["games"] += 1
-    w["last_updated"] = timestamp
-    l["rating"] = new_l
-    l["games"] += 1
-    l["last_updated"] = timestamp
+    new_winner, new_loser = update_pair(
+        winner_state["rating"], loser_state["rating"], score_a=1.0,
+    )
+    winner_state["rating"] = new_winner
+    winner_state["games"] += 1
+    winner_state["last_updated"] = timestamp
+    loser_state["rating"] = new_loser
+    loser_state["games"] += 1
+    loser_state["last_updated"] = timestamp
