@@ -1,6 +1,7 @@
 """Tests for query_model: shared client, retry, differentiated errors."""
 
 import asyncio
+import json
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -463,4 +464,106 @@ class TestQueryModelStreamingLogLevels:
         assert is_model_error(result)
         _assert_log_severity(
             caplog, expect_warning=False, expect_error=True, context="Streaming unexpected exception",
+        )
+
+
+class TestQueryModelStreamingErrorDetail:
+    """Streaming-mode HTTP errors must surface OpenRouter's error message detail.
+
+    Regression test for council-rkt: in real httpx streaming, after the
+    `async with client.stream(...)` block exits via an HTTPStatusError, the
+    underlying connection closes and the response body becomes unreadable.
+    The body must be buffered (read) inside the context manager — otherwise
+    `_extract_error_message` falls back to the bare `"HTTP {status}"` string
+    instead of OpenRouter's actual error detail.
+    """
+
+    def _build_failing_stream_cm(self, status_code: int, body: dict):
+        """Build a fake httpx.client.stream() context manager that simulates real
+        streaming behavior: response body is unreadable after the CM exits, so
+        the only way to see the body is to call aread() inside the CM.
+
+        Returns a tuple (cm_factory, state) where state.aread_inside_cm reflects
+        whether body was buffered before exit.
+        """
+        body_bytes = json.dumps(body).encode()
+
+        class State:
+            cm_exited = False
+            aread_inside_cm = False
+
+        state = State()
+
+        class FakeStreamResponse:
+            def __init__(self):
+                self.status_code = status_code
+                self.is_success = 200 <= status_code < 300
+                self.headers = httpx.Headers()
+                self.request = httpx.Request("POST", "https://example.com")
+                self._buffered: bytes | None = None
+
+            async def aread(self) -> bytes:
+                # Inside CM: real streaming reads the body off the wire.
+                # Outside CM: the connection has closed; body is gone.
+                if state.cm_exited and self._buffered is None:
+                    return b""
+                if not state.cm_exited:
+                    state.aread_inside_cm = True
+                    self._buffered = body_bytes
+                return self._buffered or b""
+
+            def json(self):
+                if not self._buffered:
+                    raise json.JSONDecodeError("no body", "", 0)
+                return json.loads(self._buffered)
+
+            @property
+            def text(self) -> str:
+                return (self._buffered or b"").decode()
+
+            def raise_for_status(self):
+                if not self.is_success:
+                    raise httpx.HTTPStatusError(
+                        f"HTTP {self.status_code}",
+                        request=self.request,
+                        response=self,  # type: ignore[arg-type]
+                    )
+
+        response = FakeStreamResponse()
+
+        class FakeStreamCM:
+            async def __aenter__(self):
+                return response
+
+            async def __aexit__(self, *args):
+                state.cm_exited = True
+                return False
+
+        def cm_factory(*args, **kwargs):
+            return FakeStreamCM()
+
+        return cm_factory, state
+
+    @pytest.mark.asyncio
+    async def test_streaming_404_surfaces_openrouter_error_detail(self):
+        """Streaming-mode 404 must produce a ModelError carrying OpenRouter's detail."""
+        cm_factory, state = self._build_failing_stream_cm(
+            status_code=404,
+            body={"error": {"code": 404, "message": "No endpoints found for dead-model"}},
+        )
+
+        with patch.object(get_shared_client(), "stream", side_effect=cm_factory):
+            result = await query_model_streaming(
+                "dead-model", [{"role": "user", "content": "hi"}],
+            )
+
+        assert is_model_error(result)
+        assert result.status_code == 404
+        assert "No endpoints found for dead-model" in result.message, (
+            f"Streaming path lost OpenRouter error detail; got message: {result.message!r}. "
+            "Body must be buffered inside the stream CM (see council-rkt)."
+        )
+        assert state.aread_inside_cm, (
+            "Body was not read inside the streaming context manager — once the CM exits, "
+            "the body is unreadable in real httpx streams."
         )
