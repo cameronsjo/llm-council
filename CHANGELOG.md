@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `DEFAULT_CHAIRMAN_MODEL` with `google/gemini-2.5-pro`. The preview-tagged
   model no longer has live OpenRouter endpoints (404 "No endpoints found"); the
   GA model is the right long-term default.
+- Per-model HTTP and timeout failures now log at `warning` instead of `error`. When the
+  council pipeline gracefully degrades (some models fail, others succeed), individual
+  model failures no longer escalate to Sentry. Auth (401), billing (402), and unexpected
+  exceptions still log at `error`. The aggregate "all models failed" path remains the
+  Sentry escalation point.
 
 ### Fixed
 

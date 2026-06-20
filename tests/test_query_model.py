@@ -1,11 +1,13 @@
 """Tests for query_model: shared client, retry, differentiated errors."""
 
 import asyncio
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
+import backend.openrouter as openrouter_module
 from backend.openrouter import (
     MAX_RETRIES,
     RETRYABLE_STATUS_CODES,
@@ -15,6 +17,7 @@ from backend.openrouter import (
     get_shared_client,
     is_model_error,
     query_model,
+    query_model_streaming,
 )
 
 
@@ -228,3 +231,236 @@ class TestQueryModel:
         assert result.status_code is None
         assert result.category == "unknown"
         assert "something broke" in result.message
+
+
+_OPENROUTER_LOGGER = "backend.openrouter"
+
+
+def _records(caplog, level: str) -> list:
+    """Return caplog records emitted by the openrouter logger at ``level``."""
+    return [
+        r for r in caplog.records
+        if r.levelname == level and r.name == _OPENROUTER_LOGGER
+    ]
+
+
+def _assert_log_severity(
+    caplog,
+    *,
+    expect_warning: bool,
+    expect_error: bool,
+    context: str,
+) -> None:
+    """Assert openrouter log records match the expected severity contract.
+
+    ``expect_warning`` requires at least one WARNING record; ``expect_error``
+    flips between requiring at least one ERROR record (True) or none (False).
+    Used by both TestQueryModelLogLevels and TestQueryModelStreamingLogLevels.
+    """
+    warning_records = _records(caplog, "WARNING")
+    error_records = _records(caplog, "ERROR")
+    if expect_warning:
+        assert warning_records, f"{context} should emit a WARNING breadcrumb"
+    else:
+        assert warning_records == [], (
+            f"{context} should not emit WARNING; got: "
+            f"{[r.getMessage() for r in warning_records]}"
+        )
+    if expect_error:
+        assert error_records, f"{context} should log at ERROR for Sentry visibility"
+    else:
+        assert error_records == [], (
+            f"{context} must not log at ERROR; got: "
+            f"{[r.getMessage() for r in error_records]}"
+        )
+
+
+class TestQueryModelLogLevels:
+    """Per-model failures that the pipeline gracefully handles must not log at ERROR.
+
+    Sentry's LoggingIntegration captures ERROR-level records as events. When the
+    council pipeline degrades gracefully (some models fail, others succeed), each
+    per-model failure becoming a Sentry event is noise. Genuine cross-cutting
+    failures (auth, billing, unexpected exceptions) still escalate to ERROR.
+    """
+
+    def _make_status_error(self, status_code: int) -> httpx.HTTPStatusError:
+        resp = httpx.Response(
+            status_code=status_code,
+            text="error",
+            request=httpx.Request("POST", "https://example.com"),
+        )
+        return httpx.HTTPStatusError("err", request=resp.request, response=resp)
+
+    async def _run_with_post_side_effect(self, side_effect, caplog, model="model-a"):
+        with (
+            patch.object(get_shared_client(), "post", AsyncMock(side_effect=side_effect)),
+            caplog.at_level("DEBUG", logger=_OPENROUTER_LOGGER),
+        ):
+            return await query_model(model, [{"role": "user", "content": "hi"}])
+
+    @pytest.mark.asyncio
+    async def test_404_logs_at_warning_not_error(self, caplog):
+        result = await self._run_with_post_side_effect(
+            self._make_status_error(404), caplog, model="dead-model",
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=True, expect_error=False, context="Per-model 404",
+        )
+
+    @pytest.mark.asyncio
+    async def test_500_logs_at_warning_not_error(self, caplog):
+        result = await self._run_with_post_side_effect(
+            self._make_status_error(500), caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=True, expect_error=False, context="Per-model 500",
+        )
+
+    @pytest.mark.asyncio
+    async def test_401_still_logs_at_error(self, caplog):
+        result = await self._run_with_post_side_effect(
+            self._make_status_error(401), caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=False, expect_error=True, context="401 auth failure",
+        )
+
+    @pytest.mark.asyncio
+    async def test_402_still_logs_at_error(self, caplog):
+        result = await self._run_with_post_side_effect(
+            self._make_status_error(402), caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=False, expect_error=True, context="402 billing failure",
+        )
+
+    @pytest.mark.asyncio
+    async def test_timeout_logs_at_warning(self, caplog):
+        result = await self._run_with_post_side_effect(
+            httpx.TimeoutException("timed out"), caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=True, expect_error=False, context="Per-model timeout",
+        )
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_still_logs_at_error(self, caplog):
+        result = await self._run_with_post_side_effect(
+            RuntimeError("something broke"), caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=False, expect_error=True, context="Unexpected exception",
+        )
+
+
+class TestQueryModelStreamingLogLevels:
+    """Mirror TestQueryModelLogLevels for the streaming code path.
+
+    The streaming function has its own HTTP error / timeout / unexpected-exception
+    branches. They must follow the same severity policy as the parallel path:
+    per-model failures are warnings, cross-cutting failures (auth/billing/unknown)
+    stay at error.
+    """
+
+    def _install_streaming_handler(self, handler):
+        """Replace the shared client with one whose transport is driven by ``handler``.
+
+        Returns a teardown callable that restores the previous client.
+        """
+        prev = openrouter_module._shared_client
+        transport = httpx.MockTransport(handler)
+        openrouter_module._shared_client = httpx.AsyncClient(transport=transport)
+
+        async def teardown():
+            await openrouter_module._shared_client.aclose()
+            openrouter_module._shared_client = prev
+
+        return teardown
+
+    async def _run_streaming(self, handler, caplog, model="model-a", *, retry_zero=False):
+        teardown = self._install_streaming_handler(handler)
+        try:
+            ctx_managers = [caplog.at_level("DEBUG", logger=_OPENROUTER_LOGGER)]
+            if retry_zero:
+                ctx_managers.append(patch("backend.openrouter.RETRY_BASE_DELAY", 0))
+            with ExitStack() as stack:
+                for cm in ctx_managers:
+                    stack.enter_context(cm)
+                return await query_model_streaming(
+                    model, [{"role": "user", "content": "hi"}],
+                )
+        finally:
+            await teardown()
+
+    @pytest.mark.asyncio
+    async def test_streaming_404_logs_at_warning_not_error(self, caplog):
+        result = await self._run_streaming(
+            lambda req: httpx.Response(404, json={"error": {"message": "no endpoints"}}),
+            caplog, model="dead-model",
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=True, expect_error=False, context="Streaming-mode 404",
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_500_logs_at_warning_not_error(self, caplog):
+        result = await self._run_streaming(
+            lambda req: httpx.Response(500, text="server error"),
+            caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=True, expect_error=False, context="Streaming-mode 500",
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_401_still_logs_at_error(self, caplog):
+        result = await self._run_streaming(
+            lambda req: httpx.Response(401, json={"error": {"message": "unauthorized"}}),
+            caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=False, expect_error=True, context="Streaming 401",
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_402_still_logs_at_error(self, caplog):
+        result = await self._run_streaming(
+            lambda req: httpx.Response(402, json={"error": {"message": "insufficient credits"}}),
+            caplog,
+        )
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=False, expect_error=True, context="Streaming 402",
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_timeout_logs_at_warning(self, caplog):
+        def raise_timeout(req: httpx.Request) -> httpx.Response:
+            raise httpx.TimeoutException("timed out", request=req)
+
+        result = await self._run_streaming(raise_timeout, caplog, retry_zero=True)
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=True, expect_error=False, context="Streaming-mode timeout",
+        )
+
+    @pytest.mark.asyncio
+    async def test_streaming_unexpected_exception_still_logs_at_error(self, caplog):
+        def raise_runtime(req: httpx.Request) -> httpx.Response:
+            raise RuntimeError("something broke")
+
+        result = await self._run_streaming(raise_runtime, caplog)
+        assert is_model_error(result)
+        _assert_log_severity(
+            caplog, expect_warning=False, expect_error=True, context="Streaming unexpected exception",
+        )
