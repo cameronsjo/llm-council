@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model no longer has live OpenRouter endpoints (404 "No endpoints found"); the
   GA model is the right long-term default.
 
+### Fixed
+
+- Stage 2 ranking no longer includes models that failed in Stage 1, eliminating duplicate
+  404s, redundant OpenRouter calls, and duplicated Sentry events when a council model's
+  endpoint is deprecated or unavailable.
+
 ## [0.7.0] - 2024-12-21
 
 ### Added
