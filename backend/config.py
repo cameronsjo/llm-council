@@ -24,13 +24,13 @@ DATA_BASE_DIR = os.getenv("LLMCOUNCIL_DATA_DIR", "data")
 # Default council members - list of OpenRouter model identifiers
 DEFAULT_COUNCIL_MODELS = [
     "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
+    "google/gemini-2.5-pro",
     "anthropic/claude-sonnet-4.5",
     "x-ai/grok-4",
 ]
 
 # Default chairman model - synthesizes final response
-DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+DEFAULT_CHAIRMAN_MODEL = "google/gemini-2.5-pro"
 
 # Arena mode defaults
 DEFAULT_ARENA_ROUNDS = 3

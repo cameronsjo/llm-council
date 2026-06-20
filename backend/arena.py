@@ -136,7 +136,7 @@ def create_participant_mapping(models: list[str]) -> dict[str, str]:
 
     Returns:
         Dict mapping participant labels to model identifiers
-        e.g., {"Participant A": "openai/gpt-5.1", "Participant B": "google/gemini-3-pro"}
+        e.g., {"Participant A": "openai/gpt-5.1", "Participant B": "google/gemini-2.5-pro"}
     """
     labels = [chr(65 + i) for i in range(len(models))]  # A, B, C, ...
     return {f"Participant {label}": model for label, model in zip(labels, models)}
