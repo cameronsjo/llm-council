@@ -466,6 +466,27 @@
   margin-bottom: 26px;
 }
 
+/* Deliberation blocks stagger in on first paint (~60ms each).
+   Neutralized by the global prefers-reduced-motion guard in index.css. */
+.assistant-message > * {
+  animation: ccFade var(--dur-deliberate) var(--ease-out) both;
+}
+.assistant-message > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.assistant-message > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+.assistant-message > *:nth-child(3) {
+  animation-delay: 120ms;
+}
+.assistant-message > *:nth-child(4) {
+  animation-delay: 180ms;
+}
+.assistant-message > *:nth-child(n + 5) {
+  animation-delay: 240ms;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    STAGE SECTION HEADERS (council mode)
 ───────────────────────────────────────────────────────────────────────────── */

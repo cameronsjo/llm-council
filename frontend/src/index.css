@@ -6,59 +6,61 @@
 
 :root {
   /* ── Neutrals & surfaces (light) ─────────────────────────────────────── */
-  --bg: #EBEAE5;
-  --bg-raised: #F7F6F3;
-  --bg-sunken: #E3E2DC;
-  --surface: #FBFAF8;
-  --surface-hover: #EDECE7;
+  --bg: #ebeae5;
+  --bg-raised: #f7f6f3;
+  --bg-sunken: #e3e2dc;
+  --surface: #fbfaf8;
+  --surface-hover: #edece7;
 
-  --fg: #14161A;
-  --fg-muted: #363A42;
-  --fg-subtle: #6A6F7A;
-  --fg-faint: #8E939E;
-  --fg-on-accent: #FFFFFF;
+  --fg: #14161a;
+  --fg-muted: #363a42;
+  --fg-subtle: #6a6f7a;
+  --fg-faint: #8e939e;
+  --fg-on-accent: #ffffff;
 
-  --line: #DBDAD2;
-  --line-strong: #C7C6BD;
+  --line: #dbdad2;
+  --line-strong: #c7c6bd;
 
   /* ── Accent — ember (primary CTAs, chairman synthesis/verdict, brand) ── */
-  --accent: #D76A3A;
-  --accent-hover: #BC5528;
-  --accent-soft: #FBEEE6;
-  --accent-ring: rgba(215, 106, 58, .4);
+  --accent: #d76a3a;
+  --accent-hover: #bc5528;
+  --accent-soft: #fbeee6;
+  --accent-ring: rgba(215, 106, 58, 0.4);
 
   /* ── Seat / model identity palette (the signature) ───────────────────── */
-  --seat-1: #3F6C85;
-  --seat-2: #4C8A58;
-  --seat-3: #B68430;
-  --seat-4: #7C5A86;
-  --seat-5: #4E8B86;
-  --seat-1-soft: #E3ECF1;
-  --seat-2-soft: #ECF3EC;
-  --seat-3-soft: #F7EFE0;
-  --seat-4-soft: #EFEAF1;
-  --seat-5-soft: #E5F0EF;
+  --seat-1: #3f6c85;
+  --seat-2: #4c8a58;
+  --seat-3: #b68430;
+  --seat-4: #7c5a86;
+  --seat-5: #4e8b86;
+  --seat-1-soft: #e3ecf1;
+  --seat-2-soft: #ecf3ec;
+  --seat-3-soft: #f7efe0;
+  --seat-4-soft: #efeaf1;
+  --seat-5-soft: #e5f0ef;
 
   /* ── Semantic (muted, used rarely) ───────────────────────────────────── */
-  --success: #4C8A58;
-  --success-soft: #ECF3EC;
-  --warning: #B68430;
-  --warning-soft: #F7EFE0;
-  --danger: #B14B35;
-  --danger-soft: #F6E4DF;
-  --info: #3F6C85;
-  --info-soft: #E3ECF1;
+  --success: #4c8a58;
+  --success-soft: #ecf3ec;
+  --warning: #b68430;
+  --warning-soft: #f7efe0;
+  --danger: #b14b35;
+  --danger-soft: #f6e4df;
+  --info: #3f6c85;
+  --info-soft: #e3ecf1;
 
   /* ── Shadows / grid texture ──────────────────────────────────────────── */
-  --shadow-sm: 0 1px 2px 0 rgb(20 22 26 / .06);
-  --shadow-md: 0 4px 10px -2px rgb(20 22 26 / .08), 0 2px 4px -2px rgb(20 22 26 / .04);
-  --shadow-lg: 0 12px 28px -8px rgb(20 22 26 / .18), 0 4px 10px -4px rgb(20 22 26 / .08);
-  --grid: rgba(20, 22, 26, .022);
+  --shadow-sm: 0 1px 2px 0 rgb(20 22 26 / 0.06);
+  --shadow-md: 0 4px 10px -2px rgb(20 22 26 / 0.08), 0 2px 4px -2px rgb(20 22 26 / 0.04);
+  --shadow-lg: 0 12px 28px -8px rgb(20 22 26 / 0.18), 0 4px 10px -4px rgb(20 22 26 / 0.08);
+  --grid: rgba(20, 22, 26, 0.022);
 
   /* ── Typography ──────────────────────────────────────────────────────── */
-  --font-display: "Instrument Sans", ui-sans-serif, system-ui, sans-serif; /* UI + body */
-  --font-head: "Bricolage Grotesque", "Instrument Sans", ui-sans-serif, system-ui, sans-serif; /* headlines */
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; /* all numeric data */
+  --font-display: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; /* UI + body */
+  --font-head:
+    'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; /* headlines */
+  --font-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; /* all numeric data */
 
   /* ── Motion ──────────────────────────────────────────────────────────── */
   --dur-micro: 120ms;
@@ -85,149 +87,103 @@
   --transition-fast: 120ms cubic-bezier(0.2, 0, 0, 1);
   --transition-medium: 180ms cubic-bezier(0.2, 0, 0, 1);
   --transition-slow: 240ms cubic-bezier(0.2, 0, 0, 1);
-
-  /* ── Transitional alias shim ─────────────────────────────────────────────
-   * Maps every legacy "Scholarly Deliberation Chamber" token onto the new
-   * tokens so unmigrated component CSS keeps building during the re-skin.
-   * Declared once here; dark mode auto-follows via lazy var() substitution.
-   * REMOVED in the final phase once all components reference new tokens.
-   * ──────────────────────────────────────────────────────────────────── */
-  --color-cream: var(--bg);
-  --color-ivory: var(--bg-raised);
-  --color-parchment: var(--bg-sunken);
-  --color-sage-light: var(--surface);
-  --color-sage: var(--surface-hover);
-
-  --color-burgundy: var(--accent);
-  --color-burgundy-dark: var(--accent-hover);
-  --color-burgundy-light: var(--accent);
-
-  --color-gold: var(--warning);
-  --color-gold-light: var(--warning-soft);
-  --color-gold-dark: var(--warning);
-
-  --color-stage1: var(--seat-1-soft);
-  --color-stage1-border: var(--seat-1);
-  --color-stage1-accent: var(--seat-1);
-  --color-stage2: var(--seat-3-soft);
-  --color-stage2-border: var(--seat-3);
-  --color-stage2-accent: var(--seat-3);
-  --color-stage3: var(--accent-soft);
-  --color-stage3-border: var(--accent);
-  --color-stage3-accent: var(--accent);
-
-  --color-text-primary: var(--fg);
-  --color-text-secondary: var(--fg-muted);
-  --color-text-muted: var(--fg-faint);
-
-  --color-border: var(--line);
-  --color-border-light: var(--line);
-  --color-surface: var(--bg-raised);
-  --color-surface-elevated: var(--bg-raised);
-  --color-error: var(--danger);
-
-  --shadow-subtle: var(--shadow-sm);
-  --shadow-medium: var(--shadow-md);
-  --shadow-elevated: var(--shadow-lg);
-
-  --font-body: var(--font-display);
 }
 
 /* Dark mode — the primary/default theme for this product.
  * Both blocks (explicit toggle + OS preference) carry identical dark values. */
-:root[data-theme="dark"] {
-  --bg: #1A1D23;
-  --bg-raised: #23262E;
-  --bg-sunken: #15171C;
-  --surface: #23262E;
-  --surface-hover: #2B2F38;
+:root[data-theme='dark'] {
+  --bg: #1a1d23;
+  --bg-raised: #23262e;
+  --bg-sunken: #15171c;
+  --surface: #23262e;
+  --surface-hover: #2b2f38;
 
-  --fg: #EEEFF2;
-  --fg-muted: #B5B9C2;
-  --fg-subtle: #868B96;
-  --fg-faint: #5E6370;
-  --fg-on-accent: #14161A;
+  --fg: #eeeff2;
+  --fg-muted: #b5b9c2;
+  --fg-subtle: #868b96;
+  --fg-faint: #5e6370;
+  --fg-on-accent: #14161a;
 
-  --line: #30343D;
-  --line-strong: #3C414B;
+  --line: #30343d;
+  --line-strong: #3c414b;
 
-  --accent: #E1865F;
-  --accent-hover: #EE9A78;
-  --accent-soft: #2A1C14;
-  --accent-ring: rgba(225, 134, 95, .45);
+  --accent: #e1865f;
+  --accent-hover: #ee9a78;
+  --accent-soft: #2a1c14;
+  --accent-ring: rgba(225, 134, 95, 0.45);
 
-  --seat-1: #68A0BC;
-  --seat-2: #71A77B;
-  --seat-3: #D0A150;
-  --seat-4: #A98AB4;
-  --seat-5: #6FB3AD;
-  --seat-1-soft: #13202A;
+  --seat-1: #68a0bc;
+  --seat-2: #71a77b;
+  --seat-3: #d0a150;
+  --seat-4: #a98ab4;
+  --seat-5: #6fb3ad;
+  --seat-1-soft: #13202a;
   --seat-2-soft: #152318;
-  --seat-3-soft: #241D10;
-  --seat-4-soft: #1F1824;
-  --seat-5-soft: #0F211F;
+  --seat-3-soft: #241d10;
+  --seat-4-soft: #1f1824;
+  --seat-5-soft: #0f211f;
 
-  --success: #71A77B;
-  --success-soft: #17241A;
-  --warning: #D0A150;
-  --warning-soft: #2A2113;
-  --danger: #D16A55;
-  --danger-soft: #2B1510;
-  --info: #68A0BC;
-  --info-soft: #11212B;
+  --success: #71a77b;
+  --success-soft: #17241a;
+  --warning: #d0a150;
+  --warning-soft: #2a2113;
+  --danger: #d16a55;
+  --danger-soft: #2b1510;
+  --info: #68a0bc;
+  --info-soft: #11212b;
 
-  --grid: rgba(255, 255, 255, .025);
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .35);
-  --shadow-md: 0 4px 10px -2px rgb(0 0 0 / .45), 0 2px 4px -2px rgb(0 0 0 / .25);
-  --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / .6), 0 4px 10px -4px rgb(0 0 0 / .3);
+  --grid: rgba(255, 255, 255, 0.025);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+  --shadow-md: 0 4px 10px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+  --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 4px 10px -4px rgb(0 0 0 / 0.3);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #1A1D23;
-    --bg-raised: #23262E;
-    --bg-sunken: #15171C;
-    --surface: #23262E;
-    --surface-hover: #2B2F38;
+  :root:not([data-theme='light']) {
+    --bg: #1a1d23;
+    --bg-raised: #23262e;
+    --bg-sunken: #15171c;
+    --surface: #23262e;
+    --surface-hover: #2b2f38;
 
-    --fg: #EEEFF2;
-    --fg-muted: #B5B9C2;
-    --fg-subtle: #868B96;
-    --fg-faint: #5E6370;
-    --fg-on-accent: #14161A;
+    --fg: #eeeff2;
+    --fg-muted: #b5b9c2;
+    --fg-subtle: #868b96;
+    --fg-faint: #5e6370;
+    --fg-on-accent: #14161a;
 
-    --line: #30343D;
-    --line-strong: #3C414B;
+    --line: #30343d;
+    --line-strong: #3c414b;
 
-    --accent: #E1865F;
-    --accent-hover: #EE9A78;
-    --accent-soft: #2A1C14;
-    --accent-ring: rgba(225, 134, 95, .45);
+    --accent: #e1865f;
+    --accent-hover: #ee9a78;
+    --accent-soft: #2a1c14;
+    --accent-ring: rgba(225, 134, 95, 0.45);
 
-    --seat-1: #68A0BC;
-    --seat-2: #71A77B;
-    --seat-3: #D0A150;
-    --seat-4: #A98AB4;
-    --seat-5: #6FB3AD;
-    --seat-1-soft: #13202A;
+    --seat-1: #68a0bc;
+    --seat-2: #71a77b;
+    --seat-3: #d0a150;
+    --seat-4: #a98ab4;
+    --seat-5: #6fb3ad;
+    --seat-1-soft: #13202a;
     --seat-2-soft: #152318;
-    --seat-3-soft: #241D10;
-    --seat-4-soft: #1F1824;
-    --seat-5-soft: #0F211F;
+    --seat-3-soft: #241d10;
+    --seat-4-soft: #1f1824;
+    --seat-5-soft: #0f211f;
 
-    --success: #71A77B;
-    --success-soft: #17241A;
-    --warning: #D0A150;
-    --warning-soft: #2A2113;
-    --danger: #D16A55;
-    --danger-soft: #2B1510;
-    --info: #68A0BC;
-    --info-soft: #11212B;
+    --success: #71a77b;
+    --success-soft: #17241a;
+    --warning: #d0a150;
+    --warning-soft: #2a2113;
+    --danger: #d16a55;
+    --danger-soft: #2b1510;
+    --info: #68a0bc;
+    --info-soft: #11212b;
 
-    --grid: rgba(255, 255, 255, .025);
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .35);
-    --shadow-md: 0 4px 10px -2px rgb(0 0 0 / .45), 0 2px 4px -2px rgb(0 0 0 / .25);
-    --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / .6), 0 4px 10px -4px rgb(0 0 0 / .3);
+    --grid: rgba(255, 255, 255, 0.025);
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+    --shadow-md: 0 4px 10px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+    --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 4px 10px -4px rgb(0 0 0 / 0.3);
   }
 }
 
@@ -301,10 +257,18 @@ body {
   margin-top: 0;
 }
 
-.markdown-content h1 { font-size: 1.5rem; }
-.markdown-content h2 { font-size: 1.25rem; }
-.markdown-content h3 { font-size: 1.0625rem; }
-.markdown-content h4 { font-size: 1rem; }
+.markdown-content h1 {
+  font-size: 1.5rem;
+}
+.markdown-content h2 {
+  font-size: 1.25rem;
+}
+.markdown-content h3 {
+  font-size: 1.0625rem;
+}
+.markdown-content h4 {
+  font-size: 1rem;
+}
 
 .markdown-content ul,
 .markdown-content ol {
@@ -526,7 +490,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, .5);
+  background: rgba(0, 0, 0, 0.5);
   animation: ccFade var(--dur-standard) var(--ease-out);
 }
 
@@ -577,7 +541,9 @@ body {
   border-radius: 8px;
   color: var(--fg-subtle);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .cc-modal-close:hover {
@@ -602,18 +568,33 @@ body {
 
 /* ── Keyframes (applied with stagger in components; gated below) ───────── */
 @keyframes ccFade {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes ccBar {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 @keyframes ccPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .45; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 /* Respect reduced-motion everywhere. */
