@@ -138,7 +138,12 @@ export default function ModelSelector({
 
   const toggleCouncilMember = (modelId) => {
     if (selectedCouncil.includes(modelId)) {
-      onCouncilChange(selectedCouncil.filter((m) => m !== modelId));
+      const remaining = selectedCouncil.filter((m) => m !== modelId);
+      onCouncilChange(remaining);
+      // Keep the chairman invariant: the chair must be a council member.
+      if (modelId === selectedChairman) {
+        onChairmanChange(remaining[0] ?? '');
+      }
     } else {
       onCouncilChange([...selectedCouncil, modelId]);
     }

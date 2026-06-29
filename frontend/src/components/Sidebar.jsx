@@ -19,7 +19,7 @@ import {
 } from '../hooks/queries';
 import { api } from '../api';
 
-export default function Sidebar({ onSelectConversation, onNewConversation }) {
+export default function Sidebar({ onSelectConversation, onNewConversation, isLoading = false }) {
   const { data: conversations = [] } = useConversations();
   const currentConversationId = useUIStore((s) => s.currentConversationId);
   const { data: config } = useConfig();
@@ -57,10 +57,7 @@ export default function Sidebar({ onSelectConversation, onNewConversation }) {
     firstElement?.focus();
 
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setShowConfigUI(false);
-        return;
-      }
+      // Escape-to-close is owned by ModelSelector itself; trap Tab here.
       if (e.key === 'Tab') {
         if (e.shiftKey && document.activeElement === firstElement) {
           e.preventDefault();
@@ -165,6 +162,7 @@ export default function Sidebar({ onSelectConversation, onNewConversation }) {
             className={`mode-btn ${mode === 'council' ? 'active' : ''}`}
             onClick={() => setMode('council')}
             aria-pressed={mode === 'council'}
+            disabled={isLoading}
           >
             Council
           </button>
@@ -173,6 +171,7 @@ export default function Sidebar({ onSelectConversation, onNewConversation }) {
             className={`mode-btn ${mode === 'arena' ? 'active' : ''}`}
             onClick={() => setMode('arena')}
             aria-pressed={mode === 'arena'}
+            disabled={isLoading}
           >
             Arena
           </button>

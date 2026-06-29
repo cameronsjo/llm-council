@@ -434,6 +434,7 @@ function App() {
       <Sidebar
         onSelectConversation={handleSelectConversationMobile}
         onNewConversation={handleNewConversation}
+        isLoading={isLoading}
       />
       {currentView === 'standings' ? (
         <Standings />
