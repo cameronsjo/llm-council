@@ -22,6 +22,7 @@ frontend/.vite/
 
 # Claude Code local settings
 .claude/.playwright-mcp/
+.claude/agent-memory/
 
 # Git worktrees
 .worktrees/
