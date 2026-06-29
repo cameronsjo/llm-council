@@ -34,7 +34,7 @@ export function ModelItem({
     return (
       <div
         className={`ms-model-row${isSelected ? ' ms-model-row--selected' : ''}`}
-        style={isSelected ? { background: seat.soft, borderLeftColor: seat.color } : {}}
+        style={isSelected ? { background: seat.soft, borderLeftColor: seat.color } : undefined}
       >
         <span
           className="ms-status-dot"
@@ -148,7 +148,7 @@ export function ModelGroupHeader({
 }) {
   return (
     <div className="group-header">
-      <button className="group-toggle-btn" onClick={onToggle}>
+      <button className="group-toggle-btn" onClick={onToggle} aria-expanded={isExpanded}>
         <span className="group-toggle" aria-hidden="true">
           {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>

@@ -40,7 +40,7 @@ export default function StageRail({ stages = [], completedCount = 0, size = 26, 
           border: complete ? 'none' : '2px solid var(--line-strong)',
         };
         return (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+          <div key={label} style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
             <div
               style={{
                 display: 'flex',

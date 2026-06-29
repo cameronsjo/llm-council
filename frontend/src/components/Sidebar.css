@@ -449,7 +449,7 @@
 
 .confirm-yes {
   background: var(--danger);
-  color: #fff;
+  color: var(--fg-on-accent);
 }
 
 .confirm-yes:hover {

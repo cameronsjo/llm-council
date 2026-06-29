@@ -26,6 +26,7 @@
   height: 56px;
   flex: none;
   border-bottom: 1px solid var(--line);
+  background: var(--bg);
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: blur(8px);
   display: flex;
@@ -1339,6 +1340,17 @@
 .attachment-remove:focus-visible {
   outline: 2px solid var(--accent-ring);
   outline-offset: 2px;
+}
+
+.ask-box-textarea:focus-visible,
+.ask-bar-input:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+.rounds-slider:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 3px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

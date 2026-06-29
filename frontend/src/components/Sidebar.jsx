@@ -148,7 +148,7 @@ export default function Sidebar({ onSelectConversation, onNewConversation, isLoa
           </div>
         )}
         {/* Solid ember CTA — single most prominent action */}
-        <button className="new-deliberation-btn" onClick={onNewConversation}>
+        <button type="button" className="new-deliberation-btn" onClick={onNewConversation}>
           <Plus size={14} aria-hidden="true" />
           New deliberation
         </button>

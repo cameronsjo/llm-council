@@ -211,7 +211,8 @@ export default function ChatInterface({
   );
 
   const showLanding =
-    !conversation || (conversation.messages.length === 0 && !conversation.pendingInterrupted);
+    !conversation ||
+    (conversation.messages.length === 0 && !conversation.pendingInterrupted && !pendingForkContext);
 
   // ── Topbar — persistent across landing and conversation views ──────────────
   const topBar = (

@@ -72,8 +72,8 @@ export default function MetricsDisplay({ metrics }) {
           {(responses.models?.length > 0 || rankings.models?.length > 0) && (
             <div className="model-metrics">
               <div className="model-metrics-header">Per-Model Breakdown</div>
-              {responses.models?.map((m, i) => (
-                <div key={`s1-${i}`} className="model-row">
+              {responses.models?.map((m) => (
+                <div key={m.model} className="model-row">
                   <span className="model-name" title={m.model}>
                     {m.model?.split('/').pop()}
                   </span>

@@ -148,6 +148,11 @@
   border-color: var(--accent);
 }
 
+.context-filter:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
 /* Provider filter chips row */
 .provider-chips {
   display: flex;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { X, Star, RefreshCw } from 'lucide-react';
 import { useModels, useCuratedModels, useModelFiltering, useExpandableGroups } from '../hooks';
 import { ModelSearchBox, FilterChips, ModelGroups } from './models/index.js';
@@ -94,6 +94,13 @@ export default function ModelCuration({ onClose, onSave }) {
   };
 
   const error = modelsError || saveError;
+  const searchInputRef = useRef(null);
+
+  // Auto-focus the search input when the modal opens
+  useEffect(() => {
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Close on Escape
   useEffect(() => {
@@ -118,7 +125,13 @@ export default function ModelCuration({ onClose, onSave }) {
   // ── Main render ────────────────────────────────────────────────────────
   return (
     <div className="cc-modal-backdrop" onClick={onClose}>
-      <div className="cc-modal-panel mc-panel" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="cc-modal-panel mc-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Curate your models"
+      >
         {/* Header */}
         <div className="cc-modal-header">
           <div className="mc-title-group">
@@ -148,7 +161,7 @@ export default function ModelCuration({ onClose, onSave }) {
             </div>
           )}
 
-          <ModelSearchBox value={searchQuery} onChange={setSearchQuery} />
+          <ModelSearchBox ref={searchInputRef} value={searchQuery} onChange={setSearchQuery} />
 
           <FilterChips filters={filters} showCuratedFilter={false} showContextFilter={false} />
 

@@ -49,6 +49,7 @@ export default function Round({
   const roundCost = getRoundCost(round);
 
   const currentResponse = round.responses[activeTab];
+  const currentSeat = seatOf(currentResponse.model);
   const reasoningText = getReasoningText(currentResponse.reasoning_details);
   const hasReasoning = !!reasoningText;
 
@@ -150,7 +151,7 @@ export default function Round({
               const isActive = activeTab === index;
               return (
                 <button
-                  key={index}
+                  key={resp.model ?? index}
                   role="tab"
                   aria-selected={isActive}
                   tabIndex={isActive ? 0 : -1}
@@ -185,7 +186,7 @@ export default function Round({
             <div className="tab-content-header">
               <div className="model-info">
                 <SeatAvatar
-                  color={seatOf(currentResponse.model).color}
+                  color={currentSeat.color}
                   name={getModelDisplayName(currentResponse, participantMapping)}
                   size={28}
                 />
@@ -206,8 +207,8 @@ export default function Round({
                   <span
                     className="stance-chip"
                     style={{
-                      color: seatOf(currentResponse.model).color,
-                      background: seatOf(currentResponse.model).soft,
+                      color: currentSeat.color,
+                      background: currentSeat.soft,
                     }}
                   >
                     {currentResponse.stance}
@@ -304,7 +305,7 @@ export default function Round({
                   const barWidth =
                     N > 1 ? Math.max(8, ((N - agg.average_rank + 1) / N) * 100) : 100;
                   return (
-                    <div key={index} className="aggregate-item">
+                    <div key={agg.model} className="aggregate-item">
                       <span className="rank-position">#{index + 1}</span>
                       <span className="rank-dot" style={{ background: seat.color }} />
                       <span className="rank-model">{agg.model.split('/')[1] || agg.model}</span>

@@ -23,13 +23,15 @@ export default function SeatAvatar({
     <span
       className={className}
       title={title ?? name}
+      aria-label={title ?? name}
+      role="img"
       style={{
         width: px,
         height: px,
         flex: 'none',
         borderRadius: '7px',
         background: color,
-        color: '#fff',
+        color: 'var(--fg-on-accent)',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
