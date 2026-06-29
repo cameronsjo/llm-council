@@ -1,12 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Crown, X } from 'lucide-react';
+import { useSeatColors } from '../hooks/useSeatColors';
 import { useModelFiltering, useExpandableGroups } from '../hooks';
 import { useAvailableModels, useCuratedModels, useRefreshModels } from '../hooks/queries';
 import { ModelSearchBox, FilterChips, ModelGroups } from './models/index.js';
 import './ModelSelector.css';
 
 /**
- * Model selection UI for configuring council members and chairman.
+ * Model selection modal — configures council members and chairman in one view.
+ * Each model row has a ToggleSwitch (council membership) and a Crown button
+ * (chairman designation). Shared `.cc-modal-*` chrome from index.css.
  */
 export default function ModelSelector({
   selectedCouncil,
@@ -19,16 +22,30 @@ export default function ModelSelector({
 }) {
   const [saving, setSaving] = useState(false);
   const searchInputRef = useRef(null);
+  const { seatOf } = useSeatColors();
 
-  // Auto-focus the search input when the modal opens
+  // Auto-focus search when the modal opens
   useEffect(() => {
-    // Delay slightly so the modal animation completes and focus trap doesn't override
     const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
     return () => clearTimeout(timer);
   }, []);
 
+  // Close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
   // Fetch models and curated list
-  const { data: modelsData, isLoading: loading, error: modelsError, refetch } = useAvailableModels();
+  const {
+    data: modelsData,
+    isLoading: loading,
+    error: modelsError,
+    refetch,
+  } = useAvailableModels();
   const models = modelsData?.models || [];
   const error = modelsError ? 'Failed to load models' : null;
   const refreshModels = useRefreshModels();
@@ -39,10 +56,14 @@ export default function ModelSelector({
   const curatedIds = useMemo(() => new Set(curatedData?.curated_models || []), [curatedData]);
 
   // Filtering — restore saved filters or use curated defaults
-  const filtering = useModelFiltering(models, curatedIds, filterStateRef?.current ?? {
-    showCuratedOnly: curatedIds.size > 0,
-    showMajorOnly: curatedIds.size === 0,
-  });
+  const filtering = useModelFiltering(
+    models,
+    curatedIds,
+    filterStateRef?.current ?? {
+      showCuratedOnly: curatedIds.size > 0,
+      showMajorOnly: curatedIds.size === 0,
+    }
+  );
 
   const {
     groupedModels,
@@ -65,15 +86,17 @@ export default function ModelSelector({
       minContext: filters.minContext,
       selectedProviders: filters.selectedProviders,
     };
-  }, [filterStateRef, filters.showMajorOnly, filters.showFreeOnly, filters.showCuratedOnly, filters.minContext, filters.selectedProviders]);
+  }, [
+    filterStateRef,
+    filters.showMajorOnly,
+    filters.showFreeOnly,
+    filters.showCuratedOnly,
+    filters.minContext,
+    filters.selectedProviders,
+  ]);
 
-  // Expand/collapse state — separate for council and chairman sections
+  // Expand/collapse state
   const { isExpanded, toggle: toggleProvider, expandAll } = useExpandableGroups();
-  const {
-    isExpanded: isChairmanExpanded,
-    toggle: toggleChairmanProvider,
-    expandAll: expandAllChairman,
-  } = useExpandableGroups();
 
   // Auto-expand when searching
   useEffect(() => {
@@ -86,29 +109,25 @@ export default function ModelSelector({
   useEffect(() => {
     if (models.length > 0) {
       const providersWithSelected = new Set();
-      selectedCouncil.forEach(id => {
-        const model = models.find(m => m.id === id);
+      selectedCouncil.forEach((id) => {
+        const model = models.find((m) => m.id === id);
         if (model) providersWithSelected.add(model.provider || 'Other');
       });
+      if (selectedChairman) {
+        const chairModel = models.find((m) => m.id === selectedChairman);
+        if (chairModel) providersWithSelected.add(chairModel.provider || 'Other');
+      }
       if (providersWithSelected.size > 0) {
         expandAll(Array.from(providersWithSelected));
       }
-
-      // Expand chairman's provider group
-      if (selectedChairman) {
-        const chairmanModel = models.find(m => m.id === selectedChairman);
-        if (chairmanModel) {
-          expandAllChairman([chairmanModel.provider || 'Other']);
-        }
-      }
     }
-  }, [models, selectedCouncil, selectedChairman, expandAll, expandAllChairman]);
+  }, [models, selectedCouncil, selectedChairman, expandAll]);
 
-  // Count selected models per provider
+  // Count selected models per provider (for group header badges)
   const selectedPerProvider = useMemo(() => {
     const counts = {};
-    selectedCouncil.forEach(id => {
-      const model = models.find(m => m.id === id);
+    selectedCouncil.forEach((id) => {
+      const model = models.find((m) => m.id === id);
       if (model) {
         const provider = model.provider || 'Other';
         counts[provider] = (counts[provider] || 0) + 1;
@@ -119,7 +138,12 @@ export default function ModelSelector({
 
   const toggleCouncilMember = (modelId) => {
     if (selectedCouncil.includes(modelId)) {
-      onCouncilChange(selectedCouncil.filter(m => m !== modelId));
+      const remaining = selectedCouncil.filter((m) => m !== modelId);
+      onCouncilChange(remaining);
+      // Keep the chairman invariant: the chair must be a council member.
+      if (modelId === selectedChairman) {
+        onChairmanChange(remaining[0] ?? '');
+      }
     } else {
       onCouncilChange([...selectedCouncil, modelId]);
     }
@@ -134,115 +158,123 @@ export default function ModelSelector({
     }
   };
 
+  const isValid = selectedCouncil.length >= 2 && selectedChairman;
+
+  // ── Loading state ──────────────────────────────────────────────────────
   if (loading || curatedLoading) {
     return (
-      <div className="model-selector">
-        <div className="model-selector-loading">Loading models...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="model-selector">
-        <div className="model-selector-error">
-          {error}
-          <button onClick={refetch} className="retry-btn">Retry</button>
+      <div className="cc-modal-backdrop" onClick={onCancel}>
+        <div className="cc-modal-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="ms-status-state">Loading models…</div>
         </div>
       </div>
     );
   }
 
-  const isValid = selectedCouncil.length >= 2 && selectedChairman;
-
-  return (
-    <div className="model-selector">
-      <div className="selector-section">
-        <h4>Council Members ({selectedCouncil.length})</h4>
-        <p className="selector-help">Select 2+ models to participate in the council</p>
-
-        <ModelSearchBox
-          ref={searchInputRef}
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
-        <FilterChips
-          filters={filters}
-          curatedCount={curatedIds.size}
-          showCuratedFilter={true}
-          showContextFilter={true}
-          showProviderChips={true}
-          allProviders={allProviders}
-        />
-
-        <div className="filter-results-row">
-          <div className="filter-results-count">
-            {filteredCount} of {totalCount} models
+  // ── Error state ────────────────────────────────────────────────────────
+  if (error) {
+    return (
+      <div className="cc-modal-backdrop" onClick={onCancel}>
+        <div className="cc-modal-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="ms-status-state ms-status-state--error">
+            {error}
+            <button onClick={refetch} className="ms-retry-btn">
+              Retry
+            </button>
           </div>
-          <button
-            className={`refresh-btn ${refreshing ? 'refreshing' : ''}`}
-            onClick={refresh}
-            disabled={refreshing}
-            title="Refresh models from OpenRouter"
-          >
-            <RefreshCw size={14} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main render ────────────────────────────────────────────────────────
+  return (
+    <div className="cc-modal-backdrop" onClick={onCancel}>
+      <div
+        className="cc-modal-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Configure council"
+      >
+        {/* Header */}
+        <div className="cc-modal-header">
+          <div>
+            <div className="cc-modal-title">Configure council</div>
+            <div className="cc-modal-subtitle">
+              <span className="ms-count-num">{selectedCouncil.length}</span> models convened ·{' '}
+              <Crown
+                size={11}
+                style={{ verticalAlign: 'middle', marginBottom: 1 }}
+                aria-hidden="true"
+              />{' '}
+              marks the chairman
+            </div>
+          </div>
+          <button className="cc-modal-close" onClick={onCancel} aria-label="Close">
+            <X size={16} />
           </button>
         </div>
 
-        <ModelGroups
-          sortedProviders={sortedProviders}
-          groupedModels={groupedModels}
-          isExpanded={isExpanded}
-          onToggleProvider={toggleProvider}
-          isSelected={(id) => selectedCouncil.includes(id)}
-          onToggleModel={toggleCouncilMember}
-          variant="checkbox"
-          getSelectedCount={(provider) => selectedPerProvider[provider] || 0}
-        />
+        {/* Body */}
+        <div className="cc-modal-body ms-body">
+          <ModelSearchBox ref={searchInputRef} value={searchQuery} onChange={setSearchQuery} />
+
+          <FilterChips
+            filters={filters}
+            curatedCount={curatedIds.size}
+            showCuratedFilter={true}
+            showContextFilter={true}
+            showProviderChips={true}
+            allProviders={allProviders}
+          />
+
+          <div className="ms-filter-row">
+            <span className="ms-filter-count">
+              <span className="ms-count-num">{filteredCount}</span> of{' '}
+              <span className="ms-count-num">{totalCount}</span> models
+            </span>
+            <button
+              className={`ms-refresh-btn${refreshing ? ' ms-refresh-btn--spinning' : ''}`}
+              onClick={refresh}
+              disabled={refreshing}
+              title="Refresh models from OpenRouter"
+            >
+              <RefreshCw size={14} />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          <ModelGroups
+            sortedProviders={sortedProviders}
+            groupedModels={groupedModels}
+            isExpanded={isExpanded}
+            onToggleProvider={toggleProvider}
+            isSelected={(id) => selectedCouncil.includes(id)}
+            onToggleModel={toggleCouncilMember}
+            variant="council"
+            getSelectedCount={(provider) => selectedPerProvider[provider] || 0}
+            seatOf={seatOf}
+            isChairman={(id) => id === selectedChairman}
+            onSetChairman={onChairmanChange}
+          />
+        </div>
+
+        {/* Footer */}
+        <div className="cc-modal-footer">
+          <span className="ms-footer-count">
+            <span className="ms-count-num">{selectedCouncil.length}</span> of 10 selected
+          </span>
+          <div className="ms-footer-actions">
+            <button className="ms-cancel-btn" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <button className="ms-save-btn" onClick={handleSave} disabled={!isValid || saving}>
+              {saving ? 'Saving…' : 'Save council'}
+            </button>
+          </div>
+        </div>
       </div>
-
-      <div className="selector-section">
-        <h4>Chairman {selectedChairman ? '(1)' : ''}</h4>
-        <p className="selector-help">The model that synthesizes the final answer</p>
-
-        <ModelGroups
-          sortedProviders={sortedProviders}
-          groupedModels={groupedModels}
-          isExpanded={isChairmanExpanded}
-          onToggleProvider={toggleChairmanProvider}
-          isSelected={(id) => id === selectedChairman}
-          onToggleModel={onChairmanChange}
-          variant="radio"
-          radioName="chairman-model"
-          showContext={true}
-        />
-      </div>
-
-      <div className="selector-actions">
-        <button
-          className="cancel-btn"
-          onClick={onCancel}
-          disabled={saving}
-        >
-          Cancel
-        </button>
-        <button
-          className="save-btn"
-          onClick={handleSave}
-          disabled={!isValid || saving}
-        >
-          {saving ? 'Saving...' : 'Save Configuration'}
-        </button>
-      </div>
-
-      {!isValid && (
-        <p className="validation-warning">
-          {selectedCouncil.length < 2 && 'Select at least 2 council members. '}
-          {!selectedChairman && 'Select a chairman.'}
-        </p>
-      )}
     </div>
   );
 }

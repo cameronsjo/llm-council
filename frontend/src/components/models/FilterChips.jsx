@@ -27,16 +27,17 @@ export function FilterChips({
   return (
     <div className="filter-bar">
       {showCuratedFilter && curatedCount > 0 && (
-        <label className={`filter-chip curated ${showCuratedOnly ? 'active' : ''}`}>
+        <label className={`filter-chip curated${showCuratedOnly ? ' active' : ''}`}>
           <input
             type="checkbox"
             checked={showCuratedOnly}
             onChange={(e) => setShowCuratedOnly(e.target.checked)}
           />
-          <Star size={12} /> My models ({curatedCount})
+          <Star size={12} aria-hidden="true" /> My models{' '}
+          <span className="fc-count">({curatedCount})</span>
         </label>
       )}
-      <label className={`filter-chip ${showMajorOnly ? 'active' : ''}`}>
+      <label className={`filter-chip${showMajorOnly ? ' active' : ''}`}>
         <input
           type="checkbox"
           checked={showMajorOnly}
@@ -44,7 +45,7 @@ export function FilterChips({
         />
         Major providers
       </label>
-      <label className={`filter-chip ${showFreeOnly ? 'active' : ''}`}>
+      <label className={`filter-chip${showFreeOnly ? ' active' : ''}`}>
         <input
           type="checkbox"
           checked={showFreeOnly}
@@ -53,13 +54,13 @@ export function FilterChips({
         Free only
       </label>
       {!showCuratedFilter && (
-        <label className={`filter-chip ${showCuratedOnly ? 'active' : ''}`}>
+        <label className={`filter-chip${showCuratedOnly ? ' active' : ''}`}>
           <input
             type="checkbox"
             checked={showCuratedOnly}
             onChange={(e) => setShowCuratedOnly(e.target.checked)}
           />
-          <Star size={12} /> Curated only
+          <Star size={12} aria-hidden="true" /> Curated only
         </label>
       )}
       {showContextFilter && (
@@ -79,7 +80,7 @@ export function FilterChips({
           {allProviders.map((provider) => (
             <button
               key={provider}
-              className={`filter-chip provider-chip ${selectedProviders?.has(provider.toLowerCase()) ? 'active' : ''}`}
+              className={`filter-chip provider-chip${selectedProviders?.has(provider.toLowerCase()) ? ' active' : ''}`}
               onClick={() => toggleProvider?.(provider.toLowerCase())}
             >
               {provider}

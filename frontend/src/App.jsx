@@ -27,6 +27,7 @@ function App() {
   const currentConversationId = useUIStore((s) => s.currentConversationId);
   const setCurrentConversationId = useUIStore((s) => s.setCurrentConversationId);
   const currentView = useUIStore((s) => s.currentView);
+  const setCurrentView = useUIStore((s) => s.setCurrentView);
   const mode = useUIStore((s) => s.mode);
   const setMode = useUIStore((s) => s.setMode);
   const arenaRoundCount = useUIStore((s) => s.arenaRoundCount);
@@ -103,10 +104,16 @@ function App() {
             role: 'assistant',
             partial: true,
             mode: pending.mode,
-            rounds: partialData.rounds || (partialData.responses ? [{
-              round_type: 'responses',
-              responses: partialData.responses,
-            }] : null),
+            rounds:
+              partialData.rounds ||
+              (partialData.responses
+                ? [
+                    {
+                      round_type: 'responses',
+                      responses: partialData.responses,
+                    },
+                  ]
+                : null),
             synthesis: partialData.synthesis || null,
             participant_mapping: partialData.participant_mapping || null,
           };
@@ -126,7 +133,13 @@ function App() {
     } else {
       setCurrentConversation(conv);
     }
-  }, [conversationQuery.data, pendingStatusQuery.data, pendingStatusQuery.isLoading, currentConversationId, setCurrentConversation]);
+  }, [
+    conversationQuery.data,
+    pendingStatusQuery.data,
+    pendingStatusQuery.isLoading,
+    currentConversationId,
+    setCurrentConversation,
+  ]);
 
   // Cancel stream when switching conversations
   useEffect(() => {
@@ -157,6 +170,7 @@ function App() {
     try {
       const newConv = await createConversation.mutateAsync({ councilModels, chairmanModel });
       setCurrentConversationId(newConv.id);
+      setCurrentView('chat');
     } catch (error) {
       if (error instanceof AuthRedirectError) {
         setAuthExpired(true);
@@ -164,7 +178,14 @@ function App() {
       }
       console.error('Failed to create conversation:', error);
     }
-  }, [createConversation, councilModels, chairmanModel, setCurrentConversationId, setAuthExpired]);
+  }, [
+    createConversation,
+    councilModels,
+    chairmanModel,
+    setCurrentConversationId,
+    setCurrentView,
+    setAuthExpired,
+  ]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -179,88 +200,154 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleNewConversation]);
 
-  const handleSelectConversationMobile = useCallback((id) => {
-    setCurrentConversationId(id);
-    if (window.innerWidth <= 768) {
-      setSidebarOpen(false);
-    }
-  }, [setCurrentConversationId, setSidebarOpen]);
-
-  const handleSendMessage = useCallback(async (content, attachments = [], resume = false) => {
-    if (!currentConversationId) return;
-    const priorContext = useUIStore.getState().pendingForkContext;
-    if (priorContext) setPendingForkContext(null);
-    await sendMessage(currentConversationId, content, attachments, {
-      mode, useWebSearch, arenaRoundCount, resume, priorContext,
-    });
-  }, [currentConversationId, sendMessage, mode, useWebSearch, arenaRoundCount, setPendingForkContext]);
-
-  const handleRetry = useCallback(async (content) => {
-    if (!currentConversationId || !currentConversation) return;
-    const conv = await api.getConversation(currentConversationId);
-    setCurrentConversation(conv);
-    await handleSendMessage(content);
-  }, [currentConversationId, currentConversation, setCurrentConversation, handleSendMessage]);
-
-  const handleRetryInterrupted = useCallback(async (shouldResume = false) => {
-    if (!currentConversationId || !currentConversation?.pendingInfo) return;
-
-    const userContent = currentConversation.pendingInfo.user_content;
-    const pendingMode = currentConversation.pendingInfo.mode || 'council';
-    const hasStage1 =
-      (currentConversation.pendingInfo.partial_data?.responses?.length > 0) ||
-      (currentConversation.pendingInfo.partial_data?.stage1?.length > 0);
-
-    if (shouldResume && hasStage1) {
-      setMode(pendingMode);
-      await handleSendMessage(userContent, [], true);
-    } else {
-      try {
-        await clearPending.mutateAsync(currentConversationId);
-        const conv = await api.getConversation(currentConversationId);
-        setCurrentConversation(conv);
-      } catch (error) {
-        if (error instanceof AuthRedirectError) { setAuthExpired(true); return; }
-        console.warn('Failed to clear pending on server, retrying with local state:', error.message);
-        const cleanMessages = (currentConversation.messages || []).filter((m) => !m.partial);
-        setCurrentConversation({ ...currentConversation, pendingInterrupted: false, pendingInfo: null, messages: cleanMessages });
+  const handleSelectConversationMobile = useCallback(
+    (id) => {
+      setCurrentConversationId(id);
+      setCurrentView('chat');
+      if (window.innerWidth <= 768) {
+        setSidebarOpen(false);
       }
+    },
+    [setCurrentConversationId, setCurrentView, setSidebarOpen]
+  );
 
-      setMode(pendingMode);
-      await handleSendMessage(userContent);
-    }
-  }, [currentConversationId, currentConversation, clearPending, setCurrentConversation, setMode, setAuthExpired, handleSendMessage]);
+  const handleSendMessage = useCallback(
+    async (content, attachments = [], resume = false) => {
+      if (!currentConversationId) return;
+      const priorContext = useUIStore.getState().pendingForkContext;
+      if (priorContext) setPendingForkContext(null);
+      await sendMessage(currentConversationId, content, attachments, {
+        mode,
+        useWebSearch,
+        arenaRoundCount,
+        resume,
+        priorContext,
+      });
+    },
+    [currentConversationId, sendMessage, mode, useWebSearch, arenaRoundCount, setPendingForkContext]
+  );
+
+  const handleRetry = useCallback(
+    async (content) => {
+      if (!currentConversationId || !currentConversation) return;
+      const conv = await api.getConversation(currentConversationId);
+      setCurrentConversation(conv);
+      await handleSendMessage(content);
+    },
+    [currentConversationId, currentConversation, setCurrentConversation, handleSendMessage]
+  );
+
+  const handleRetryInterrupted = useCallback(
+    async (shouldResume = false) => {
+      if (!currentConversationId || !currentConversation?.pendingInfo) return;
+
+      const userContent = currentConversation.pendingInfo.user_content;
+      const pendingMode = currentConversation.pendingInfo.mode || 'council';
+      const hasStage1 =
+        currentConversation.pendingInfo.partial_data?.responses?.length > 0 ||
+        currentConversation.pendingInfo.partial_data?.stage1?.length > 0;
+
+      if (shouldResume && hasStage1) {
+        setMode(pendingMode);
+        await handleSendMessage(userContent, [], true);
+      } else {
+        try {
+          await clearPending.mutateAsync(currentConversationId);
+          const conv = await api.getConversation(currentConversationId);
+          setCurrentConversation(conv);
+        } catch (error) {
+          if (error instanceof AuthRedirectError) {
+            setAuthExpired(true);
+            return;
+          }
+          console.warn(
+            'Failed to clear pending on server, retrying with local state:',
+            error.message
+          );
+          const cleanMessages = (currentConversation.messages || []).filter((m) => !m.partial);
+          setCurrentConversation({
+            ...currentConversation,
+            pendingInterrupted: false,
+            pendingInfo: null,
+            messages: cleanMessages,
+          });
+        }
+
+        setMode(pendingMode);
+        await handleSendMessage(userContent);
+      }
+    },
+    [
+      currentConversationId,
+      currentConversation,
+      clearPending,
+      setCurrentConversation,
+      setMode,
+      setAuthExpired,
+      handleSendMessage,
+    ]
+  );
 
   const handleDismissInterrupted = useCallback(async () => {
     if (!currentConversationId) return;
 
     // Clear UI immediately
     const cleanMessages = (currentConversation?.messages || []).filter((m) => !m.partial);
-    setCurrentConversation({ ...currentConversation, pendingInterrupted: false, pendingInfo: null, messages: cleanMessages });
+    setCurrentConversation({
+      ...currentConversation,
+      pendingInterrupted: false,
+      pendingInfo: null,
+      messages: cleanMessages,
+    });
 
     // Fire-and-forget server cleanup
     try {
       await clearPending.mutateAsync(currentConversationId);
     } catch (error) {
-      if (error instanceof AuthRedirectError) { setAuthExpired(true); return; }
-      console.warn('Failed to clear pending on server (will be cleaned up on next load):', error.message);
+      if (error instanceof AuthRedirectError) {
+        setAuthExpired(true);
+        return;
+      }
+      console.warn(
+        'Failed to clear pending on server (will be cleaned up on next load):',
+        error.message
+      );
     }
-  }, [currentConversationId, currentConversation, clearPending, setCurrentConversation, setAuthExpired]);
+  }, [
+    currentConversationId,
+    currentConversation,
+    clearPending,
+    setCurrentConversation,
+    setAuthExpired,
+  ]);
 
-  const handleForkConversation = useCallback(async (originalQuestion, synthesis, sourceConversationId) => {
-    try {
-      const newConv = await createConversation.mutateAsync({ councilModels, chairmanModel });
-      setCurrentConversationId(newConv.id);
-      setPendingForkContext({
-        original_question: originalQuestion,
-        synthesis: synthesis,
-        source_conversation_id: sourceConversationId,
-      });
-    } catch (error) {
-      if (error instanceof AuthRedirectError) { setAuthExpired(true); return; }
-      console.error('Failed to fork conversation:', error);
-    }
-  }, [createConversation, councilModels, chairmanModel, setCurrentConversationId, setPendingForkContext, setAuthExpired]);
+  const handleForkConversation = useCallback(
+    async (originalQuestion, synthesis, sourceConversationId) => {
+      try {
+        const newConv = await createConversation.mutateAsync({ councilModels, chairmanModel });
+        setCurrentConversationId(newConv.id);
+        setPendingForkContext({
+          original_question: originalQuestion,
+          synthesis: synthesis,
+          source_conversation_id: sourceConversationId,
+        });
+      } catch (error) {
+        if (error instanceof AuthRedirectError) {
+          setAuthExpired(true);
+          return;
+        }
+        console.error('Failed to fork conversation:', error);
+      }
+    },
+    [
+      createConversation,
+      councilModels,
+      chairmanModel,
+      setCurrentConversationId,
+      setPendingForkContext,
+      setAuthExpired,
+    ]
+  );
 
   const handleExtendDebate = useCallback(async () => {
     if (!currentConversationId || isExtendingDebate) return;
@@ -282,31 +369,36 @@ function App() {
     await retryAll(currentConversationId);
   }, [currentConversationId, isLoading, retryAll]);
 
-  const handleExportConversation = useCallback(async (id, format) => {
-    try {
-      const blob = format === 'markdown'
-        ? await api.exportMarkdown(id)
-        : await api.exportJson(id);
+  const handleExportConversation = useCallback(
+    async (id, format) => {
+      try {
+        const blob =
+          format === 'markdown' ? await api.exportMarkdown(id) : await api.exportJson(id);
 
-      const conversations = conversationsQuery.data ?? [];
-      const conv = conversations.find((c) => c.id === id);
-      const title = (conv?.title || 'conversation').replace(/[^a-zA-Z0-9]/g, '_');
-      const extension = format === 'markdown' ? 'md' : 'json';
-      const filename = `${title}.${extension}`;
+        const conversations = conversationsQuery.data ?? [];
+        const conv = conversations.find((c) => c.id === id);
+        const title = (conv?.title || 'conversation').replace(/[^a-zA-Z0-9]/g, '_');
+        const extension = format === 'markdown' ? 'md' : 'json';
+        const filename = `${title}.${extension}`;
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      if (error instanceof AuthRedirectError) { setAuthExpired(true); return; }
-      console.error('Failed to export conversation:', error);
-    }
-  }, [conversationsQuery.data, setAuthExpired]);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        if (error instanceof AuthRedirectError) {
+          setAuthExpired(true);
+          return;
+        }
+        console.error('Failed to export conversation:', error);
+      }
+    },
+    [conversationsQuery.data, setAuthExpired]
+  );
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -315,10 +407,8 @@ function App() {
       {/* Auth expired banner */}
       {authExpired && (
         <div className="auth-expired-banner" role="alert">
-          <span>Session expired — please re-authenticate to continue.</span>
-          <button onClick={() => window.location.reload()}>
-            Re-authenticate
-          </button>
+          <span>Session expired — re-authenticate to continue.</span>
+          <button onClick={() => window.location.reload()}>Re-authenticate</button>
         </div>
       )}
 
@@ -344,6 +434,7 @@ function App() {
       <Sidebar
         onSelectConversation={handleSelectConversationMobile}
         onNewConversation={handleNewConversation}
+        isLoading={isLoading}
       />
       {currentView === 'standings' ? (
         <Standings />
@@ -362,6 +453,7 @@ function App() {
           onRetryRankings={handleRetryRankings}
           onRetryAll={handleRetryAll}
           onCancel={cancelStream}
+          onExportConversation={handleExportConversation}
         />
       )}
     </div>

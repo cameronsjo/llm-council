@@ -9,31 +9,27 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { Trophy, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
-import { useRankings, useRankingsHistory } from '../hooks/queries';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { useRankings, useRankingsHistory, useConversations, useConfig } from '../hooks/queries';
+import { useSeatColors } from '../hooks/useSeatColors';
+import { KpiCard, SeatAvatar } from './ui';
 import './Standings.css';
 
-// Stage palette for line colors — falls back to burgundy/gold/sage tones for >3 series.
-const SERIES_COLORS = [
-  'var(--color-stage1-accent)',
-  'var(--color-stage2-accent)',
-  'var(--color-stage3-accent)',
-  'var(--color-burgundy)',
-  'var(--color-gold-dark)',
-  'var(--color-burgundy-light)',
-];
-
 const SORTABLE_COLUMNS = [
-  { key: 'rank', label: 'Rank', numeric: true },
-  { key: 'model', label: 'Model', numeric: false },
-  { key: 'rating', label: 'Rating', numeric: true },
-  { key: 'games', label: 'Games', numeric: true },
-  { key: 'last_updated', label: 'Last seen', numeric: false },
+  { key: 'rank', label: '#', numeric: true },
+  { key: 'model', label: 'model', numeric: false },
+  { key: 'rating', label: 'rating', numeric: true },
+  { key: 'games', label: 'games', numeric: true },
+  { key: 'last_updated', label: 'last seen', numeric: false },
 ];
 
 function formatModel(id) {
   // OpenRouter ids look like "anthropic/claude-sonnet-4.5" — show the right half.
   return id?.split('/').slice(-1)[0] || id;
+}
+
+function formatProvider(id) {
+  return id?.split('/')[0] || '';
 }
 
 function formatTimestamp(iso) {
@@ -50,11 +46,23 @@ function formatTimestamp(iso) {
   }
 }
 
+/** Short date for KPI display: relative within 24h, then "Mon DD". */
+function formatShortDate(iso) {
+  if (!iso) return '—';
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const hrs = diff / 3600000;
+    if (hrs < 1) return `${Math.floor(diff / 60000)}m ago`;
+    if (hrs < 24) return `${Math.floor(hrs)}h ago`;
+    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return '—';
+  }
+}
+
 /**
  * Group history snapshots by timestamp so each x-step represents one real
- * match event, not one per-model snapshot. Without this grouping a single
- * pairwise match (which updates two models simultaneously) would create
- * two x-steps and distort the trend.
+ * match event, not one per-model snapshot.
  */
 function buildChartSeries(history) {
   const eventsByTs = new Map();
@@ -73,7 +81,13 @@ function buildChartSeries(history) {
 }
 
 export default function Standings() {
-  const { data: rankingsData, isLoading: leaderboardLoading, error: leaderboardError } = useRankings();
+  const {
+    data: rankingsData,
+    isLoading: leaderboardLoading,
+    error: leaderboardError,
+  } = useRankings();
+  const { data: config } = useConfig();
+  const { data: conversations = [] } = useConversations();
   const [selectedModel, setSelectedModel] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'rating', dir: 'desc' });
   const {
@@ -82,10 +96,34 @@ export default function Standings() {
     error: historyError,
   } = useRankingsHistory(selectedModel);
 
-  const leaderboard = rankingsData?.leaderboard || [];
-  const history = historyData?.history || {};
+  const { seatOf } = useSeatColors();
+  const chairmanModel = config?.chairman_model || '';
+
+  const leaderboard = useMemo(() => rankingsData?.leaderboard || [], [rankingsData]);
+  const history = useMemo(() => historyData?.history || {}, [historyData]);
   const chartData = useMemo(() => buildChartSeries(history), [history]);
   const modelKeys = Object.keys(history);
+
+  // Highest rating in the board — used to normalize bar widths.
+  const maxRating = useMemo(
+    () => (leaderboard.length ? Math.max(...leaderboard.map((r) => r.rating || 0)) : 1),
+    [leaderboard]
+  );
+
+  // KPI derived values
+  const totalGames = useMemo(
+    () => leaderboard.reduce((s, r) => s + (r.games || 0), 0),
+    [leaderboard]
+  );
+
+  const mostRecentTs = useMemo(() => {
+    const ts = leaderboard
+      .map((r) => r.last_updated)
+      .filter(Boolean)
+      .sort()
+      .pop();
+    return formatShortDate(ts);
+  }, [leaderboard]);
 
   const sortedLeaderboard = useMemo(() => {
     const { key, dir } = sortConfig;
@@ -104,7 +142,6 @@ export default function Standings() {
   const handleSort = (key) => {
     setSortConfig((prev) => {
       if (prev.key !== key) {
-        // First click on a new column: numeric defaults to desc, text to asc.
         const col = SORTABLE_COLUMNS.find((c) => c.key === key);
         return { key, dir: col?.numeric ? 'desc' : 'asc' };
       }
@@ -118,157 +155,237 @@ export default function Standings() {
 
   const sortIcon = (key) => {
     if (sortConfig.key !== key) {
-      return <ArrowUpDown size={12} aria-hidden="true" className="sort-icon inactive" />;
+      return <ArrowUpDown size={11} aria-hidden="true" className="sort-icon inactive" />;
     }
-    return sortConfig.dir === 'asc'
-      ? <ArrowUp size={12} aria-hidden="true" className="sort-icon" />
-      : <ArrowDown size={12} aria-hidden="true" className="sort-icon" />;
+    return sortConfig.dir === 'asc' ? (
+      <ArrowUp size={11} aria-hidden="true" className="sort-icon" />
+    ) : (
+      <ArrowDown size={11} aria-hidden="true" className="sort-icon" />
+    );
   };
 
   return (
     <main className="standings">
-      <header className="standings-header">
-        <Trophy size={28} className="standings-icon" aria-hidden="true" />
-        <div>
-          <h1>Council Standings</h1>
+      <div className="standings-inner">
+        {/* H1 in --font-head */}
+        <div className="standings-heading">
+          <h1>Council standings</h1>
           <p className="standings-subtitle">
             ELO ratings derived from Stage 2 peer rankings, replayed across every council round.
           </p>
         </div>
-      </header>
 
-      <section className="standings-section">
-        <h2>Leaderboard</h2>
-        {leaderboardLoading ? (
-          <div className="standings-empty">Loading…</div>
-        ) : leaderboardError ? (
-          <div className="standings-error" role="alert">
-            Failed to load leaderboard: {leaderboardError.message || 'Unknown error'}
-          </div>
-        ) : leaderboard.length === 0 ? (
-          <div className="standings-empty">
-            No matches recorded yet. Run a council round to start tracking ratings.
-          </div>
-        ) : (
-          <table className="standings-table">
-            <thead>
-              <tr>
-                {SORTABLE_COLUMNS.map((col) => {
-                  const isActive = sortConfig.key === col.key;
-                  return (
-                    <th
-                      key={col.key}
-                      scope="col"
-                      className={col.numeric ? 'num' : ''}
-                      aria-sort={
-                        isActive
-                          ? sortConfig.dir === 'asc' ? 'ascending' : 'descending'
-                          : 'none'
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="sort-header-btn"
-                        onClick={() => handleSort(col.key)}
-                      >
-                        <span>{col.label}</span>
-                        {sortIcon(col.key)}
-                      </button>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedLeaderboard.map((row) => {
-                const isSelected = selectedModel === row.model;
-                return (
-                  <tr key={row.model} className={isSelected ? 'selected' : ''}>
-                    <td className="rank">{row.rank}</td>
-                    <td className="model" title={row.model}>
-                      <button
-                        type="button"
-                        className="model-select-btn"
-                        aria-pressed={isSelected}
-                        aria-label={
-                          isSelected
-                            ? `Clear filter on ${formatModel(row.model)}`
-                            : `Filter trend chart to ${formatModel(row.model)}`
-                        }
-                        onClick={() => toggleSelection(row.model)}
-                      >
-                        {formatModel(row.model)}
-                      </button>
-                    </td>
-                    <td className="num">{Math.round(row.rating)}</td>
-                    <td className="num">{row.games}</td>
-                    <td className="ts">{formatTimestamp(row.last_updated)}</td>
+        {/* KPI strip — frontend-only, real data only */}
+        <div className="standings-kpi-strip">
+          <KpiCard label="DELIBERATIONS" value={conversations.length} sub="all time" />
+          <KpiCard label="MODELS TRACKED" value={leaderboard.length} sub="in leaderboard" />
+          <KpiCard label="TOTAL MATCHES" value={totalGames} sub="peer ballots cast" />
+          <KpiCard label="MOST RECENT" value={mostRecentTs} sub="last deliberation" />
+        </div>
+
+        {/* Leaderboard */}
+        <section className="standings-section">
+          {leaderboardLoading ? (
+            <div className="standings-empty">Loading…</div>
+          ) : leaderboardError ? (
+            <div className="standings-error" role="alert">
+              Failed to load leaderboard: {leaderboardError.message || 'Unknown error'}
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="standings-empty">
+              No matches recorded yet. Run a council round to start tracking ratings.
+            </div>
+          ) : (
+            <>
+              <table className="standings-table" aria-label="Council standings leaderboard">
+                <thead>
+                  <tr>
+                    {SORTABLE_COLUMNS.map((col) => {
+                      const isActive = sortConfig.key === col.key;
+                      return (
+                        <th
+                          key={col.key}
+                          scope="col"
+                          className={col.numeric ? 'num' : ''}
+                          aria-sort={
+                            isActive
+                              ? sortConfig.dir === 'asc'
+                                ? 'ascending'
+                                : 'descending'
+                              : 'none'
+                          }
+                        >
+                          <button
+                            type="button"
+                            className="sort-header-btn"
+                            onClick={() => handleSort(col.key)}
+                          >
+                            <span>{col.label}</span>
+                            {sortIcon(col.key)}
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        {selectedModel && (
-          <p className="standings-filter-hint">
-            Filtered to <strong>{formatModel(selectedModel)}</strong> — click the model name again to clear.
-          </p>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {sortedLeaderboard.map((row) => {
+                    const isSelected = selectedModel === row.model;
+                    const isTop = row.rank === 1;
+                    const seat = seatOf(row.model);
+                    const barWidth = Math.round(((row.rating || 0) / maxRating) * 100);
+                    const isChair = row.model === chairmanModel;
 
-      <section className="standings-section">
-        <h2>Trend</h2>
-        {historyLoading ? (
-          <div className="standings-empty">Loading…</div>
-        ) : historyError ? (
-          <div className="standings-error" role="alert">
-            Failed to load trend history: {historyError.message || 'Unknown error'}
-          </div>
-        ) : modelKeys.length === 0 ? (
-          <div className="standings-empty">No history yet.</div>
-        ) : (
-          <div className="standings-chart">
-            <ResponsiveContainer width="100%" height={360}>
-              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                <CartesianGrid stroke="var(--color-border-light)" strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="idx"
-                  stroke="var(--color-text-muted)"
-                  label={{ value: 'Match #', position: 'insideBottom', offset: -2, fill: 'var(--color-text-muted)' }}
-                />
-                <YAxis
-                  stroke="var(--color-text-muted)"
-                  domain={['dataMin - 20', 'dataMax + 20']}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--color-surface-elevated)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '0.8125rem',
-                  }}
-                  labelFormatter={(idx) => `Match ${idx}`}
-                  formatter={(value, name) => [Math.round(value), formatModel(name)]}
-                />
-                <Legend formatter={(value) => formatModel(value)} />
-                {modelKeys.map((model, i) => (
-                  <Line
-                    key={model}
-                    type="monotone"
-                    dataKey={model}
-                    stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                    isAnimationActive={false}
+                    return (
+                      <tr
+                        key={row.model}
+                        className={[isTop ? 'row-top' : '', isSelected ? 'selected' : '']
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        {/* Rank */}
+                        <td className="rank">
+                          <span className="rank-num">{row.rank}</span>
+                        </td>
+
+                        {/* Model: avatar + name + CHAIR tag + provider */}
+                        <td className="model" title={row.model}>
+                          <button
+                            type="button"
+                            className="model-select-btn"
+                            aria-pressed={isSelected}
+                            aria-label={
+                              isSelected
+                                ? `Clear filter on ${formatModel(row.model)}`
+                                : `Filter trend chart to ${formatModel(row.model)}`
+                            }
+                            onClick={() => toggleSelection(row.model)}
+                          >
+                            <SeatAvatar
+                              color={seat.color}
+                              name={formatModel(row.model)}
+                              size={28}
+                            />
+                            <div className="model-info">
+                              <div className="model-name-row">
+                                <span className="model-name">{formatModel(row.model)}</span>
+                                {isChair && <span className="model-chair-tag">CHAIR</span>}
+                              </div>
+                              <span className="model-sub">
+                                {formatProvider(row.model)} · {row.games} councils
+                              </span>
+                            </div>
+                          </button>
+                        </td>
+
+                        {/* Rating: seat-colored bar + numeric value */}
+                        <td className="rating-cell">
+                          <div className="rating-bar-wrap">
+                            <div className="rating-bar-track">
+                              <div
+                                className="rating-bar-fill"
+                                style={{
+                                  width: `${barWidth}%`,
+                                  background: seat.color,
+                                }}
+                              />
+                            </div>
+                            <span className="rating-val">{Math.round(row.rating)}</span>
+                          </div>
+                        </td>
+
+                        {/* Games */}
+                        <td className="num games-cell">{row.games}</td>
+
+                        {/* Last seen */}
+                        <td className="ts">{formatTimestamp(row.last_updated)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="standings-footnote">
+                rating = ELO score derived from blind peer rankings across deliberations
+              </p>
+            </>
+          )}
+          {selectedModel && (
+            <p className="standings-filter-hint">
+              Filtered to <strong>{formatModel(selectedModel)}</strong> — click the model name again
+              to clear.
+            </p>
+          )}
+        </section>
+
+        {/* Trend chart */}
+        <section className="standings-section">
+          <h2 className="standings-section-heading">Trend</h2>
+          {historyLoading ? (
+            <div className="standings-empty">Loading…</div>
+          ) : historyError ? (
+            <div className="standings-error" role="alert">
+              Failed to load trend history: {historyError.message || 'Unknown error'}
+            </div>
+          ) : modelKeys.length === 0 ? (
+            <div className="standings-empty">No history yet.</div>
+          ) : (
+            <div className="standings-chart">
+              <ResponsiveContainer width="100%" height={360}>
+                <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                  <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="idx"
+                    stroke="var(--fg-faint)"
+                    tick={{ fontFamily: 'var(--font-mono)', fontSize: 11, fill: 'var(--fg-faint)' }}
+                    label={{
+                      value: 'Match #',
+                      position: 'insideBottom',
+                      offset: -2,
+                      fill: 'var(--fg-faint)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                    }}
                   />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </section>
+                  <YAxis
+                    stroke="var(--fg-faint)"
+                    tick={{ fontFamily: 'var(--font-mono)', fontSize: 11, fill: 'var(--fg-faint)' }}
+                    domain={['dataMin - 20', 'dataMax + 20']}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--bg-raised)',
+                      border: '1px solid var(--line)',
+                      borderRadius: '8px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
+                      color: 'var(--fg)',
+                    }}
+                    labelStyle={{ color: 'var(--fg-faint)' }}
+                    labelFormatter={(idx) => `Match ${idx}`}
+                    formatter={(value, name) => [Math.round(value), formatModel(name)]}
+                  />
+                  <Legend
+                    formatter={(value) => formatModel(value)}
+                    wrapperStyle={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
+                  />
+                  {modelKeys.map((model) => (
+                    <Line
+                      key={model}
+                      type="monotone"
+                      dataKey={model}
+                      stroke={seatOf(model).color}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }

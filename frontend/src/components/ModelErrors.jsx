@@ -1,3 +1,4 @@
+import { CreditCard, KeyRound, Zap, AlertTriangle } from 'lucide-react';
 import './ModelErrors.css';
 
 /**
@@ -23,11 +24,12 @@ export default function ModelErrors({ errors, onRetry }) {
     <div className="model-errors">
       {groups.billing && (
         <div className="model-errors-banner model-errors-banner--billing">
-          <span className="model-errors-icon">💳</span>
+          <CreditCard size={15} strokeWidth={2} className="model-errors-icon" />
           <div className="model-errors-body">
             <div className="model-errors-title">Insufficient OpenRouter credits</div>
             <div className="model-errors-detail">
-              {groups.billing.length} model{groups.billing.length > 1 ? 's' : ''} failed due to billing.{' '}
+              {groups.billing.length} model{groups.billing.length > 1 ? 's' : ''} failed due to
+              billing.{' '}
               <a
                 href="https://openrouter.ai/credits"
                 target="_blank"
@@ -46,22 +48,21 @@ export default function ModelErrors({ errors, onRetry }) {
 
       {groups.auth && (
         <div className="model-errors-banner model-errors-banner--auth">
-          <span className="model-errors-icon">🔑</span>
+          <KeyRound size={15} strokeWidth={2} className="model-errors-icon" />
           <div className="model-errors-body">
             <div className="model-errors-title">API key error</div>
             <div className="model-errors-detail">
-              {groups.auth.length} model{groups.auth.length > 1 ? 's' : ''} rejected the API key. Check your OpenRouter API key configuration.
+              {groups.auth.length} model{groups.auth.length > 1 ? 's' : ''} rejected the API key.
+              Check your OpenRouter API key configuration.
             </div>
-            <div className="model-errors-models">
-              {groups.auth.map((e) => e.model).join(', ')}
-            </div>
+            <div className="model-errors-models">{groups.auth.map((e) => e.model).join(', ')}</div>
           </div>
         </div>
       )}
 
       {groups.transient && (
         <div className="model-errors-banner model-errors-banner--transient">
-          <span className="model-errors-icon">⚡</span>
+          <Zap size={15} strokeWidth={2} className="model-errors-icon" />
           <div className="model-errors-body">
             <div className="model-errors-title">
               {groups.transient.length} model{groups.transient.length > 1 ? 's' : ''} unavailable
@@ -74,8 +75,8 @@ export default function ModelErrors({ errors, onRetry }) {
       )}
 
       {groups.unknown && (
-        <div className="model-errors-banner model-errors-banner--transient">
-          <span className="model-errors-icon">⚠️</span>
+        <div className="model-errors-banner model-errors-banner--unknown">
+          <AlertTriangle size={15} strokeWidth={2} className="model-errors-icon" />
           <div className="model-errors-body">
             <div className="model-errors-title">
               {groups.unknown.length} model{groups.unknown.length > 1 ? 's' : ''} failed
@@ -88,11 +89,7 @@ export default function ModelErrors({ errors, onRetry }) {
       )}
 
       {onRetry && (
-        <button
-          type="button"
-          className="model-errors-retry-btn"
-          onClick={onRetry}
-        >
+        <button type="button" className="model-errors-retry-btn" onClick={onRetry}>
           Retry All Models
         </button>
       )}

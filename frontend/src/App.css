@@ -1,18 +1,24 @@
-/* App Layout */
+/* ─────────────────────────────────────────────────────────────────────────────
+   App shell — "Deliberation Instrument" re-skin
+   Two-pane: fixed sidebar + flexible main column.
+   Dot-grid texture lives on .chat-interface (ChatInterface.css) and .standings.
+───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Shell ──────────────────────────────────────────────────────────────── */
 .app {
   display: flex;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: var(--color-cream);
+  background: var(--bg);
   position: relative;
 }
 
-/* Elegant page entrance animation */
+/* Staggered entrance */
 @keyframes fadeSlideIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -20,17 +26,17 @@
   }
 }
 
-.app > .sidebar,
-.app > .chat-interface {
-  animation: fadeSlideIn 0.4s ease-out;
-  -webkit-backface-visibility: hidden;
+.app > .sidebar {
+  animation: fadeSlideIn var(--dur-deliberate) var(--ease-out);
 }
 
 .app > .chat-interface {
-  animation-delay: 0.1s;
+  animation: fadeSlideIn var(--dur-deliberate) var(--ease-out);
+  animation-delay: 80ms;
+  animation-fill-mode: both;
 }
 
-/* Auth Expired Banner */
+/* ── Auth expired banner ─────────────────────────────────────────────────── */
 .auth-expired-banner {
   position: fixed;
   top: 0;
@@ -42,30 +48,30 @@
   justify-content: center;
   gap: var(--space-md);
   padding: var(--space-sm) var(--space-lg);
-  background: var(--color-error, #d32f2f);
-  color: white;
-  font-size: var(--font-sm);
+  background: var(--danger);
+  color: var(--fg-on-accent);
+  font-size: 13.5px;
   font-weight: 500;
-  box-shadow: var(--shadow-medium);
+  box-shadow: var(--shadow-md);
 }
 
 .auth-expired-banner button {
-  padding: var(--space-xs) var(--space-md);
-  background: white;
-  color: var(--color-error, #d32f2f);
+  padding: 5px var(--space-md);
+  background: var(--fg-on-accent);
+  color: var(--danger);
   border: none;
   border-radius: var(--radius-sm);
-  font-size: var(--font-sm);
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--dur-micro) var(--ease-out);
 }
 
 .auth-expired-banner button:hover {
-  opacity: 0.9;
+  opacity: 0.88;
 }
 
-/* Mobile Menu Toggle */
+/* ── Mobile menu toggle ──────────────────────────────────────────────────── */
 .mobile-menu-toggle {
   display: none;
   position: fixed;
@@ -73,42 +79,49 @@
   left: var(--space-md);
   z-index: 1001;
   padding: var(--space-sm);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  color: var(--color-text-primary);
+  color: var(--fg-muted);
   cursor: pointer;
-  box-shadow: var(--shadow-medium);
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 
 .mobile-menu-toggle:hover {
-  background: var(--color-ivory);
-  border-color: var(--color-burgundy);
-  color: var(--color-burgundy);
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+  color: var(--fg);
 }
 
 .mobile-menu-toggle:focus-visible {
-  outline: 2px solid var(--color-burgundy);
+  outline: 2px solid var(--accent-ring);
   outline-offset: 2px;
 }
 
-/* Sidebar Backdrop (mobile) */
+/* ── Sidebar backdrop (mobile) ───────────────────────────────────────────── */
 .sidebar-backdrop {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.35);
   z-index: 998;
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn var(--dur-standard) var(--ease-out);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-/* Mobile Responsive Styles */
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .mobile-menu-toggle {
     display: flex;
@@ -132,7 +145,7 @@
 
   .app.sidebar-open .sidebar {
     transform: translateX(0);
-    box-shadow: var(--shadow-elevated);
+    box-shadow: var(--shadow-lg);
   }
 
   .app.sidebar-closed .sidebar-backdrop {
@@ -142,9 +155,16 @@
   .app .chat-interface {
     width: 100%;
   }
+}
 
-  /* Add padding for mobile menu button */
-  .app .chat-interface .messages-container {
-    padding-top: 60px;
+@media (prefers-reduced-motion: reduce) {
+  .app > .sidebar,
+  .app > .chat-interface,
+  .sidebar-backdrop {
+    animation: none;
+  }
+
+  .app .sidebar {
+    transition: none;
   }
 }

@@ -1,130 +1,90 @@
-/* Unified Synthesis Component Styles */
+/* Unified Synthesis Component Styles — the visual climax of a deliberation */
 
 .synthesis {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  position: relative;
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
-/* Mode-specific accents */
-.synthesis-council {
-  --synthesis-accent: var(--color-stage3-accent, #2e7d32);
-}
-
-.synthesis-arena {
-  --synthesis-accent: var(--arena-accent, #2e7d32);
-}
-
-/* Header */
-.synthesis-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-md) var(--space-lg);
-  background: var(--color-surface-elevated);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.synthesis-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.synthesis-title::before {
+/* 3px ember bar down the left edge */
+.synthesis::before {
   content: '';
-  width: 16px;
-  height: 16px;
-  background: var(--color-gold);
-  border-radius: 50%;
-  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  pointer-events: none;
 }
 
-.synthesis-header-actions {
+/* ── Chairman header ──────────────────────────────────────────────────────── */
+.synthesis-chairman-header {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.synthesis-chairman-icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--fg-on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.synthesis-chairman-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.synthesis-chairman-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.synthesis-chairman-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+}
+
+.synthesis-reasoning-indicator {
+  color: var(--warning);
+  margin-left: auto;
 }
 
 .synthesis-cost {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: 11px;
   font-weight: 500;
-  color: var(--color-gold-dark);
-  background: var(--color-gold-light);
-  padding: 2px 6px;
+  color: var(--fg-subtle);
+  background: var(--surface);
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
-}
-
-.synthesis-cost svg {
-  opacity: 0.7;
-}
-
-.synthesis .copy-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-xs);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: border-color var(--transition-fast), color var(--transition-fast);
-}
-
-.synthesis .copy-btn:hover {
-  border-color: var(--synthesis-accent);
-  color: var(--synthesis-accent);
-}
-
-/* Content area */
-.synthesis-content {
-  padding: var(--space-lg);
-}
-
-.chairman-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-  padding-bottom: var(--space-sm);
-  border-bottom: 1px dashed var(--color-border);
-}
-
-.chairman-label {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.chairman-model {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.synthesis .reasoning-indicator {
-  color: var(--color-gold);
+  border: 1px solid var(--line);
   margin-left: auto;
 }
 
-/* Reasoning section */
+/* ── Reasoning section ────────────────────────────────────────────────────── */
 .synthesis .reasoning-section {
-  margin-bottom: var(--space-md);
-  border: 1px solid var(--color-border);
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -132,23 +92,22 @@
 .synthesis .reasoning-toggle {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 8px;
   width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-parchment);
+  padding: 8px 12px;
+  background: var(--bg-sunken);
   border: none;
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--color-text-secondary);
+  color: var(--fg-subtle);
   text-align: left;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: background var(--dur-micro) var(--ease-out);
 }
 
 .synthesis .reasoning-toggle:hover {
-  background: var(--color-ivory);
-  color: var(--color-text-primary);
+  background: var(--surface-hover);
 }
 
 .synthesis .reasoning-toggle svg {
@@ -157,165 +116,177 @@
 }
 
 .synthesis .reasoning-content {
-  padding: var(--space-md);
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
+  padding: 12px;
+  background: var(--bg-sunken);
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--fg-subtle);
   line-height: 1.65;
   max-height: 300px;
   overflow-y: auto;
 }
 
 .synthesis .reasoning-content p {
-  margin: 0 0 var(--space-sm) 0;
+  margin: 0 0 8px 0;
 }
 
 .synthesis .reasoning-content p:last-child {
   margin-bottom: 0;
 }
 
-/* Synthesis text */
+/* ── Final answer ────────────────────────────────────────────────────────── */
 .synthesis-text {
-  font-family: var(--font-body);
-  line-height: 1.75;
-  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fg);
 }
 
-/* Identity reveal for Arena */
+/* Error state — shown when chairman call failed */
+.synthesis-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--danger);
+}
+
+/* ── Arena identity reveal ────────────────────────────────────────────────── */
 .identity-reveal {
-  background: var(--color-surface-elevated);
-  border-top: 1px solid var(--color-border);
-  padding: var(--space-md) var(--space-lg);
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .reveal-title {
-  margin: 0 0 var(--space-sm) 0;
+  margin: 0 0 8px;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--fg-faint);
 }
 
 .participant-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  gap: 4px;
 }
 
 .participant-identity {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 8px;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  padding: var(--space-xs) 0;
+  font-size: 12px;
+  padding: 2px 0;
 }
 
 .identity-label {
   font-weight: 600;
-  color: var(--color-gold-dark);
+  color: var(--fg-subtle);
   min-width: 100px;
 }
 
 .identity-arrow {
-  color: var(--color-text-muted);
+  color: var(--fg-faint);
 }
 
 .identity-model {
   font-weight: 500;
-  color: var(--color-text-primary);
+  color: var(--fg);
 }
 
 .identity-full-model {
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
-  font-style: italic;
+  font-size: 11px;
+  color: var(--fg-faint);
 }
 
-/* Action buttons section */
+/* ── Action row ──────────────────────────────────────────────────────────── */
 .synthesis-actions {
-  padding: var(--space-md) var(--space-lg);
-  border-top: 1px dashed var(--color-border);
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-sm);
-}
-
-/* One more round button */
-.extend-debate-btn {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-gold-light);
-  border: 1px solid var(--color-gold);
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-gold-dark);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
 }
 
-.extend-debate-btn:hover:not(:disabled) {
-  background: var(--color-gold);
-  color: white;
-}
-
-.extend-debate-btn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.extend-debate-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-/* Synthesis error state */
-.synthesis-error {
-  color: var(--color-error, #d32f2f);
-  background: var(--color-error-light, #fff3f3);
-  padding: var(--space-md);
+/* Solid ember: "Copy answer" */
+.synthesis-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: var(--accent);
+  color: var(--fg-on-accent);
+  border: none;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-error-border, #ffcdd2);
-}
-
-/* Retry synthesis button */
-.retry-synthesis-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-error-light, #fff3f3);
-  border: 1px solid var(--color-error-border, #ffcdd2);
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-error, #d32f2f);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
 }
 
-.retry-synthesis-btn:hover:not(:disabled) {
-  background: var(--color-error, #d32f2f);
-  color: white;
+.synthesis-copy-btn:hover {
+  background: var(--accent-hover);
 }
 
-.retry-synthesis-btn:active:not(:disabled) {
+.synthesis-copy-btn:active {
   transform: scale(0.98);
 }
 
-.retry-synthesis-btn:disabled {
-  opacity: 0.7;
+.synthesis-copy-btn:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/* Ghost buttons: "Fork & refine", "Re-synthesize", "One More Round" */
+.synthesis-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: var(--surface);
+  color: var(--fg-muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.synthesis-ghost-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+.synthesis-ghost-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.synthesis-ghost-btn:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* Spinner used inside action buttons */
+.synthesis-ghost-btn:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/* Spinner used inside loading buttons */
 .spinner-small {
   width: 14px;
   height: 14px;
@@ -324,6 +295,7 @@
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   opacity: 0.7;
+  flex: none;
 }
 
 @keyframes spin {
@@ -332,50 +304,16 @@
   }
 }
 
-/* Continue Discussion - legacy */
-.continue-discussion {
-  padding: var(--space-md) var(--space-lg);
-  border-top: 1px dashed var(--color-border);
-  display: flex;
-  justify-content: flex-end;
-}
-
-.continue-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-}
-
-.continue-btn:hover {
-  background: var(--color-ivory);
-  border-color: var(--synthesis-accent);
-  color: var(--synthesis-accent);
-}
-
-.continue-btn:active {
-  transform: scale(0.98);
-}
-
-/* Markdown content styling */
+/* ── Markdown overrides scoped to synthesis ─────────────────────────────── */
 .synthesis .markdown-content h2 {
   font-family: var(--font-display);
-  font-size: 0.9375rem;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--fg);
   margin-top: 1.5em;
   margin-bottom: 0.5em;
   padding-bottom: 0.25em;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--line);
 }
 
 .synthesis .markdown-content h2:first-child {

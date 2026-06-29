@@ -1,166 +1,134 @@
-/* Model Curation Modal - Modal-specific styles only */
-/* Shared model group styles are in models/ModelGroups.css */
+/* ModelCuration — curation modal
+ * Modal chrome (.cc-modal-backdrop/panel/header/body/footer) is in index.css.
+ * This file owns curation-specific content: description, results row,
+ * curated count badge, footer buttons, and model-groups height override. */
 
-/* Overlay */
-.curation-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: var(--space-lg);
-}
-
-/* Modal Container */
-.curation-modal {
-  background: var(--color-surface);
-  border-radius: var(--radius-xl);
-  width: 100%;
+/* Wider panel for the curation modal */
+.mc-panel {
   max-width: 700px;
-  max-height: 85vh;
+}
+
+/* ── Header title group ─────────────────────────────────────────────────── */
+.mc-title-group {
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-xl);
-  overflow: hidden;
+  gap: 2px;
 }
 
-/* Header */
-.curation-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-lg) var(--space-xl);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-parchment);
-  flex-shrink: 0;
+.cc-modal-title .mc-title-icon {
+  vertical-align: middle;
+  margin-right: 6px;
+  margin-bottom: 2px;
+  color: var(--warning);
 }
 
-.curation-title {
+/* ── Body ───────────────────────────────────────────────────────────────── */
+.mc-body {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-sm);
-  color: var(--color-burgundy);
 }
 
-.curation-title h2 {
+.mc-description {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 600;
+  color: var(--fg-subtle);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
-.curation-close {
-  background: none;
-  border: none;
-  padding: var(--space-xs);
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-sm);
-  transition: background, color;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.curation-close:hover {
-  background: var(--color-border-light);
-  color: var(--color-text-primary);
-}
-
-/* Body - Scrollable Content */
-.curation-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-lg) var(--space-xl);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  min-height: 0;
-}
-
-.curation-description {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  line-height: 1.5;
-}
-
-.curation-error {
-  padding: var(--space-sm) var(--space-md);
-  background: #fef2f2;
-  color: #dc2626;
-  font-size: 0.875rem;
-  border-radius: var(--radius-md);
+/* Error banner */
+.mc-error {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--danger);
 }
 
-.curation-error .retry-btn {
+.mc-retry-btn {
   padding: var(--space-xs) var(--space-sm);
-  background: #dc2626;
-  color: white;
+  background: var(--danger);
+  color: var(--fg-on-accent);
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: background var(--dur-micro) var(--ease-out);
 }
 
-.curation-results {
+.mc-retry-btn:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Results / status row */
+.mc-results-row {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  color: var(--fg-subtle);
+}
+
+.mc-model-count {
+  font-family: var(--font-display);
+}
+
+.mc-num {
   font-family: var(--font-mono);
+  font-size: 12.5px;
 }
 
-.curation-results .curated-count {
-  display: flex;
+.mc-curated-count {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
-  color: var(--color-burgundy);
-  font-weight: 500;
+  gap: 4px;
+  color: var(--warning);
+  font-family: var(--font-display);
 }
 
-.curation-results .refresh-btn {
+.mc-refresh-btn {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--color-ivory);
-  border: 1px solid var(--color-border);
+  gap: 5px;
+  padding: 5px 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--fg-subtle);
   cursor: pointer;
-  transition: background, border-color, color;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 
-.curation-results .refresh-btn:hover:not(:disabled) {
-  background: var(--color-parchment);
-  border-color: var(--color-burgundy);
-  color: var(--color-burgundy);
+.mc-refresh-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-.curation-results .refresh-btn:disabled {
-  opacity: 0.6;
+.mc-refresh-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.curation-results .refresh-btn.refreshing svg {
-  animation: spin 1s linear infinite;
+.mc-refresh-btn--spinning svg {
+  animation: mc-spin var(--dur-deliberate) linear infinite;
 }
 
-@keyframes spin {
+@keyframes mc-spin {
   from {
     transform: rotate(0deg);
   }
@@ -169,155 +137,73 @@
   }
 }
 
-/* Override model-groups height for modal context */
-.curation-body .model-groups {
+/* ModelGroups height override for curation modal */
+.mc-body .model-groups {
   flex: 1;
   min-height: 300px;
-  max-height: none;
+  max-height: calc(84vh - 320px);
 }
 
-/* Footer */
-.curation-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-md);
-  padding: var(--space-lg) var(--space-xl);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-parchment);
-  flex-shrink: 0;
+/* ── Loading state ──────────────────────────────────────────────────────── */
+.mc-status-loading {
+  padding: var(--space-2xl) var(--space-xl);
+  text-align: center;
+  color: var(--fg-subtle);
+  font-size: 14px;
+  font-style: italic;
 }
 
-.curation-footer .cancel-btn {
-  padding: var(--space-sm) var(--space-lg);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+/* ── Footer buttons ─────────────────────────────────────────────────────── */
+/* .cc-modal-footer provides layout (space-between) from index.css */
+
+.mc-cancel-btn {
+  padding: 8px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  font-size: 0.875rem;
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  transition: background, color;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
-}
-
-.curation-footer .cancel-btn:hover:not(:disabled) {
-  background: var(--color-border-light);
-  color: var(--color-text-primary);
-}
-
-.curation-footer .save-btn {
-  padding: var(--space-sm) var(--space-lg);
-  background: var(--color-burgundy);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: 0.875rem;
+  font-family: var(--font-display);
+  font-size: 13.5px;
   font-weight: 500;
+  color: var(--fg-muted);
   cursor: pointer;
-  transition: background;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 
-.curation-footer .save-btn:hover:not(:disabled) {
-  background: var(--color-burgundy-dark, #6d1f2a);
+.mc-cancel-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+  color: var(--fg);
 }
 
-.curation-footer .cancel-btn:disabled,
-.curation-footer .save-btn:disabled {
-  opacity: 0.6;
+.mc-cancel-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* Loading State */
-.curation-loading {
-  padding: var(--space-2xl);
-  text-align: center;
-  color: var(--color-text-secondary);
-}
-
-/* Search and Filter - inherit from shared styles */
-.curation-body .search-box {
-  position: relative;
-}
-
-.curation-body .search-input {
-  width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  padding-right: var(--space-xl);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: 0.875rem;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  transition: border-color, box-shadow;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
-}
-
-.curation-body .search-input:focus {
-  outline: none;
-  border-color: var(--color-burgundy);
-  box-shadow: 0 0 0 3px rgba(139, 38, 53, 0.1);
-}
-
-.curation-body .search-clear {
-  position: absolute;
-  right: var(--space-sm);
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--color-parchment);
+.mc-save-btn {
+  padding: 8px 20px;
+  background: var(--accent);
+  color: var(--fg-on-accent);
   border: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
 }
 
-.curation-body .search-clear:hover {
-  background: var(--color-border);
-  color: var(--color-text-primary);
+.mc-save-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-sm);
 }
 
-.curation-body .filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-
-.curation-body .filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: var(--space-xs) var(--space-md);
-  border: 1px solid var(--color-border);
-  border-radius: 20px;
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  background: var(--color-ivory);
-  cursor: pointer;
-  transition: background, border-color, color;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
-  user-select: none;
-}
-
-.curation-body .filter-chip input[type='checkbox'] {
-  display: none;
-}
-
-.curation-body .filter-chip:hover {
-  background: var(--color-parchment);
-  border-color: var(--color-text-muted);
-}
-
-.curation-body .filter-chip.active {
-  background: var(--color-burgundy);
-  border-color: var(--color-burgundy);
-  color: white;
+.mc-save-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

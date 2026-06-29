@@ -108,7 +108,7 @@ The key innovation is anonymized peer review, preventing models from playing fav
 
 **`components/Stage3.jsx`**
 - Final synthesized answer from chairman
-- Green-tinted background (#f0fff0) to highlight conclusion
+- Ember orange (#D76A3A) accent (border + header) marks the chairman verdict
 
 **`components/ArenaMode.jsx`**
 - Container for Arena debate display
@@ -133,9 +133,15 @@ The key innovation is anonymized peer review, preventing models from playing fav
 - Token usage and latency display
 - Per-model and aggregate statistics
 
-**Styling (`*.css`)**
-- Light mode theme (not dark mode)
-- Primary color: #4a90e2 (blue)
+**Styling (`*.css` + design system)**
+- Dark-first "Deliberation Instrument" theme — charcoal dark surfaces (`--bg` `#1A1D23`) with a warm-gray light mode (`#EBEAE5`); intentionally not pure black/white
+- Primary action color and chairman synthesis/verdict accent: ember orange (`--accent` `#D76A3A` light / `#E1865F` dark)
+- Fonts: Bricolage Grotesque (headlines), Instrument Sans (UI/body), JetBrains Mono (all numeric data + micro-labels)
+- Per-model seat-color system: each council model hashes to one of 5 seat colors — stable across sessions and council reordering, collision-nudged so a council of ≤5 stays distinct
+  - `frontend/src/lib/seatColors.js` — `hashString` + `assignSeats`: deterministic id→seat mapping returning `var(--seat-N)` token strings
+  - `frontend/src/hooks/useSeatColors.js` — hook over the live council (`config.council_models`); `seatOf(id)` → `{ seat, color, soft }`
+  - `frontend/src/components/ui/` — shared primitives (SeatAvatar, BrandMark, StageRail, ToggleSwitch, KpiCard) threaded with seat colors
+- CSS custom-property token foundation in `index.css` — semantic tokens (`--bg`/`--fg`/`--accent`/`--seat-1..5`/`--line`/`--font-*`) with synced light + dark blocks
 - Global markdown styling in `index.css` with `.markdown-content` class
 - 12px padding on all markdown content to prevent cluttered appearance
 

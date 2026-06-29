@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ChevronDown, ChevronUp, Coins, Hash, RotateCw } from 'lucide-react';
 import { formatCostAlways, formatLatency, formatTokens } from '../lib/formatting';
 import './MetricsDisplay.css';
 
@@ -22,22 +23,25 @@ export default function MetricsDisplay({ metrics }) {
       <div className="metrics-summary" onClick={() => setExpanded(!expanded)}>
         <div className="metrics-row">
           <div className="metric">
-            <span className="metric-icon">💰</span>
+            <Coins size={14} strokeWidth={2} className="metric-icon" />
             <span className="metric-value">{formatCostAlways(metrics.total_cost)}</span>
             <span className="metric-label">cost</span>
           </div>
           <div className="metric">
-            <span className="metric-icon">📝</span>
+            <Hash size={14} strokeWidth={2} className="metric-icon" />
             <span className="metric-value">{formatTokens(metrics.total_tokens)}</span>
             <span className="metric-label">tokens</span>
           </div>
           <div className="metric">
-            <span className="metric-icon">⏱️</span>
+            <RotateCw size={14} strokeWidth={2} className="metric-icon" />
             <span className="metric-value">{formatLatency(metrics.total_latency_ms)}</span>
             <span className="metric-label">latency</span>
           </div>
-          <button className="expand-btn" aria-label={expanded ? 'Collapse' : 'Expand'}>
-            {expanded ? '▲' : '▼'}
+          <button
+            className="expand-btn"
+            aria-label={expanded ? 'Collapse metrics' : 'Expand metrics'}
+          >
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           </button>
         </div>
       </div>
@@ -68,9 +72,11 @@ export default function MetricsDisplay({ metrics }) {
           {(responses.models?.length > 0 || rankings.models?.length > 0) && (
             <div className="model-metrics">
               <div className="model-metrics-header">Per-Model Breakdown</div>
-              {responses.models?.map((m, i) => (
-                <div key={`s1-${i}`} className="model-row">
-                  <span className="model-name" title={m.model}>{m.model?.split('/').pop()}</span>
+              {responses.models?.map((m) => (
+                <div key={m.model} className="model-row">
+                  <span className="model-name" title={m.model}>
+                    {m.model?.split('/').pop()}
+                  </span>
                   <span className="model-cost">{formatCostAlways(m.cost)}</span>
                   <span className="model-latency">{formatLatency(m.latency_ms)}</span>
                   <span className="model-provider">{m.provider}</span>

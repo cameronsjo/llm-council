@@ -1,29 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
-import { Moon, Sun, Monitor, X, MessageSquare, Trophy } from 'lucide-react';
+import { Moon, Sun, Monitor, X, Plus, BarChart3, Settings } from 'lucide-react';
 import './Sidebar.css';
 import { ConversationItem, CouncilDisplay } from './sidebar/index.js';
 import ModelSelector from './ModelSelector';
 import ModelCuration from './ModelCuration';
 import VersionInfo from './VersionInfo';
+import { BrandMark } from './ui';
 import { useTheme } from '../hooks';
 import { getUserInitial, getUserDisplayName, getThemeLabel } from '../lib/sidebarUtils';
 import { useUIStore } from '../stores/uiStore';
-import { useConfig, useUserInfo, useConversations, useDeleteConversation, useRenameConversation, useUpdateConfig } from '../hooks/queries';
+import {
+  useConfig,
+  useUserInfo,
+  useConversations,
+  useDeleteConversation,
+  useRenameConversation,
+  useUpdateConfig,
+} from '../hooks/queries';
 import { api } from '../api';
 
-export default function Sidebar({
-  onSelectConversation,
-  onNewConversation,
-}) {
+export default function Sidebar({ onSelectConversation, onNewConversation, isLoading = false }) {
   const { data: conversations = [] } = useConversations();
   const currentConversationId = useUIStore((s) => s.currentConversationId);
   const { data: config } = useConfig();
   const councilModels = config?.council_models || [];
   const chairmanModel = config?.chairman_model || '';
   const { data: userInfo } = useUserInfo();
-  const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const { setSidebarOpen } = useUIStore();
   const currentView = useUIStore((s) => s.currentView);
   const setCurrentView = useUIStore((s) => s.setCurrentView);
+  const mode = useUIStore((s) => s.mode);
+  const setMode = useUIStore((s) => s.setMode);
 
   const deleteConversation = useDeleteConversation();
   const renameConversation = useRenameConversation();
@@ -47,14 +54,10 @@ export default function Sidebar({
     const firstElement = focusableElements[0];
     const lastElement = focusableElements[focusableElements.length - 1];
 
-    // Focus first element
     firstElement?.focus();
 
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        handleCancelConfig();
-        return;
-      }
+      // Escape-to-close is owned by ModelSelector itself; trap Tab here.
       if (e.key === 'Tab') {
         if (e.shiftKey && document.activeElement === firstElement) {
           e.preventDefault();
@@ -71,9 +74,9 @@ export default function Sidebar({
   }, [showConfigUI]);
 
   const themeIcon = {
-    system: <Monitor size={16} />,
-    light: <Sun size={16} />,
-    dark: <Moon size={16} />,
+    system: <Monitor size={14} />,
+    light: <Sun size={14} />,
+    dark: <Moon size={14} />,
   }[theme];
 
   const themeLabel = getThemeLabel(theme);
@@ -85,7 +88,10 @@ export default function Sidebar({
   };
 
   const handleSaveConfig = async () => {
-    await updateConfig.mutateAsync({ councilModels: pendingCouncil, chairmanModel: pendingChairman });
+    await updateConfig.mutateAsync({
+      councilModels: pendingCouncil,
+      chairmanModel: pendingChairman,
+    });
     setShowConfigUI(false);
   };
 
@@ -95,9 +101,7 @@ export default function Sidebar({
 
   const handleExportConversation = async (id, format) => {
     try {
-      const blob = format === 'markdown'
-        ? await api.exportMarkdown(id)
-        : await api.exportJson(id);
+      const blob = format === 'markdown' ? await api.exportMarkdown(id) : await api.exportJson(id);
 
       const conv = conversations.find((c) => c.id === id);
       const title = (conv?.title || 'conversation').replace(/[^a-zA-Z0-9]/g, '_');
@@ -119,52 +123,65 @@ export default function Sidebar({
 
   return (
     <div className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-title-row">
-          <h1>LLM Council</h1>
-          <button
-              className="sidebar-close-btn"
-              onClick={() => setSidebarOpen(false)}
-              aria-label="Close sidebar"
-            >
-              <X size={20} />
-            </button>
-        </div>
-        {userInfo?.authenticated && (
-          <div className="user-info">
-            <span className="user-avatar">
-              {getUserInitial(userInfo)}
-            </span>
-            <span className="user-name">
-              {getUserDisplayName(userInfo)}
-            </span>
-          </div>
-        )}
-        <button className="new-conversation-btn" onClick={onNewConversation}>
-          + New Conversation
+      {/* Brand lockup: BrandMark + two-tone wordmark */}
+      <div className="sidebar-brand">
+        <BrandMark size={30} />
+        <span className="sidebar-wordmark">
+          <span className="sidebar-wordmark-dim">LLM</span>
+          {' Council'}
+        </span>
+        <button
+          className="sidebar-close-btn"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
+        >
+          <X size={18} />
         </button>
-        <nav className="sidebar-views" aria-label="Top-level views">
-          <button
-            type="button"
-            className={`sidebar-view-btn ${currentView === 'chat' ? 'active' : ''}`}
-            onClick={() => setCurrentView('chat')}
-            aria-pressed={currentView === 'chat'}
-          >
-            <MessageSquare size={14} aria-hidden="true" />
-            <span>Chat</span>
-          </button>
-          <button
-            type="button"
-            className={`sidebar-view-btn ${currentView === 'standings' ? 'active' : ''}`}
-            onClick={() => setCurrentView('standings')}
-            aria-pressed={currentView === 'standings'}
-          >
-            <Trophy size={14} aria-hidden="true" />
-            <span>Standings</span>
-          </button>
-        </nav>
       </div>
 
+      {/* CTA section */}
+      <div className="sidebar-cta-section">
+        {userInfo?.authenticated && (
+          <div className="user-info">
+            <span className="user-avatar">{getUserInitial(userInfo)}</span>
+            <span className="user-name">{getUserDisplayName(userInfo)}</span>
+          </div>
+        )}
+        {/* Solid ember CTA — single most prominent action */}
+        <button type="button" className="new-deliberation-btn" onClick={onNewConversation}>
+          <Plus size={14} aria-hidden="true" />
+          New deliberation
+        </button>
+      </div>
+
+      {/* Mode segmented control — Council / Arena */}
+      <div className="sidebar-mode-section">
+        <div className="mode-control" role="group" aria-label="Deliberation mode">
+          <button
+            type="button"
+            className={`mode-btn ${mode === 'council' ? 'active' : ''}`}
+            onClick={() => setMode('council')}
+            aria-pressed={mode === 'council'}
+            disabled={isLoading}
+          >
+            Council
+          </button>
+          <button
+            type="button"
+            className={`mode-btn ${mode === 'arena' ? 'active' : ''}`}
+            onClick={() => setMode('arena')}
+            aria-pressed={mode === 'arena'}
+            disabled={isLoading}
+          >
+            Arena
+          </button>
+        </div>
+      </div>
+
+      {/* Section label */}
+      <div className="sidebar-section-label">Today</div>
+
+      {/* Conversation list */}
       <div className="conversation-list">
         {conversations.length === 0 ? (
           <div className="no-conversations">No conversations yet</div>
@@ -183,6 +200,7 @@ export default function Sidebar({
         )}
       </div>
 
+      {/* Council display panel */}
       <CouncilDisplay
         councilModels={councilModels}
         chairmanModel={chairmanModel}
@@ -190,52 +208,60 @@ export default function Sidebar({
         onOpenCuration={() => setShowCuration(true)}
       />
 
+      {/* Footer: Standings nav · Models nav · status + theme chip */}
       <div className="sidebar-footer">
         <button
-          className="theme-toggle"
-          onClick={cycleTheme}
-          title={`Theme: ${themeLabel}`}
-          aria-label={`Theme: ${themeLabel}`}
+          type="button"
+          className={`sidebar-nav-row ${currentView === 'standings' ? 'active' : ''}`}
+          onClick={() => setCurrentView('standings')}
+          aria-pressed={currentView === 'standings'}
         >
-          {themeIcon}
+          <BarChart3 size={14} aria-hidden="true" />
+          <span>Standings</span>
         </button>
-        <VersionInfo />
+        <button
+          type="button"
+          className="sidebar-nav-row"
+          onClick={handleOpenConfig}
+          aria-label="Configure council models"
+        >
+          <Settings size={14} aria-hidden="true" />
+          <span>Models</span>
+          <span className="sidebar-model-count">{councilModels.length}</span>
+        </button>
+        <div className="sidebar-status-row">
+          <div className="sidebar-sync">
+            <span className="sidebar-sync-dot" aria-hidden="true" />
+            <span className="sidebar-sync-text">synced</span>
+            <VersionInfo />
+          </div>
+          <button
+            type="button"
+            className="sidebar-theme-chip"
+            onClick={cycleTheme}
+            title={`Theme: ${themeLabel}`}
+            aria-label={`Theme: ${themeLabel}`}
+          >
+            {themeIcon}
+            <span>{themeLabel.toLowerCase()}</span>
+          </button>
+        </div>
       </div>
 
+      {/* Config modal — ModelSelector renders its own cc-modal-* chrome
+          (backdrop, header, footer, Escape + backdrop-close). The wrapper div
+          only holds the ref so the focus trap above can reach the panel. */}
       {showConfigUI && (
-        <div
-          className="config-modal-overlay"
-          onClick={handleCancelConfig}
-          role="presentation"
-        >
-          <div
-            className="config-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="config-modal-title"
-            ref={modalRef}
-          >
-            <div className="config-modal-header">
-              <h3 id="config-modal-title">Configure Council</h3>
-              <button
-                className="modal-close-btn"
-                onClick={handleCancelConfig}
-                aria-label="Close configuration dialog"
-              >
-                <X size={20} aria-hidden="true" />
-              </button>
-            </div>
-            <ModelSelector
-              selectedCouncil={pendingCouncil}
-              selectedChairman={pendingChairman}
-              onCouncilChange={setPendingCouncil}
-              onChairmanChange={setPendingChairman}
-              onSave={handleSaveConfig}
-              onCancel={handleCancelConfig}
-              filterStateRef={filterStateRef}
-            />
-          </div>
+        <div ref={modalRef}>
+          <ModelSelector
+            selectedCouncil={pendingCouncil}
+            selectedChairman={pendingChairman}
+            onCouncilChange={setPendingCouncil}
+            onChairmanChange={setPendingChairman}
+            onSave={handleSaveConfig}
+            onCancel={handleCancelConfig}
+            filterStateRef={filterStateRef}
+          />
         </div>
       )}
 
