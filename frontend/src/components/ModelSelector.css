@@ -1,41 +1,50 @@
-/* Model Selector - Configuration Panel */
-/* Shared model group styles are in models/ModelGroups.css */
+/* ModelSelector — council configuration modal
+ * Modal chrome itself comes from .cc-modal-* in index.css.
+ * This file owns the search box, filter bar, count row, footer buttons,
+ * and the ms-* council-variant helpers in ModelGroups. */
 
-.model-selector {
-  padding: 20px 24px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-/* Search Box */
+/* ── Search box ─────────────────────────────────────────────────────────── */
 .search-box {
   position: relative;
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fg-faint);
+  pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  padding-right: var(--space-xl);
-  border: 1px solid var(--color-border);
+  padding: 9px var(--space-xl) 9px var(--space-md);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  transition: border-color, box-shadow;
-  transition-duration: var(--transition-fast);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  background: var(--bg-sunken);
+  color: var(--fg);
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+/* Left-side icon variant */
+.search-input--icon {
+  padding-left: 32px;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: var(--color-burgundy);
-  box-shadow: 0 0 0 3px rgba(139, 38, 53, 0.1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-ring);
 }
 
 .search-input::placeholder {
-  color: var(--color-text-muted);
+  color: var(--fg-faint);
 }
 
 .search-clear {
@@ -43,136 +52,170 @@
   right: var(--space-sm);
   top: 50%;
   transform: translateY(-50%);
-  background: var(--color-parchment);
+  background: none;
   border: none;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
+  color: var(--fg-faint);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background, color;
-  transition-duration: var(--transition-fast);
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 
 .search-clear:hover {
-  background: var(--color-border);
-  color: var(--color-text-primary);
+  background: var(--surface-hover);
+  color: var(--fg);
 }
 
-/* Filter Bar */
+/* ── Filter bar ─────────────────────────────────────────────────────────── */
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
 }
 
 .filter-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 20px;
-  font-size: 0.9375rem;
-  color: var(--color-text-secondary);
-  background: var(--color-ivory);
+  gap: 5px;
+  padding: 5px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-family: var(--font-display);
+  color: var(--fg-subtle);
+  background: var(--surface);
   cursor: pointer;
-  transition: background, border-color, color;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
   user-select: none;
 }
 
-.filter-chip input[type="checkbox"] {
+.filter-chip input[type='checkbox'] {
   display: none;
 }
 
 .filter-chip:hover {
-  background: var(--color-parchment);
-  border-color: var(--color-text-muted);
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+  color: var(--fg);
 }
 
 .filter-chip.active {
-  background: var(--color-burgundy);
-  border-color: var(--color-burgundy);
-  color: white;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .filter-chip.curated {
-  border-color: var(--color-burgundy);
-  color: var(--color-burgundy);
+  /* no special inactive look — matches base chip */
 }
 
 .filter-chip.curated.active {
-  background: var(--color-burgundy);
-  color: white;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Mono count number inside a chip label */
+.fc-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .context-filter {
-  padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 20px;
-  font-size: 0.9375rem;
-  color: var(--color-text-secondary);
-  background: var(--color-ivory);
+  padding: 5px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-family: var(--font-display);
+  color: var(--fg-subtle);
+  background: var(--surface);
   cursor: pointer;
+  outline: none;
+  transition: border-color var(--dur-micro) var(--ease-out);
 }
 
 .context-filter:focus {
-  outline: none;
-  border-color: var(--color-burgundy);
+  border-color: var(--accent);
 }
 
-.filter-results-row {
+/* Provider filter chips row */
+.provider-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  padding-top: 2px;
+}
+
+.provider-chip {
+  padding: 4px 11px;
+  font-size: 11.5px;
+}
+
+/* ── Filter results row ─────────────────────────────────────────────────── */
+.ms-filter-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-sm);
 }
 
-.filter-results-count {
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
+.ms-filter-count {
+  font-size: 12px;
+  color: var(--fg-subtle);
+  font-family: var(--font-display);
+}
+
+/* Mono count numbers used in labels + footer */
+.ms-count-num {
   font-family: var(--font-mono);
+  font-size: 12px;
 }
 
-.refresh-btn {
+.ms-refresh-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--color-ivory);
-  border: 1px solid var(--color-border);
+  gap: 5px;
+  padding: 5px 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--fg-subtle);
   cursor: pointer;
-  transition: background, border-color, color;
-  transition-duration: var(--transition-fast);
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 
-.refresh-btn:hover:not(:disabled) {
-  background: var(--color-parchment);
-  border-color: var(--color-burgundy);
-  color: var(--color-burgundy);
+.ms-refresh-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-.refresh-btn:disabled {
-  opacity: 0.6;
+.ms-refresh-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.refresh-btn.refreshing svg {
-  animation: spin 1s linear infinite;
+.ms-refresh-btn--spinning svg {
+  animation: ms-spin var(--dur-deliberate) linear infinite;
 }
 
-@keyframes spin {
+@keyframes ms-spin {
   from {
     transform: rotate(0deg);
   }
@@ -181,134 +224,120 @@
   }
 }
 
-.model-selector-loading,
-.model-selector-error {
-  text-align: center;
-  padding: var(--space-2xl);
-  color: var(--color-text-secondary);
-  font-style: italic;
-}
-
-.model-selector-error {
-  color: var(--color-burgundy);
-}
-
-.retry-btn {
-  margin-left: var(--space-md);
-  padding: var(--space-xs) var(--space-md);
-  background: var(--color-burgundy);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  transition: background;
-  transition-duration: var(--transition-fast);
-}
-
-.retry-btn:hover {
-  background: var(--color-burgundy-dark);
-}
-
-/* Section Headers */
-.selector-section {
-  margin-bottom: var(--space-xl);
-}
-
-.selector-section h4 {
-  margin: 0 0 var(--space-xs) 0;
-  font-family: var(--font-display);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.selector-help {
-  margin: 0 0 var(--space-md) 0;
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
-/* Model Selector specific overrides for shared styles */
-.model-selector .model-groups {
-  min-height: 400px;
-  max-height: calc(90vh - 350px);
-}
-
-/* Provider Filter Chips */
-.provider-chips {
+/* ── Body scroll area ───────────────────────────────────────────────────── */
+.ms-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-  padding-top: 4px;
+  flex-direction: column;
+  gap: var(--space-sm);
 }
 
-.provider-chip {
-  padding: 4px 12px;
-  font-size: 0.8125rem;
-  border-radius: 14px;
-}
-
-/* Action Buttons */
-.selector-actions {
-  display: flex;
-  gap: var(--space-md);
-  margin-top: var(--space-lg);
-  padding-top: var(--space-lg);
-  border-top: 1px solid var(--color-border);
-}
-
-.cancel-btn,
-.save-btn {
+/* ModelGroups inside the modal body — constrain height */
+.ms-body .model-groups {
   flex: 1;
-  padding: var(--space-md) var(--space-lg);
+  min-height: 200px;
+  max-height: calc(84vh - 340px);
+}
+
+/* ── Status states (loading / error) ────────────────────────────────────── */
+.ms-status-state {
+  padding: var(--space-2xl) var(--space-xl);
+  text-align: center;
+  color: var(--fg-subtle);
+  font-size: 14px;
+  font-style: italic;
+}
+
+.ms-status-state--error {
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+}
+
+.ms-retry-btn {
+  padding: var(--space-xs) var(--space-md);
+  background: var(--danger);
+  color: var(--fg-on-accent);
   border: none;
   border-radius: var(--radius-md);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 500;
   cursor: pointer;
-  transition: background, color, border-color, box-shadow, transform, opacity;
-  transition-duration: var(--transition-medium);
+  font-family: var(--font-display);
+  font-size: 13px;
+  transition: background var(--dur-micro) var(--ease-out);
 }
 
-.cancel-btn {
-  background: var(--color-parchment);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
+.ms-retry-btn:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
-.cancel-btn:hover:not(:disabled) {
-  background: var(--color-border-light);
-  color: var(--color-text-primary);
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+/* .cc-modal-footer layout (space-between) comes from index.css */
+
+.ms-footer-count {
+  font-size: 12.5px;
+  font-family: var(--font-display);
+  color: var(--fg-subtle);
 }
 
-.save-btn {
-  background: var(--color-burgundy);
-  color: white;
-  box-shadow: var(--shadow-subtle);
+.ms-footer-count .ms-count-num {
+  font-size: 12.5px;
 }
 
-.save-btn:hover:not(:disabled) {
-  background: var(--color-burgundy-dark);
-  box-shadow: var(--shadow-medium);
-  transform: translateY(-1px);
+.ms-footer-actions {
+  display: flex;
+  gap: var(--space-sm);
 }
 
-.save-btn:disabled,
-.cancel-btn:disabled {
+.ms-cancel-btn {
+  padding: 8px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.ms-cancel-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+.ms-cancel-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
 }
 
-.validation-warning {
-  margin-top: var(--space-sm);
-  font-size: 0.75rem;
-  color: var(--color-burgundy);
-  text-align: center;
-  font-style: italic;
+.ms-save-btn {
+  padding: 8px 20px;
+  background: var(--accent);
+  color: var(--fg-on-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.ms-save-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+.ms-save-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

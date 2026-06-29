@@ -1,27 +1,81 @@
-import { Star, Check } from 'lucide-react';
+import { Star, Check, Crown, ChevronDown, ChevronRight } from 'lucide-react';
+import { ToggleSwitch } from '../ui';
 import { formatPrice, getDisplayName, formatContextLength } from '../../lib/models';
 import './ModelGroups.css';
 
 /**
- * Single model item - supports checkbox (selector) and star (curation) variants.
+ * Single model item — supports checkbox (selector), radio (chairman),
+ * star (curation), and council (unified toggle + crown) variants.
  */
 export function ModelItem({
   model,
   isSelected,
   onToggle,
-  variant = 'checkbox', // 'checkbox' | 'radio' | 'star'
+  variant = 'checkbox',
   showContext = false,
   radioName = 'model-radio',
+  // Council variant extras
+  seatOf = null,
+  isChairman = null,
+  onSetChairman = null,
 }) {
   const displayName = getDisplayName(model);
+
+  if (variant === 'council') {
+    const seat = seatOf ? seatOf(model.id) : { color: 'var(--fg-faint)', soft: 'var(--surface)' };
+    const chairman = isChairman ? isChairman(model.id) : false;
+
+    const metaParts = [];
+    if (model.context_length) metaParts.push(formatContextLength(model.context_length));
+    const prompt = formatPrice(model.pricing?.prompt);
+    const completion = formatPrice(model.pricing?.completion);
+    if (prompt || completion) metaParts.push(`${prompt ?? '—'} / ${completion ?? '—'} /M`);
+
+    return (
+      <div
+        className={`ms-model-row${isSelected ? ' ms-model-row--selected' : ''}`}
+        style={isSelected ? { background: seat.soft, borderLeftColor: seat.color } : {}}
+      >
+        <span
+          className="ms-status-dot"
+          style={{ background: isSelected ? seat.color : 'var(--fg-faint)' }}
+        />
+        <span className="ms-model-name" title={model.id}>
+          {displayName}
+        </span>
+        {metaParts.length > 0 && <span className="ms-model-meta">{metaParts.join(' · ')}</span>}
+        <button
+          className={`ms-crown-btn${chairman ? ' ms-crown-btn--active' : ''}`}
+          style={!isSelected ? { opacity: 0.35, cursor: 'not-allowed' } : {}}
+          disabled={!isSelected}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isSelected && onSetChairman) onSetChairman(model.id);
+          }}
+          title={
+            chairman ? 'Current chairman' : isSelected ? 'Set as chairman' : 'Select model first'
+          }
+          aria-label={chairman ? 'Chairman' : 'Set as chairman'}
+        >
+          <Crown size={14} fill={chairman ? 'currentColor' : 'none'} strokeWidth={2} />
+        </button>
+        <ToggleSwitch
+          checked={isSelected}
+          onChange={() => onToggle(model.id)}
+          color={seat.color}
+          ariaLabel={`Toggle ${displayName}`}
+        />
+      </div>
+    );
+  }
 
   if (variant === 'star') {
     return (
       <button
-        className={`model-item ${isSelected ? 'curated' : ''}`}
+        className={`model-item${isSelected ? ' curated' : ''}`}
         onClick={() => onToggle(model.id)}
       >
-        <span className={`star-icon ${isSelected ? 'active' : ''}`}>
+        <span className={`star-icon${isSelected ? ' active' : ''}`}>
           <Star size={16} fill={isSelected ? 'currentColor' : 'none'} />
         </span>
         <span className="model-info">
@@ -31,9 +85,7 @@ export function ModelItem({
           <span className="model-meta">
             <span className="model-price">{formatPrice(model.pricing?.completion)}</span>
             {showContext && model.context_length && (
-              <span className="model-context">
-                {formatContextLength(model.context_length)}
-              </span>
+              <span className="model-context">{formatContextLength(model.context_length)}</span>
             )}
           </span>
         </span>
@@ -59,9 +111,7 @@ export function ModelItem({
           <span className="model-meta">
             <span className="model-price">{formatPrice(model.pricing?.completion)}</span>
             {showContext && model.context_length > 0 && (
-              <span className="model-context">
-                {formatContextLength(model.context_length)}
-              </span>
+              <span className="model-context">{formatContextLength(model.context_length)}</span>
             )}
           </span>
         </span>
@@ -72,11 +122,7 @@ export function ModelItem({
   // Checkbox variant (default)
   return (
     <label className="model-option">
-      <input
-        type="checkbox"
-        checked={isSelected}
-        onChange={() => onToggle(model.id)}
-      />
+      <input type="checkbox" checked={isSelected} onChange={() => onToggle(model.id)} />
       <span className="model-info">
         <span className="model-name" title={model.id}>
           {displayName}
@@ -98,31 +144,29 @@ export function ModelGroupHeader({
   totalCount,
   showSelectedBadge = false,
   showCuratedBadge = false,
-  bulkAction = null, // { label, onClick }
+  bulkAction = null,
 }) {
   return (
     <div className="group-header">
       <button className="group-toggle-btn" onClick={onToggle}>
-        <span className="group-toggle">{isExpanded ? '▼' : '▶'}</span>
+        <span className="group-toggle" aria-hidden="true">
+          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </span>
         <span className="group-name">{provider}</span>
         <span className="group-count">
           {showSelectedBadge && selectedCount > 0 && (
-            <span className="selected-badge">{selectedCount} selected</span>
+            <span className="selected-badge">{selectedCount}</span>
           )}
           {showCuratedBadge && selectedCount > 0 && (
             <span className="curated-badge">
-              <Star size={10} /> {selectedCount}
+              <Star size={10} aria-hidden="true" /> {selectedCount}
             </span>
           )}
           <span className="total-count">{totalCount}</span>
         </span>
       </button>
       {isExpanded && bulkAction && (
-        <button
-          className="bulk-action-btn"
-          onClick={bulkAction.onClick}
-          title={bulkAction.title}
-        >
+        <button className="bulk-action-btn" onClick={bulkAction.onClick} title={bulkAction.title}>
           {bulkAction.label}
         </button>
       )}
@@ -145,41 +189,50 @@ export function ModelGroups({
   getSelectedCount = () => 0,
   getBulkAction = null,
   radioName = 'model-radio',
+  // Council variant extras
+  seatOf = null,
+  isChairman = null,
+  onSetChairman = null,
 }) {
   return (
     <div className="model-groups">
-      {sortedProviders.map(provider => {
+      {sortedProviders.map((provider) => {
         const expanded = isExpanded(provider);
         const providerModels = groupedModels[provider];
         const selectedCount = getSelectedCount(provider);
         const bulkAction = getBulkAction?.(provider, providerModels);
 
         return (
-          <div key={provider} className={`model-group ${expanded ? 'expanded' : ''}`}>
+          <div key={provider} className={`model-group${expanded ? ' expanded' : ''}`}>
             <ModelGroupHeader
               provider={provider}
               isExpanded={expanded}
               onToggle={() => onToggleProvider(provider)}
               selectedCount={selectedCount}
               totalCount={providerModels.length}
-              showSelectedBadge={variant === 'checkbox'}
+              showSelectedBadge={variant === 'checkbox' || variant === 'council'}
               showCuratedBadge={variant === 'star'}
               bulkAction={bulkAction}
             />
 
             {expanded && (
               <div className="group-models">
-                {providerModels.filter(m => m.id).map(model => (
-                  <ModelItem
-                    key={model.id}
-                    model={model}
-                    isSelected={isSelected(model.id)}
-                    onToggle={onToggleModel}
-                    variant={variant}
-                    showContext={showContext}
-                    radioName={radioName}
-                  />
-                ))}
+                {providerModels
+                  .filter((m) => m.id)
+                  .map((model) => (
+                    <ModelItem
+                      key={model.id}
+                      model={model}
+                      isSelected={isSelected(model.id)}
+                      onToggle={onToggleModel}
+                      variant={variant}
+                      showContext={showContext}
+                      radioName={radioName}
+                      seatOf={seatOf}
+                      isChairman={isChairman}
+                      onSetChairman={onSetChairman}
+                    />
+                  ))}
               </div>
             )}
           </div>

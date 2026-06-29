@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Star, Settings, ChevronDown, Crown, Users } from 'lucide-react';
+import { SeatAvatar } from '../ui';
+import { useSeatColors } from '../../hooks/useSeatColors';
 import './CouncilDisplay.css';
 
 /**
@@ -20,17 +22,13 @@ function getProvider(model) {
 }
 
 /**
- * Council members display - Distinguished roster panel.
+ * Council members display — seat-colored roster panel.
  */
-export function CouncilDisplay({
-  councilModels,
-  chairmanModel,
-  onOpenConfig,
-  onOpenCuration,
-}) {
+export function CouncilDisplay({ councilModels, chairmanModel, onOpenConfig, onOpenCuration }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isAnimating, setIsAnimating] = useState(false);
   const contentRef = useRef(null);
+  const { seatOf } = useSeatColors();
 
   // Handle expand/collapse animation
   useEffect(() => {
@@ -59,25 +57,15 @@ export function CouncilDisplay({
 
   return (
     <div className="council-panel">
-      {/* Decorative top border */}
-      <div className="council-panel-accent" />
-
       {/* Header */}
       <div className="council-panel-header">
-        <button
-          className="council-panel-toggle"
-          onClick={handleToggle}
-          aria-expanded={isExpanded}
-        >
+        <button className="council-panel-toggle" onClick={handleToggle} aria-expanded={isExpanded}>
           <div className="council-panel-title">
             <Users size={14} className="council-icon" />
             <span>The Council</span>
             <span className="council-count">{councilModels.length}</span>
           </div>
-          <ChevronDown
-            size={16}
-            className={`council-chevron ${isExpanded ? 'expanded' : ''}`}
-          />
+          <ChevronDown size={16} className={`council-chevron ${isExpanded ? 'expanded' : ''}`} />
         </button>
 
         <div className="council-panel-actions">
@@ -100,10 +88,7 @@ export function CouncilDisplay({
       </div>
 
       {/* Members List */}
-      <div
-        ref={contentRef}
-        className={`council-panel-content ${isAnimating ? 'animating' : ''}`}
-      >
+      <div ref={contentRef} className={`council-panel-content ${isAnimating ? 'animating' : ''}`}>
         {/* Chairman Section */}
         {chairmanModel && (
           <div className="council-chairman-section">
@@ -112,7 +97,11 @@ export function CouncilDisplay({
               <span>Chairman</span>
             </div>
             <div className="council-member chairman" title={chairmanModel}>
-              <div className="member-indicator chairman" />
+              <SeatAvatar
+                color={seatOf(chairmanModel).color}
+                name={getShortModelName(chairmanModel)}
+                size={20}
+              />
               <span className="member-name">{getShortModelName(chairmanModel)}</span>
               <span className="member-provider">{getProvider(chairmanModel)}</span>
             </div>
@@ -134,7 +123,11 @@ export function CouncilDisplay({
                   title={model}
                   style={{ animationDelay: `${idx * 50}ms` }}
                 >
-                  <div className="member-indicator" />
+                  <SeatAvatar
+                    color={seatOf(model).color}
+                    name={getShortModelName(model)}
+                    size={20}
+                  />
                   <span className="member-name">{getShortModelName(model)}</span>
                   <span className="member-provider">{getProvider(model)}</span>
                 </div>
@@ -145,9 +138,7 @@ export function CouncilDisplay({
 
         {/* Chairman also as member indicator */}
         {chairmanInCouncil && regularMembers.length > 0 && (
-          <div className="council-footnote">
-            Chairman also participates as council member
-          </div>
+          <div className="council-footnote">Chairman also participates as council member</div>
         )}
       </div>
     </div>
