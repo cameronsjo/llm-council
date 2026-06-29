@@ -453,6 +453,7 @@ function App() {
           onRetryRankings={handleRetryRankings}
           onRetryAll={handleRetryAll}
           onCancel={cancelStream}
+          onExportConversation={handleExportConversation}
         />
       )}
     </div>

@@ -18,6 +18,95 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   TOPBAR — persistent 56px header above the scroll area
+───────────────────────────────────────────────────────────────────────────── */
+.chat-topbar {
+  position: relative;
+  z-index: 2; /* above the dot-grid (z-index: 1 in the prototype) */
+  height: 56px;
+  flex: none;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+}
+
+.chat-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.chat-topbar-mode-badge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 5px;
+  flex: none;
+}
+
+.chat-topbar-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+
+/* Overlap stack: first avatar's -6px pull-back is compensated by padding-left */
+.chat-topbar-avatars {
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  margin-right: 4px;
+}
+
+.chat-topbar-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.chat-topbar-export:hover {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+.chat-topbar-export:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    LANDING STATE
 ───────────────────────────────────────────────────────────────────────────── */
 .landing-scroll {
@@ -1256,6 +1345,16 @@
    RESPONSIVE
 ───────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
+  /* Clear room for the fixed mobile-menu-toggle (~44px wide at left:--space-md) */
+  .chat-topbar {
+    padding: 0 22px 0 56px;
+  }
+
+  /* Badge doesn't fit alongside the toggle on narrow screens */
+  .chat-topbar-mode-badge {
+    display: none;
+  }
+
   .landing-content {
     padding: 40px 0 28px;
   }
@@ -1272,8 +1371,9 @@
     grid-template-columns: repeat(3, 1fr);
   }
 
+  /* Topbar now provides structural separation; revert the old toggle-offset */
   .messages-container {
-    padding: 64px 16px 24px; /* top offset for mobile menu toggle */
+    padding: 28px 16px 24px;
   }
 
   .ask-bar {

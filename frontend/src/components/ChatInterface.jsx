@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Globe,
   ArrowRight,
+  Download,
 } from 'lucide-react';
 import { api } from '../api';
 import { getParticipantMapping, getMessageText, canRetryMessage } from '../lib/messageUtils';
@@ -27,6 +28,33 @@ import Round from './Round';
 import Synthesis from './Synthesis';
 import ModelErrors from './ModelErrors';
 import './ChatInterface.css';
+
+// Module-scope helpers + constants — pure, no component state, so they need not
+// be reallocated on every render.
+const modelShortName = (id) => id?.split('/')[1] || id || '';
+
+const councilStages = [
+  { label: 'First opinions', sublabel: 'stage 1' },
+  { label: 'Peer review', sublabel: 'stage 2' },
+  { label: 'Synthesis', sublabel: 'stage 3' },
+];
+const arenaStages = ['Opening', 'Rebuttal', 'Closing', 'Verdict'];
+
+function getCouncilCompleted(msg) {
+  const rounds = msg.rounds || [];
+  const hasResponses = rounds.some((r) => r.round_type === 'responses');
+  const hasRankings = rounds.some((r) => r.round_type === 'rankings');
+  return (hasResponses ? 1 : 0) + (hasRankings ? 1 : 0) + (msg.synthesis ? 1 : 0);
+}
+
+function getArenaCompleted(msg) {
+  const debateRounds = (msg.rounds || []).filter((r) => r.round_type !== 'synthesis');
+  if (msg.synthesis) return 4;
+  if (debateRounds.length >= 3) return 3;
+  if (debateRounds.length >= 2) return 2;
+  if (debateRounds.length >= 1) return 1;
+  return 0;
+}
 
 export default function ChatInterface({
   conversation,
@@ -42,6 +70,7 @@ export default function ChatInterface({
   onCancel,
   isLoading,
   isExtendingDebate,
+  onExportConversation,
 }) {
   const { data: config } = useConfig();
   const webSearchAvailable = config?.web_search_available;
@@ -167,24 +196,7 @@ export default function ChatInterface({
   };
 
   // ── helpers ────────────────────────────────────────────────────────────────
-  const modelShortName = (id) => id?.split('/')[1] || id || '';
   const chairShort = modelShortName(chairmanModel);
-
-  const getCouncilCompleted = (msg) => {
-    const rounds = msg.rounds || [];
-    const hasResponses = rounds.some((r) => r.round_type === 'responses');
-    const hasRankings = rounds.some((r) => r.round_type === 'rankings');
-    return (hasResponses ? 1 : 0) + (hasRankings ? 1 : 0) + (msg.synthesis ? 1 : 0);
-  };
-
-  const getArenaCompleted = (msg) => {
-    const debateRounds = (msg.rounds || []).filter((r) => r.round_type !== 'synthesis');
-    if (msg.synthesis) return 4;
-    if (debateRounds.length >= 3) return 3;
-    if (debateRounds.length >= 2) return 2;
-    if (debateRounds.length >= 1) return 1;
-    return 0;
-  };
 
   const hiddenFileInput = (
     <input
@@ -201,11 +213,63 @@ export default function ChatInterface({
   const showLanding =
     !conversation || (conversation.messages.length === 0 && !conversation.pendingInterrupted);
 
+  // ── Topbar — persistent across landing and conversation views ──────────────
+  const topBar = (
+    <header className="chat-topbar">
+      <div className="chat-topbar-left">
+        <span
+          className="chat-topbar-mode-badge"
+          style={
+            mode === 'arena'
+              ? { color: 'var(--accent)', background: 'var(--accent-soft)' }
+              : { color: 'var(--seat-1)', background: 'var(--seat-1-soft)' }
+          }
+        >
+          {mode === 'arena' ? 'ARENA' : 'COUNCIL'}
+        </span>
+        <span className="chat-topbar-title">{conversation?.title || 'New deliberation'}</span>
+      </div>
+      <div className="chat-topbar-right">
+        {councilModels.length > 0 && (
+          <div className="chat-topbar-avatars">
+            {councilModels.map((id) => {
+              const seat = seatOf(id);
+              const short = modelShortName(id);
+              return (
+                <SeatAvatar
+                  key={id}
+                  color={seat.color}
+                  initial={short[0]?.toUpperCase()}
+                  name={short}
+                  size={24}
+                  title={id}
+                  style={{ border: '2px solid var(--bg)', marginLeft: '-6px' }}
+                />
+              );
+            })}
+          </div>
+        )}
+        {conversation && (
+          <button
+            type="button"
+            className="chat-topbar-export"
+            onClick={() => onExportConversation?.(conversation.id, 'markdown')}
+            title="Export as Markdown"
+          >
+            <Download size={13} strokeWidth={2} aria-hidden="true" />
+            Export
+          </button>
+        )}
+      </div>
+    </header>
+  );
+
   // ── LANDING ────────────────────────────────────────────────────────────────
   if (showLanding) {
     return (
       <div className="chat-interface">
         {hiddenFileInput}
+        {topBar}
         <div className="landing-scroll">
           <div className="landing-content">
             {/* Status pill */}
@@ -409,16 +473,10 @@ export default function ChatInterface({
   }
 
   // ── CONVERSATION FLOW ──────────────────────────────────────────────────────
-  const councilStages = [
-    { label: 'First opinions', sublabel: 'stage 1' },
-    { label: 'Peer review', sublabel: 'stage 2' },
-    { label: 'Synthesis', sublabel: 'stage 3' },
-  ];
-  const arenaStages = ['Opening', 'Rebuttal', 'Closing', 'Verdict'];
-
   return (
     <div className="chat-interface">
       {hiddenFileInput}
+      {topBar}
 
       <div className="messages-container" ref={messagesContainerRef}>
         {/* Interrupted banner */}
