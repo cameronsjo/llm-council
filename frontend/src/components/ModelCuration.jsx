@@ -1,12 +1,12 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { X, Star, RefreshCw } from 'lucide-react';
 import { useModels, useCuratedModels, useModelFiltering, useExpandableGroups } from '../hooks';
 import { ModelSearchBox, FilterChips, ModelGroups } from './models/index.js';
 import './ModelCuration.css';
 
 /**
- * Model curation modal for selecting favorite models.
- * Mirrors ModelSelector structure for consistency.
+ * Model curation modal — select favourite models for the curated list.
+ * Uses shared .cc-modal-* chrome from index.css.
  */
 export default function ModelCuration({ onClose, onSave }) {
   // Fetch models
@@ -24,7 +24,7 @@ export default function ModelCuration({ onClose, onSave }) {
     error: saveError,
   } = curated;
 
-  // Filtering - no curated filter in curation mode
+  // Filtering — no curated filter in curation mode
   const filtering = useModelFiltering(models, curatedIds);
   const {
     groupedModels,
@@ -94,8 +94,15 @@ export default function ModelCuration({ onClose, onSave }) {
   };
 
   const error = modelsError || saveError;
+  const searchInputRef = useRef(null);
 
-  // Close on escape key
+  // Auto-focus the search input when the modal opens
+  useEffect(() => {
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Close on Escape
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -104,67 +111,77 @@ export default function ModelCuration({ onClose, onSave }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // ── Loading state ──────────────────────────────────────────────────────
   if (loading || curated.loading) {
     return (
-      <div className="curation-overlay" onClick={onClose}>
-        <div className="curation-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="curation-loading">Loading models...</div>
+      <div className="cc-modal-backdrop" onClick={onClose}>
+        <div className="cc-modal-panel mc-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="mc-status-loading">Loading models…</div>
         </div>
       </div>
     );
   }
 
+  // ── Main render ────────────────────────────────────────────────────────
   return (
-    <div className="curation-overlay" onClick={onClose}>
-      <div className="curation-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="curation-header">
-          <div className="curation-title">
-            <Star size={20} />
-            <h2>Curate Your Models</h2>
+    <div className="cc-modal-backdrop" onClick={onClose}>
+      <div
+        className="cc-modal-panel mc-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Curate your models"
+      >
+        {/* Header */}
+        <div className="cc-modal-header">
+          <div className="mc-title-group">
+            <div className="cc-modal-title">
+              <Star size={18} className="mc-title-icon" aria-hidden="true" />
+              Curate Your Models
+            </div>
           </div>
-          <button className="curation-close" onClick={onClose} aria-label="Close">
-            <X size={20} />
+          <button className="cc-modal-close" onClick={onClose} aria-label="Close">
+            <X size={16} />
           </button>
         </div>
 
-        <div className="curation-body">
-          <p className="curation-description">
-            Select your favorite models to create a curated list. Only curated models will appear
-            in the model selector.
+        {/* Body */}
+        <div className="cc-modal-body mc-body">
+          <p className="mc-description">
+            Select your favourite models to create a curated list. Only curated models will appear
+            in the model selector by default.
           </p>
 
           {error && (
-            <div className="curation-error">
+            <div className="mc-error">
               {error}
-              <button onClick={refetch} className="retry-btn">
+              <button onClick={refetch} className="mc-retry-btn">
                 Retry
               </button>
             </div>
           )}
 
-          <ModelSearchBox value={searchQuery} onChange={setSearchQuery} />
+          <ModelSearchBox ref={searchInputRef} value={searchQuery} onChange={setSearchQuery} />
 
-          <FilterChips
-            filters={filters}
-            showCuratedFilter={false}
-            showContextFilter={false}
-          />
+          <FilterChips filters={filters} showCuratedFilter={false} showContextFilter={false} />
 
-          <div className="curation-results">
-            <span>
-              {filteredCount} of {totalCount} models
+          <div className="mc-results-row">
+            <span className="mc-model-count">
+              <span className="mc-num">{filteredCount}</span> of{' '}
+              <span className="mc-num">{totalCount}</span> models
             </span>
-            <span className="curated-count">
-              <Star size={14} /> {curatedIds.size} curated
+            <span className="mc-curated-count">
+              <Star size={13} aria-hidden="true" />
+              <span className="mc-num">{curatedIds.size}</span> curated
             </span>
             <button
-              className={`refresh-btn ${refreshing ? 'refreshing' : ''}`}
+              className={`mc-refresh-btn${refreshing ? ' mc-refresh-btn--spinning' : ''}`}
               onClick={refresh}
               disabled={refreshing}
               title="Refresh models from OpenRouter"
             >
               <RefreshCw size={14} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
+              {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
 
@@ -182,12 +199,13 @@ export default function ModelCuration({ onClose, onSave }) {
           />
         </div>
 
-        <div className="curation-footer">
-          <button className="cancel-btn" onClick={onClose} disabled={saving}>
+        {/* Footer */}
+        <div className="cc-modal-footer">
+          <button className="mc-cancel-btn" onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button className="save-btn" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : `Save ${curatedIds.size} Models`}
+          <button className="mc-save-btn" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : `Save ${curatedIds.size} Models`}
           </button>
         </div>
       </div>

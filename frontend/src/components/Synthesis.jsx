@@ -1,7 +1,18 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronDown, ChevronRight, Brain, MessageSquarePlus, Copy, Check, DollarSign, Plus, RefreshCw } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Brain,
+  Copy,
+  Check,
+  Crown,
+  GitFork,
+  RotateCw,
+  Plus,
+  Coins,
+} from 'lucide-react';
 import { formatCost, getReasoningText } from '../lib/formatting';
 import './Synthesis.css';
 
@@ -51,49 +62,54 @@ export default function Synthesis({
 
   return (
     <div className={`synthesis synthesis-${mode}`}>
-      <div className="synthesis-header">
-        <h3 className="synthesis-title">{isArena ? 'Final Synthesis' : 'Final Council Answer'}</h3>
-        <div className="synthesis-header-actions">
-          {synthesisCost > 0 && (
-            <span className="synthesis-cost" title="Synthesis cost">
-              <DollarSign size={12} />
-              {formatCost(synthesisCost)}
-            </span>
-          )}
-          <button className="copy-btn" onClick={handleCopy} title="Copy synthesis">
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-          </button>
+      {/* Chairman header — ember icon + title + subline */}
+      <div className="synthesis-chairman-header">
+        <span className="synthesis-chairman-icon">
+          <Crown size={14} strokeWidth={2} />
+        </span>
+        <div className="synthesis-chairman-info">
+          <span className="synthesis-chairman-title">
+            {isArena ? "Chairman's ruling" : "Chairman's synthesis"}
+          </span>
+          <span className="synthesis-chairman-sub">
+            {isArena ? `de-anonymized · ${modelName}` : 'weighted by peer standings'}
+          </span>
         </div>
+        {hasReasoning && (
+          <Brain size={14} className="synthesis-reasoning-indicator" aria-hidden="true" />
+        )}
+        {synthesisCost > 0 && (
+          <span className="synthesis-cost" title="Synthesis cost">
+            <Coins size={11} strokeWidth={2} />
+            {formatCost(synthesisCost)}
+          </span>
+        )}
       </div>
 
-      <div className="synthesis-content">
-        <div className="chairman-info">
-          <span className="chairman-label">{isArena ? 'Synthesized by:' : 'Chairman:'}</span>
-          <span className="chairman-model">{modelName}</span>
-          {hasReasoning && <Brain size={14} className="reasoning-indicator" />}
+      {/* Chairman reasoning */}
+      {hasReasoning && (
+        <div className="reasoning-section">
+          <button
+            className="reasoning-toggle"
+            onClick={() => setReasoningExpanded(!reasoningExpanded)}
+          >
+            {reasoningExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <Brain size={14} />
+            <span>Chairman's Reasoning Process</span>
+          </button>
+          {reasoningExpanded && (
+            <div className="reasoning-content">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{reasoningText}</ReactMarkdown>
+            </div>
+          )}
         </div>
+      )}
 
-        {hasReasoning && (
-          <div className="reasoning-section">
-            <button
-              className="reasoning-toggle"
-              onClick={() => setReasoningExpanded(!reasoningExpanded)}
-            >
-              {reasoningExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              <Brain size={14} />
-              <span>Chairman's Reasoning Process</span>
-            </button>
-            {reasoningExpanded && (
-              <div className="reasoning-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{reasoningText}</ReactMarkdown>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className={`synthesis-text markdown-content${isSynthesisError ? ' synthesis-error' : ''}`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-        </div>
+      {/* Final answer prose */}
+      <div
+        className={`synthesis-text markdown-content${isSynthesisError ? ' synthesis-error' : ''}`}
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </div>
 
       {/* Participant identity reveal for Arena mode */}
@@ -113,61 +129,49 @@ export default function Synthesis({
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* Action row */}
       <div className="synthesis-actions">
-        {/* Retry synthesis button when chairman failed */}
+        {/* Primary: solid ember copy button */}
+        <button className="synthesis-copy-btn" onClick={handleCopy} title="Copy synthesis">
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          Copy answer
+        </button>
+
+        {/* Fork & refine */}
+        {onForkConversation && originalQuestion && (
+          <button
+            className="synthesis-ghost-btn"
+            onClick={handleContinueDiscussion}
+            title="Start a new conversation with this context"
+          >
+            <GitFork size={14} />
+            Fork &amp; refine
+          </button>
+        )}
+
+        {/* Re-synthesize — shown when chairman failed */}
         {isSynthesisError && onRetrySynthesis && (
           <button
-            className="retry-synthesis-btn"
+            className="synthesis-ghost-btn"
             onClick={onRetrySynthesis}
             disabled={isLoading}
             title="Re-run the chairman synthesis using existing Stage 1 and Stage 2 data"
           >
-            {isLoading ? (
-              <>
-                <span className="spinner-small"></span>
-                Retrying...
-              </>
-            ) : (
-              <>
-                <RefreshCw size={16} />
-                Retry Synthesis
-              </>
-            )}
+            {isLoading ? <span className="spinner-small" /> : <RotateCw size={14} />}
+            {isLoading ? 'Retrying…' : 'Re-synthesize'}
           </button>
         )}
 
-        {/* One more round button for Arena mode */}
+        {/* One more round — Arena mode only */}
         {isArena && onExtendDebate && (
           <button
-            className="extend-debate-btn"
+            className="synthesis-ghost-btn"
             onClick={onExtendDebate}
             disabled={isExtending}
             title="Add one more deliberation round"
           >
-            {isExtending ? (
-              <>
-                <span className="spinner-small"></span>
-                Extending...
-              </>
-            ) : (
-              <>
-                <Plus size={16} />
-                One More Round
-              </>
-            )}
-          </button>
-        )}
-
-        {/* Continue discussion button */}
-        {onForkConversation && originalQuestion && (
-          <button
-            className="continue-btn"
-            onClick={handleContinueDiscussion}
-            title="Start a new conversation with this context"
-          >
-            <MessageSquarePlus size={16} />
-            Continue Discussion
+            {isExtending ? <span className="spinner-small" /> : <Plus size={14} />}
+            {isExtending ? 'Extending…' : 'One More Round'}
           </button>
         )}
       </div>

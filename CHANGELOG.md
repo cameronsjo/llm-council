@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Re-skin frontend to "Deliberation Instrument" dark-first theme: charcoal (`#1A1D23`) dark
+  surfaces / warm-gray (`#EBEAE5`) light, ember orange (`#D76A3A`) for primary actions and the
+  chairman synthesis/verdict accent, Bricolage Grotesque headlines, Instrument Sans UI/body,
+  JetBrains Mono for all numeric data. Replaces the previous "Scholarly Deliberation Chamber"
+  theme (burgundy/gold/cream, Playfair Display). Adds a per-model seat-color system
+  (`lib/seatColors.js`, `hooks/useSeatColors.js`, `components/ui/`) and a CSS custom-property
+  token foundation in `index.css`.
 - Replace stale `google/gemini-3-pro-preview` defaults in `DEFAULT_COUNCIL_MODELS`
   and `DEFAULT_CHAIRMAN_MODEL` with `google/gemini-2.5-pro`. The preview-tagged
   model no longer has live OpenRouter endpoints (404 "No endpoints found"); the

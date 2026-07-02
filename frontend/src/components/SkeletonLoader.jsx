@@ -1,5 +1,8 @@
 import './SkeletonLoader.css';
 
+// Deterministic widths so the skeleton is stable across re-renders
+const LINE_WIDTHS = [92, 78, 85, 70, 96, 74, 88, 81];
+
 export function SkeletonTabs({ count = 4 }) {
   return (
     <div className="skeleton-tabs" aria-hidden="true">
@@ -19,7 +22,7 @@ export function SkeletonContent({ lines = 5, showHeader = true }) {
           <div
             key={i}
             className="skeleton-line"
-            style={{ width: `${70 + Math.random() * 30}%` }}
+            style={{ width: `${LINE_WIDTHS[i % LINE_WIDTHS.length]}%` }}
           />
         ))}
       </div>

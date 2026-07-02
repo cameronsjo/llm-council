@@ -1,6 +1,6 @@
-/* Model Groups - Shared styles for ModelSelector and ModelCuration */
+/* Model Groups — shared styles for ModelSelector and ModelCuration */
 
-/* Container */
+/* ── Container ──────────────────────────────────────────────────────────── */
 .model-groups {
   display: flex;
   flex-direction: column;
@@ -9,62 +9,64 @@
   min-height: 300px;
   max-height: calc(90vh - 350px);
   overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 12px;
-  background: var(--color-ivory);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+  background: var(--bg-sunken);
 }
 
-/* Individual Group */
+/* ── Individual group ───────────────────────────────────────────────────── */
 .model-group {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  overflow: visible;
-  background: var(--color-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-raised);
 }
 
-/* Group Header - Row with toggle button and optional bulk action */
+/* ── Group header ───────────────────────────────────────────────────────── */
 .group-header {
   display: flex;
   align-items: center;
-  background: var(--color-parchment);
+  background: var(--surface);
   border: none;
   width: 100%;
-  min-height: 44px;
-  color: var(--color-text-primary);
+  min-height: 38px;
+  color: var(--fg);
 }
 
 .group-header:hover {
-  background: var(--color-border-light);
+  background: var(--surface-hover);
 }
 
-/* Toggle Button (left side) */
+/* Toggle button (left side) */
 .group-toggle-btn {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 8px;
+  padding: 8px 12px;
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: left;
-  font-size: 0.9375rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 600;
-  font-family: var(--font-body);
-  color: var(--color-text-primary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
 }
 
 .group-toggle {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  color: var(--fg-faint);
   width: 14px;
   flex-shrink: 0;
 }
 
 .group-name {
   flex: 1;
-  text-transform: capitalize;
   color: inherit;
 }
 
@@ -75,67 +77,78 @@
 }
 
 .selected-badge {
-  background: var(--color-burgundy);
-  color: white;
-  font-size: 0.6875rem;
-  padding: 2px 8px;
-  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
   font-family: var(--font-mono);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+}
+
+.curated-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
 }
 
 .total-count {
-  font-size: 0.6875rem;
-  color: var(--color-text-secondary);
+  font-size: 10px;
+  color: var(--fg-faint);
   font-family: var(--font-mono);
-  background: var(--color-border);
-  padding: 2px 8px;
-  border-radius: 10px;
-  min-width: 24px;
+  background: var(--bg-sunken);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  min-width: 22px;
   text-align: center;
 }
 
-/* Bulk Action Button (right side of header) */
+/* Bulk action button (right side of header) */
 .bulk-action-btn {
-  padding: 4px 10px;
+  padding: 3px 9px;
   margin-right: 10px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  font-size: 0.6875rem;
+  font-size: 10px;
+  font-family: var(--font-mono);
   cursor: pointer;
-  color: var(--color-text-secondary);
-  transition: background, border-color, color;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
+  color: var(--fg-subtle);
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 
 .bulk-action-btn:hover {
-  background: var(--color-ivory);
-  border-color: var(--color-burgundy);
-  color: var(--color-burgundy);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-/* Models Container */
+/* ── Models container ───────────────────────────────────────────────────── */
 .group-models {
   max-height: 40vh;
   overflow-y: auto;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--line);
 }
 
-/* ========================================
-   Checkbox Variant (ModelSelector)
-   ======================================== */
-
+/* ── Checkbox / radio variant (ModelSelector legacy sections) ─────────── */
 .model-option {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 14px;
   cursor: pointer;
-  border-bottom: 1px solid var(--color-border-light);
-  transition: background 0.15s ease;
+  border-bottom: 1px solid var(--line);
+  transition: background var(--dur-micro) var(--ease-out);
   min-height: 32px;
-  background: var(--color-surface);
+  background: var(--bg-raised);
 }
 
 .model-option:last-child {
@@ -143,41 +156,45 @@
 }
 
 .model-option:hover {
-  background: var(--color-ivory);
+  background: var(--surface-hover);
 }
 
-.model-option input[type="checkbox"] {
+.model-option input[type='checkbox'],
+.model-option input[type='radio'] {
   width: 16px;
   height: 16px;
   cursor: pointer;
-  accent-color: var(--color-burgundy);
+  accent-color: var(--accent);
   flex-shrink: 0;
   -webkit-appearance: checkbox;
   appearance: checkbox;
+}
+
+.model-option input[type='radio'] {
+  -webkit-appearance: radio;
+  appearance: radio;
 }
 
 .model-option:empty {
   display: none;
 }
 
-/* ========================================
-   Star Variant (ModelCuration)
-   ======================================== */
-
+/* ── Star / curation variant ────────────────────────────────────────────── */
 .model-item {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
   padding: 8px 14px;
-  background: var(--color-surface);
+  background: var(--bg-raised);
   border: none;
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--line);
   cursor: pointer;
   text-align: left;
-  transition: background, border-left, padding-left;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-left-color var(--dur-micro) var(--ease-out),
+    padding-left var(--dur-micro) var(--ease-out);
 }
 
 .model-item:last-child {
@@ -185,52 +202,130 @@
 }
 
 .model-item:hover {
-  background: var(--color-ivory);
+  background: var(--surface-hover);
 }
 
 .model-item.curated {
-  background: linear-gradient(90deg, rgba(139, 38, 53, 0.06) 0%, rgba(139, 38, 53, 0.02) 100%);
-  border-left: 3px solid var(--color-burgundy);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
   padding-left: 11px;
 }
 
 .model-item.curated:hover {
-  background: linear-gradient(90deg, rgba(139, 38, 53, 0.1) 0%, rgba(139, 38, 53, 0.04) 100%);
+  background: var(--accent-soft);
+  filter: brightness(0.96);
 }
 
-/* Star Icon */
+/* Star icon */
 .star-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 4px;
-  color: var(--color-border);
-  transition: color, background;
-  transition-duration: 0.2s;
-  transition-timing-function: ease;
+  border-radius: var(--radius-sm);
+  color: var(--line-strong);
+  transition:
+    color var(--dur-standard) var(--ease-out),
+    background var(--dur-standard) var(--ease-out);
   flex-shrink: 0;
 }
 
 .model-item:hover .star-icon {
-  color: var(--color-gold);
-  background: rgba(196, 164, 105, 0.1);
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .star-icon.active {
-  color: var(--color-burgundy);
-  background: rgba(139, 38, 53, 0.1);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .model-item:hover .star-icon.active {
-  background: rgba(139, 38, 53, 0.15);
+  background: var(--accent-soft);
+  filter: brightness(0.94);
 }
 
-/* ========================================
-   Shared Model Info Styles
-   ======================================== */
+/* ── Council variant rows ───────────────────────────────────────────────── */
+.ms-model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px 7px 10px;
+  background: var(--bg-raised);
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-left: 2px solid transparent;
+  transition: background var(--dur-micro) var(--ease-out);
+}
 
+.ms-model-row:last-child {
+  border-bottom: none;
+}
+
+.ms-model-row:hover {
+  background: var(--surface-hover);
+}
+
+.ms-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background var(--dur-standard) var(--ease-out);
+}
+
+.ms-model-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--fg);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+}
+
+.ms-model-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ms-crown-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--fg-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition:
+    color var(--dur-micro) var(--ease-out),
+    background var(--dur-micro) var(--ease-out);
+}
+
+.ms-crown-btn:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ms-crown-btn--active {
+  color: var(--accent);
+}
+
+.ms-crown-btn--active:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+/* ── Shared model info (checkbox / radio / star) ─────────────────────── */
 .model-info {
   display: flex;
   flex-direction: row;
@@ -241,9 +336,9 @@
 }
 
 .model-name {
-  font-size: 0.8125rem;
-  font-family: var(--font-body);
-  color: var(--color-text-primary);
+  font-size: 13px;
+  font-family: var(--font-display);
+  color: var(--fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,10 +347,10 @@
 }
 
 .model-item.curated .model-name {
-  font-weight: 500;
+  font-weight: 600;
 }
 
-/* Model Meta - Price & Context */
+/* Model meta — price + context */
 .model-meta {
   display: flex;
   align-items: center;
@@ -264,41 +359,41 @@
 }
 
 .model-price {
-  font-size: 0.6875rem;
-  color: var(--color-gold-dark);
+  font-size: 10.5px;
+  color: var(--fg-subtle);
   font-family: var(--font-mono);
-  background: var(--color-stage2);
-  border: 1px solid var(--color-stage2-border);
-  padding: 2px 6px;
-  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
-  letter-spacing: -0.02em;
-  min-width: 52px;
+  letter-spacing: -0.01em;
+  min-width: 48px;
   text-align: right;
 }
 
 .model-context {
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
+  font-size: 10.5px;
+  color: var(--fg-faint);
   font-family: var(--font-mono);
-  background: var(--color-border-light);
-  padding: 2px 6px;
-  border-radius: 4px;
+  background: var(--bg-sunken);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
-  letter-spacing: -0.02em;
-  min-width: 36px;
+  letter-spacing: -0.01em;
+  min-width: 34px;
   text-align: right;
 }
 
-/* Check Icon (for star variant) */
+/* Check icon (star variant) */
 .check-icon {
-  color: var(--color-burgundy);
+  color: var(--accent);
   flex-shrink: 0;
   opacity: 0;
   transform: scale(0.8);
-  transition: opacity, transform;
-  transition-duration: 0.2s;
-  transition-timing-function: ease;
+  transition:
+    opacity var(--dur-standard) var(--ease-out),
+    transform var(--dur-standard) var(--ease-out);
 }
 
 .model-item.curated .check-icon {
