@@ -24,7 +24,28 @@ ENV VITE_GIT_COMMIT=${GIT_COMMIT}
 ENV VITE_BUILD_TIME=${BUILD_TIME}
 RUN npm run build
 
-# Stage 2: Python backend with frontend static files
+# Stage 2: Build the Python virtualenv with uv
+FROM python:3.12-slim AS python-builder
+
+WORKDIR /app
+
+# Install uv for faster dependency management
+RUN pip install uv
+
+# Build an isolated virtualenv that will be copied into the runtime stage
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+RUN uv venv "${VIRTUAL_ENV}"
+
+# Copy the files needed to build the wheel. Only backend* is present, so the
+# setuptools `find` (include = backend*, tui*) resolves to backend just as today.
+COPY pyproject.toml ./
+COPY backend/ ./backend/
+
+# Install the project and its dependencies into the virtualenv
+RUN uv pip install .
+
+# Stage 3: Slim runtime
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -47,24 +68,40 @@ ENV APP_VERSION=${VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV BUILD_TIME=${BUILD_TIME}
 
-# Install uv for faster dependency management
-RUN pip install uv
+# Use the virtualenv built in the previous stage
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
 
-# Copy project files
-COPY pyproject.toml ./
-COPY backend/ ./backend/
+# Create an unprivileged system user to run the application
+RUN groupadd --system --gid 10001 council \
+    && useradd --system --uid 10001 --gid 10001 council
 
-# Install dependencies
-RUN uv pip install --system .
+# Copy the pre-built virtualenv (dependencies + installed backend package)
+COPY --from=python-builder /opt/venv /opt/venv
 
-# Create data directory
-RUN mkdir -p /app/data/conversations
+# Copy application source. Running `python -m backend.main` from /app resolves
+# `backend` from here (cwd wins over the venv copy), so STATIC_DIR = /app/static
+# as backend/main.py expects.
+COPY --chown=council:council backend/ ./backend/
 
-# Copy built frontend from builder stage
-COPY --from=frontend-builder /app/dist ./static
+# Copy built frontend from the frontend builder stage
+COPY --from=frontend-builder --chown=council:council /app/dist ./static
+
+# Create the data directory owned by the runtime user. The council-data named
+# volume mounts here and inherits this ownership on first use.
+RUN mkdir -p /app/data/conversations \
+    && chown -R council:council /app/data
+
+# Drop privileges
+USER council
 
 # Expose port
 EXPOSE 8001
+
+# Container-level health probe using only the Python stdlib (slim images lack
+# curl, and this avoids coupling the probe to httpx).
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health').read()"
 
 # Run the application
 CMD ["python", "-m", "backend.main"]
