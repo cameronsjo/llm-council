@@ -81,11 +81,13 @@ COPY --from=python-builder /opt/venv /opt/venv
 
 # Copy application source. Running `python -m backend.main` from /app resolves
 # `backend` from here (cwd wins over the venv copy), so STATIC_DIR = /app/static
-# as backend/main.py expects.
-COPY --chown=council:council backend/ ./backend/
+# as backend/main.py expects. Left root-owned and world-readable: the app runs
+# as an unprivileged user, so it cannot tamper with the code it executes or the
+# static assets it serves to browsers even after a compromise.
+COPY backend/ ./backend/
 
 # Copy built frontend from the frontend builder stage
-COPY --from=frontend-builder --chown=council:council /app/dist ./static
+COPY --from=frontend-builder /app/dist ./static
 
 # Create the data directory owned by the runtime user. The council-data named
 # volume mounts here and inherits this ownership on first use.
