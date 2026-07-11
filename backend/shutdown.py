@@ -16,8 +16,10 @@ Usage in SSE generators::
             yield f"data: {json.dumps(event)}\\n\\n"
 """
 
+import asyncio
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,49 @@ class ShutdownCoordinator:
             "message": "Server is restarting — your request will resume automatically",
         }
         return f"data: {json.dumps(event)}\n\n"
+
+
+async def drain_streams(
+    coordinator: ShutdownCoordinator,
+    timeout: float,
+    poll: float = 0.5,
+    *,
+    clock: Callable[[], float] | None = None,
+) -> None:
+    """Wait for active SSE streams to finish, up to a deadline.
+
+    Polls ``coordinator.active_stream_count`` until it reaches zero or the
+    timeout elapses, letting in-flight streams emit their ``server_shutdown``
+    event and complete their current LLM call before the shared client is
+    closed.
+
+    Args:
+        coordinator: The shutdown coordinator tracking active streams.
+        timeout: Maximum seconds to wait before forcing shutdown. MUST stay
+            strictly under uvicorn's ``timeout_graceful_shutdown`` — an equal
+            budget risks the post-drain ``close_shared_client()`` being
+            cancelled, leaking the connection pool.
+        poll: Seconds between stream-count checks.
+        clock: Monotonic time source, injectable for tests. Resolved inside
+            the coroutine because ``asyncio.get_running_loop()`` requires a
+            running loop, which does not exist at import time.
+    """
+    # Resolve the clock inside the running coroutine — a def-time default
+    # would evaluate at import, where there is no running loop.
+    clock = clock or asyncio.get_running_loop().time
+
+    # Capture the deadline origin BEFORE the loop so a clock that advances
+    # on every call cannot push the deadline forward each iteration.
+    deadline = clock() + timeout
+
+    while coordinator.active_stream_count > 0:
+        if clock() > deadline:
+            logger.warning(
+                "Forcing shutdown with %d stream(s) still active",
+                coordinator.active_stream_count,
+            )
+            break
+        await asyncio.sleep(poll)
 
 
 # Module-level singleton

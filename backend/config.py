@@ -182,6 +182,17 @@ def reload_config() -> dict[str, Any]:
     except ImportError:
         pass
 
+    # Refresh trusted-proxy config so a reload picks up a changed
+    # LLMCOUNCIL_TRUSTED_PROXY_IPS (issue #39). auth owns the
+    # cache-invalidation contract; we just trigger it.
+    try:
+        from . import auth
+        auth.reload_trusted_proxy_ips()
+    except ImportError:
+        # auth is an optional sibling: a reload must not hard-fail if it
+        # can't be imported (mirrors the websearch refresh above).
+        pass
+
     logger.info("Configuration reloaded")
 
     return {

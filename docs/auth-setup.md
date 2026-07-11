@@ -135,9 +135,38 @@ data/
 ## Security Considerations
 
 1. **Trust boundaries**: Only enable auth when behind a trusted reverse proxy
-2. **IP validation**: Configure `LLMCOUNCIL_TRUSTED_PROXY_IPS` to match your proxy's IP
-3. **Header security**: Never expose LLM Council directly to the internet with auth enabled - headers can be spoofed without the proxy
-4. **HTTPS**: Always use HTTPS between clients and your reverse proxy
+2. **Peer-IP trust**: The trust decision uses the **immediate TCP peer** (the socket address), never `X-Forwarded-For` — that header is client-supplied and spoofable. Your reverse proxy must therefore be the direct TCP peer of LLM Council; an intermediate hop between the proxy and the app breaks the trust check.
+3. **Pin the proxy IP**: The default `LLMCOUNCIL_TRUSTED_PROXY_IPS` covers loopback plus all RFC1918 ranges so a separate-container proxy works out of the box. For defense-in-depth, pin it to your proxy's *specific* container or host IP (e.g. `LLMCOUNCIL_TRUSTED_PROXY_IPS=172.18.0.5`) so no other host on the private network can present auth headers.
+4. **Header security**: Never expose LLM Council directly to the internet with auth enabled - headers can be spoofed without the proxy
+5. **HTTPS**: Always use HTTPS between clients and your reverse proxy
+
+## Upload Size Limits
+
+The `/api/attachments` endpoint accepts files up to 10MB (the largest per-type
+ceiling, `MAX_PDF_SIZE`). Defense against oversized-upload DoS is layered:
+
+| Layer | Where | Control |
+|-------|-------|---------|
+| Receipt limit | Reverse proxy | Rejects the body before it is received — **the only layer that stops the bytes** |
+| In-memory cap | Application | Chunked read aborts with `413` once >10MB is buffered |
+| Per-type cap | Application | `validate_file` returns `400` for a type-specific overflow (e.g. a 2MB `.txt`) |
+
+The application caps bound *resident memory*, not receipt: Starlette spools the
+multipart body (memory, then disk) before the handler runs. **You must add a
+proxy body limit** as the receipt-level control:
+
+- **Traefik**: a `buffering` middleware with
+  `maxRequestBodyBytes=10485760` (10MB), attached to the router.
+- **nginx**: `client_max_body_size 10m;`
+
+See the commented example in `docker-compose.yml`.
+
+Note: the `Content-Length` fast-reject checks the whole request body, which for
+a multipart upload includes the boundary and part-header framing (a few hundred
+bytes). A file whose own bytes sit exactly at the 10MB ceiling can therefore be
+rejected with `413`; the effective file cap is a few hundred bytes under 10MB
+for multipart requests. This is deliberate (it fails closed) — size the proxy
+limit and client expectations accordingly.
 
 ## API Endpoints
 

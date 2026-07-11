@@ -63,6 +63,24 @@ def _parse_trusted_ips() -> tuple:
     return tuple(trusted)
 
 
+def reload_trusted_proxy_ips() -> str:
+    """Re-read the trusted-proxy list from the environment and drop its cache.
+
+    Owns the cache-invalidation contract so callers (e.g. config.reload_config)
+    don't reach into this module's internals: TRUSTED_PROXY_IPS is frozen at
+    import and _parse_trusted_ips is lru_cache'd, so a reload must reassign the
+    module var AND clear the cache — clearing alone would re-parse the stale
+    value. A reload with the env var absent keeps the current value.
+
+    Returns:
+        The effective trusted-proxy IPs string after the reload
+    """
+    global TRUSTED_PROXY_IPS
+    TRUSTED_PROXY_IPS = os.getenv("LLMCOUNCIL_TRUSTED_PROXY_IPS", TRUSTED_PROXY_IPS)
+    _parse_trusted_ips.cache_clear()
+    return TRUSTED_PROXY_IPS
+
+
 def _is_trusted_ip(client_ip: str) -> bool:
     """Check if client IP is in the trusted proxy list.
 
@@ -91,21 +109,45 @@ def _is_trusted_ip(client_ip: str) -> bool:
     return False
 
 
-def _get_client_ip(request: Request) -> str:
-    """Extract client IP from request, respecting X-Forwarded-For.
+def _get_peer_ip(request: Request) -> str:
+    """Extract the immediate TCP peer's IP address.
+
+    This is the value trust decisions key on: the peer address comes from
+    the socket, not from request headers. This holds only while uvicorn's
+    proxy-header handling is off (the entrypoint pins ``proxy_headers=False``);
+    with it on, uvicorn overwrites ``scope["client"]`` from X-Forwarded-For
+    for peers in ``forwarded_allow_ips``, which would make the peer IP
+    spoofable and reopen the bypass. X-Forwarded-For is a client-supplied
+    claim — never use it to decide trust (see _get_client_ip for its
+    audit-logging role).
 
     Args:
         request: FastAPI request object
 
     Returns:
-        Client IP address string
+        Peer IP address string, or "" when unavailable
     """
-    # Check X-Forwarded-For header (leftmost is original client)
+    if request.client:
+        return request.client.host
+    return ""
+
+
+def _get_client_ip(request: Request) -> str:
+    """Extract the claimed client IP for audit logging only.
+
+    Returns the leftmost X-Forwarded-For value — the original client as
+    claimed by whoever set the header. Attacker-controlled, so this is
+    for log visibility only; trust decisions use _get_peer_ip.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Claimed client IP address string
+    """
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        # Get the rightmost IP that we didn't add (the reverse proxy's view of client)
-        # In a typical setup: client -> nginx -> app
-        # X-Forwarded-For would be: original_client, ...
+        # Leftmost entry: the original client per the header's own claim
         return forwarded.split(",")[0].strip()
 
     # Fall back to direct client
@@ -132,12 +174,17 @@ async def get_current_user(request: Request) -> User | None:
     if not AUTH_ENABLED:
         return None
 
-    client_ip = _get_client_ip(request)
+    # Trust keys on the TCP peer, never on X-Forwarded-For — the header
+    # is attacker-controlled and was previously spoofable for a full
+    # auth bypass (any peer claiming an in-range XFF passed the gate).
+    peer_ip = _get_peer_ip(request)
 
-    if not _is_trusted_ip(client_ip):
+    if not _is_trusted_ip(peer_ip):
         logger.warning(
-            "Auth headers received from untrusted IP: %s (trusted: %s)",
-            client_ip,
+            "Auth headers received from untrusted peer: %s "
+            "(claimed client: %s, trusted: %s)",
+            peer_ip,
+            _get_client_ip(request),
             TRUSTED_PROXY_IPS,
         )
         return None
