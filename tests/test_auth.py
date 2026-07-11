@@ -206,3 +206,33 @@ class TestXffBypass:
         )
 
         assert await get_current_user(request) is None
+
+
+# ---------------------------------------------------------------------------
+# reload_config invalidates the trusted-IP cache (issue #39)
+# ---------------------------------------------------------------------------
+
+class TestReloadInvalidatesTrustedIps:
+    """reload_config must pick up a changed LLMCOUNCIL_TRUSTED_PROXY_IPS."""
+
+    def teardown_method(self):
+        """Restore the module var and cache after mutating them."""
+        backend.auth.TRUSTED_PROXY_IPS = (
+            "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+        )
+        _parse_trusted_ips.cache_clear()
+
+    def test_reload_picks_up_changed_trusted_ips(self, monkeypatch):
+        """A reload with a new env value re-parses the trusted list."""
+        from backend.config import reload_config
+
+        # Prime the cache with a public IP that is NOT trusted by default.
+        _parse_trusted_ips.cache_clear()
+        assert _is_trusted_ip("203.0.113.9") is False
+
+        # Operator widens the trusted set to include that IP and reloads.
+        monkeypatch.setenv("LLMCOUNCIL_TRUSTED_PROXY_IPS", "203.0.113.9")
+        reload_config()
+
+        # Without cache invalidation this would still read the stale default.
+        assert _is_trusted_ip("203.0.113.9") is True
