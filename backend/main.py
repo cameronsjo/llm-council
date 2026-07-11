@@ -54,7 +54,10 @@ from .arena import (
     round_n_deliberation,
 )
 from .attachments import (
+    MAX_PDF_SIZE,
+    content_length_exceeds,
     process_attachments,
+    read_capped,
     save_attachment,
     validate_file,
 )
@@ -380,6 +383,7 @@ async def get_rankings_history(
 
 @app.post("/api/attachments")
 async def upload_attachment(
+    request: Request,
     file: UploadFile = File(...),
     user: User | None = Depends(get_optional_user),
 ):
@@ -389,14 +393,24 @@ async def upload_attachment(
     - Text: .txt, .md, .json, .csv, .xml, .html, .py, .js, .ts
     - PDF: .pdf
     - Images: .png, .jpg, .jpeg, .gif, .webp
+
+    Size defense is layered: a Content-Length fast-reject, then a chunked
+    read that bounds resident memory to MAX_PDF_SIZE (413), then the
+    per-type validate_file cap (400). The receipt-level control — a proxy
+    body limit — lives in docker-compose.yml / docs/auth-setup.md.
     """
     user_id = user.username if user else None
 
-    # Read file content
-    content = await file.read()
+    # Fast reject on a well-formed, over-cap Content-Length before reading.
+    if content_length_exceeds(request, MAX_PDF_SIZE):
+        raise HTTPException(status_code=413, detail="File too large")
+
+    # Hard in-memory cap: aborts with 413 the moment the read exceeds the
+    # largest per-type ceiling.
+    content = await read_capped(file, MAX_PDF_SIZE)
     filename = file.filename or "unnamed"
 
-    # Validate file
+    # Per-type size + extension validation (a 6MB image still fails its 5MB cap).
     is_valid, error = validate_file(filename, content)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)

@@ -1,16 +1,39 @@
 """Tests for pure functions in backend.attachments."""
 
 import base64
+import io
+
+import pytest
+from fastapi import HTTPException, Request, UploadFile
+from fastapi.testclient import TestClient
 
 from backend.attachments import (
+    content_length_exceeds,
     encode_image_for_vision,
     get_file_extension,
     get_file_type,
+    read_capped,
     validate_file,
     MAX_IMAGE_SIZE,
     MAX_PDF_SIZE,
     MAX_TEXT_SIZE,
 )
+
+
+def _request_with_headers(headers: dict[str, str]) -> Request:
+    """Build a minimal Request carrying the given headers."""
+    raw_headers = [
+        (name.lower().encode(), value.encode()) for name, value in headers.items()
+    ]
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/attachments",
+        "query_string": b"",
+        "headers": raw_headers,
+        "client": ("127.0.0.1", 12345),
+    }
+    return Request(scope)
 
 
 # ---------------------------------------------------------------------------
@@ -170,3 +193,130 @@ class TestEncodeImageForVision:
 
         assert result is not None
         assert "image/webp" in result["image_url"]["url"]
+
+
+# ---------------------------------------------------------------------------
+# content_length_exceeds — fast-path Content-Length reject (issue #37)
+# ---------------------------------------------------------------------------
+
+class TestContentLengthExceeds:
+    """Tests for content_length_exceeds."""
+
+    def test_over_cap_returns_true(self):
+        """A well-formed Content-Length over the cap returns True."""
+        request = _request_with_headers({"content-length": str(MAX_PDF_SIZE + 1)})
+        assert content_length_exceeds(request, MAX_PDF_SIZE) is True
+
+    def test_under_cap_returns_false(self):
+        """A Content-Length under the cap returns False."""
+        request = _request_with_headers({"content-length": str(MAX_PDF_SIZE - 1)})
+        assert content_length_exceeds(request, MAX_PDF_SIZE) is False
+
+    def test_at_cap_returns_false(self):
+        """A Content-Length exactly at the cap is not over."""
+        request = _request_with_headers({"content-length": str(MAX_PDF_SIZE)})
+        assert content_length_exceeds(request, MAX_PDF_SIZE) is False
+
+    def test_absent_header_returns_false(self):
+        """No Content-Length header returns False (fall through to chunked cap)."""
+        request = _request_with_headers({})
+        assert content_length_exceeds(request, MAX_PDF_SIZE) is False
+
+    def test_malformed_header_treated_as_absent(self):
+        """A malformed Content-Length is treated as absent, never raises."""
+        request = _request_with_headers({"content-length": "not-a-number"})
+        assert content_length_exceeds(request, MAX_PDF_SIZE) is False
+
+    def test_duplicated_header_treated_as_absent(self):
+        """A duplicated/comma-joined Content-Length is treated as absent."""
+        request = _request_with_headers({"content-length": "100, 200"})
+        assert content_length_exceeds(request, MAX_PDF_SIZE) is False
+
+
+# ---------------------------------------------------------------------------
+# read_capped — hard in-memory chunked cap (issue #37)
+# ---------------------------------------------------------------------------
+
+class TestReadCapped:
+    """Tests for read_capped."""
+
+    async def test_under_cap_returns_full_content(self):
+        """Content under the cap is returned in full."""
+        content = b"x" * 1000
+        upload = UploadFile(filename="small.txt", file=io.BytesIO(content))
+        result = await read_capped(upload, MAX_PDF_SIZE)
+        assert result == content
+
+    async def test_over_cap_raises_413(self):
+        """Content over the cap raises HTTPException(413) before full read."""
+        content = b"x" * (MAX_PDF_SIZE + 65536)
+        upload = UploadFile(filename="huge.pdf", file=io.BytesIO(content))
+        with pytest.raises(HTTPException) as exc_info:
+            await read_capped(upload, MAX_PDF_SIZE)
+        assert exc_info.value.status_code == 413
+
+    async def test_exactly_at_cap_passes(self):
+        """Content exactly at the cap does not raise."""
+        content = b"x" * MAX_PDF_SIZE
+        upload = UploadFile(filename="exact.pdf", file=io.BytesIO(content))
+        result = await read_capped(upload, MAX_PDF_SIZE)
+        assert len(result) == MAX_PDF_SIZE
+
+
+# ---------------------------------------------------------------------------
+# /api/attachments integration — the 413/400 status-code contract (issue #37)
+# ---------------------------------------------------------------------------
+
+class TestUploadEndpoint:
+    """Integration tests for the upload handler's size gates."""
+
+    def _client(self) -> TestClient:
+        from backend.main import app
+
+        return TestClient(app)
+
+    def test_oversized_upload_returns_413_without_saving(self, monkeypatch):
+        """Attack case: a >10MB body is rejected 413 and save_attachment is not called."""
+        import backend.main
+
+        called = False
+
+        def spy_save(*args, **kwargs):
+            nonlocal called
+            called = True
+            return {}
+
+        monkeypatch.setattr(backend.main, "save_attachment", spy_save)
+
+        oversized = b"x" * (MAX_PDF_SIZE + 1024)
+        response = self._client().post(
+            "/api/attachments",
+            files={"file": ("huge.pdf", oversized, "application/pdf")},
+        )
+
+        assert response.status_code == 413
+        assert "too large" in response.json()["detail"].lower()
+        assert called is False, "save_attachment must not run for a rejected upload"
+
+    def test_per_type_overflow_returns_400(self):
+        """A 2MB .txt (over MAX_TEXT_SIZE, under MAX_PDF_SIZE) fails 400 via validate_file."""
+        body = b"x" * (MAX_TEXT_SIZE + 1024 * 1024)  # ~2MB, well under 10MB
+        response = self._client().post(
+            "/api/attachments",
+            files={"file": ("big.txt", body, "text/plain")},
+        )
+
+        assert response.status_code == 400
+        assert "too large" in response.json()["detail"].lower()
+
+    def test_valid_small_upload_returns_200(self):
+        """A valid small text file uploads successfully."""
+        response = self._client().post(
+            "/api/attachments",
+            files={"file": ("hello.txt", b"hello world", "text/plain")},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["filename"] == "hello.txt"
+        assert body["file_type"] == "text"

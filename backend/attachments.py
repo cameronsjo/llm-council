@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from fastapi import HTTPException, Request, UploadFile
+
 from .config import DATA_BASE_DIR
 
 logger = logging.getLogger(__name__)
@@ -92,6 +94,61 @@ def validate_file(
         return False, f"Image too large (max {MAX_IMAGE_SIZE // (1024 * 1024)}MB)"
 
     return True, None
+
+
+def content_length_exceeds(request: Request, cap: int) -> bool:
+    """Fast-path check: does the request's Content-Length exceed the cap?
+
+    This is a cheap pre-read reject. It is only an optimization — the header
+    is client-supplied and spoofable, so the chunked read_capped cap is the
+    real in-memory bound. A malformed or duplicated Content-Length (int()
+    ValueError) is treated as absent: return False and fall through to the
+    chunked cap, never raise.
+
+    Args:
+        request: FastAPI request object
+        cap: Maximum allowed body size in bytes
+
+    Returns:
+        True only when a well-formed Content-Length is present and over cap
+    """
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return False
+    try:
+        return int(raw) > cap
+    except ValueError:
+        # Malformed or duplicated header — treat as absent.
+        return False
+
+
+async def read_capped(file: UploadFile, cap: int) -> bytes:
+    """Read an upload in chunks, aborting the moment it exceeds the cap.
+
+    Bounds resident memory to <= cap bytes: the running total is checked
+    after each chunk and a 413 is raised before more is accumulated. Note
+    this bounds memory, not receipt — Starlette has already spooled the
+    body (memory then disk) before the handler runs. b"".join still
+    materializes up to cap bytes; bounded, not streamed.
+
+    Args:
+        file: The uploaded file
+        cap: Maximum allowed size in bytes
+
+    Returns:
+        The full file content when it fits under the cap
+
+    Raises:
+        HTTPException: 413 the moment the running total exceeds cap
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(65536):
+        total += len(chunk)
+        if total > cap:
+            raise HTTPException(status_code=413, detail="File too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def save_attachment(

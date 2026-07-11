@@ -140,6 +140,27 @@ data/
 4. **Header security**: Never expose LLM Council directly to the internet with auth enabled - headers can be spoofed without the proxy
 5. **HTTPS**: Always use HTTPS between clients and your reverse proxy
 
+## Upload Size Limits
+
+The `/api/attachments` endpoint accepts files up to 10MB (the largest per-type
+ceiling, `MAX_PDF_SIZE`). Defense against oversized-upload DoS is layered:
+
+| Layer | Where | Control |
+|-------|-------|---------|
+| Receipt limit | Reverse proxy | Rejects the body before it is received — **the only layer that stops the bytes** |
+| In-memory cap | Application | Chunked read aborts with `413` once >10MB is buffered |
+| Per-type cap | Application | `validate_file` returns `400` for a type-specific overflow (e.g. a 2MB `.txt`) |
+
+The application caps bound *resident memory*, not receipt: Starlette spools the
+multipart body (memory, then disk) before the handler runs. **You must add a
+proxy body limit** as the receipt-level control:
+
+- **Traefik**: a `buffering` middleware with
+  `maxRequestBodyBytes=10485760` (10MB), attached to the router.
+- **nginx**: `client_max_body_size 10m;`
+
+See the commented example in `docker-compose.yml`.
+
 ## API Endpoints
 
 ### GET /api/user
