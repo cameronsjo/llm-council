@@ -135,9 +135,10 @@ data/
 ## Security Considerations
 
 1. **Trust boundaries**: Only enable auth when behind a trusted reverse proxy
-2. **IP validation**: Configure `LLMCOUNCIL_TRUSTED_PROXY_IPS` to match your proxy's IP
-3. **Header security**: Never expose LLM Council directly to the internet with auth enabled - headers can be spoofed without the proxy
-4. **HTTPS**: Always use HTTPS between clients and your reverse proxy
+2. **Peer-IP trust**: The trust decision uses the **immediate TCP peer** (the socket address), never `X-Forwarded-For` — that header is client-supplied and spoofable. Your reverse proxy must therefore be the direct TCP peer of LLM Council; an intermediate hop between the proxy and the app breaks the trust check.
+3. **Pin the proxy IP**: The default `LLMCOUNCIL_TRUSTED_PROXY_IPS` covers loopback plus all RFC1918 ranges so a separate-container proxy works out of the box. For defense-in-depth, pin it to your proxy's *specific* container or host IP (e.g. `LLMCOUNCIL_TRUSTED_PROXY_IPS=172.18.0.5`) so no other host on the private network can present auth headers.
+4. **Header security**: Never expose LLM Council directly to the internet with auth enabled - headers can be spoofed without the proxy
+5. **HTTPS**: Always use HTTPS between clients and your reverse proxy
 
 ## API Endpoints
 

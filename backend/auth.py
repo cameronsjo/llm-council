@@ -91,21 +91,41 @@ def _is_trusted_ip(client_ip: str) -> bool:
     return False
 
 
-def _get_client_ip(request: Request) -> str:
-    """Extract client IP from request, respecting X-Forwarded-For.
+def _get_peer_ip(request: Request) -> str:
+    """Extract the immediate TCP peer's IP address.
+
+    This is the only value safe to base trust decisions on: the peer
+    address comes from the socket and cannot be forged by request
+    headers. X-Forwarded-For is a client-supplied claim — never use it
+    to decide trust (see _get_client_ip for its audit-logging role).
 
     Args:
         request: FastAPI request object
 
     Returns:
-        Client IP address string
+        Peer IP address string, or "" when unavailable
     """
-    # Check X-Forwarded-For header (leftmost is original client)
+    if request.client:
+        return request.client.host
+    return ""
+
+
+def _get_client_ip(request: Request) -> str:
+    """Extract the claimed client IP for audit logging only.
+
+    Returns the leftmost X-Forwarded-For value — the original client as
+    claimed by whoever set the header. Attacker-controlled, so this is
+    for log visibility only; trust decisions use _get_peer_ip.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Claimed client IP address string
+    """
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        # Get the rightmost IP that we didn't add (the reverse proxy's view of client)
-        # In a typical setup: client -> nginx -> app
-        # X-Forwarded-For would be: original_client, ...
+        # Leftmost entry: the original client per the header's own claim
         return forwarded.split(",")[0].strip()
 
     # Fall back to direct client
@@ -132,12 +152,17 @@ async def get_current_user(request: Request) -> User | None:
     if not AUTH_ENABLED:
         return None
 
-    client_ip = _get_client_ip(request)
+    # Trust keys on the TCP peer, never on X-Forwarded-For — the header
+    # is attacker-controlled and was previously spoofable for a full
+    # auth bypass (any peer claiming an in-range XFF passed the gate).
+    peer_ip = _get_peer_ip(request)
 
-    if not _is_trusted_ip(client_ip):
+    if not _is_trusted_ip(peer_ip):
         logger.warning(
-            "Auth headers received from untrusted IP: %s (trusted: %s)",
-            client_ip,
+            "Auth headers received from untrusted peer: %s "
+            "(claimed client: %s, trusted: %s)",
+            peer_ip,
+            _get_client_ip(request),
             TRUSTED_PROXY_IPS,
         )
         return None
