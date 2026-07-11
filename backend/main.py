@@ -89,26 +89,40 @@ from .export import export_to_json, export_to_markdown
 from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
 from .openrouter import close_shared_client
 from .rankings_storage import get_leaderboard, replay_history
-from .shutdown import shutdown_coordinator
+from .shutdown import drain_streams, shutdown_coordinator
 from .websearch import get_search_provider, is_web_search_available
 
 
 from contextlib import asynccontextmanager
 
 
+# Shutdown drain budget. Invariant:
+#   drain (85) < uvicorn timeout_graceful_shutdown (90) < docker stop_grace_period (120)
+# uvicorn cancels the lifespan task at exactly timeout_graceful_shutdown, so an
+# equal budget risks the post-drain close_shared_client() being cancelled →
+# connection-pool leak. Keep this strictly under 90s. Worst case is uvicorn's
+# connection wait (up to 90s) PLUS this drain, bounded by docker's 120s hard kill.
+SHUTDOWN_DRAIN_SECONDS = min(
+    float(os.environ.get("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS", "85")),
+    85.0,
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and graceful shutdown."""
     yield
-    # Shutdown: signal active SSE streams before closing resources
+    # Shutdown: signal active SSE streams, then wait for a real drain (up to
+    # SHUTDOWN_DRAIN_SECONDS) so streams emit server_shutdown and finish their
+    # current LLM call before the shared httpx pool is closed.
     shutdown_coordinator.initiate_shutdown()
     if shutdown_coordinator.active_stream_count > 0:
         logger.info(
-            "Waiting for %d active stream(s) to drain",
+            "Waiting for %d active stream(s) to drain (up to %.0fs)",
             shutdown_coordinator.active_stream_count,
+            SHUTDOWN_DRAIN_SECONDS,
         )
-        # Brief pause so streams can emit their shutdown event
-        await asyncio.sleep(1)
+    await drain_streams(shutdown_coordinator, SHUTDOWN_DRAIN_SECONDS)
     await close_shared_client()
 
 
