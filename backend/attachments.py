@@ -24,6 +24,9 @@ MAX_TEXT_SIZE = 1024 * 1024  # 1MB
 MAX_PDF_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 
+# Chunk size for the capped upload read
+READ_CHUNK_SIZE = 64 * 1024  # 64KB
+
 # Attachments directory
 ATTACHMENTS_DIR = os.path.join(DATA_BASE_DIR, "attachments")
 
@@ -143,9 +146,14 @@ async def read_capped(file: UploadFile, cap: int) -> bytes:
     """
     chunks: list[bytes] = []
     total = 0
-    while chunk := await file.read(65536):
+    while chunk := await file.read(READ_CHUNK_SIZE):
         total += len(chunk)
         if total > cap:
+            logger.warning(
+                "Upload rejected: exceeds resident memory cap. cap=%dB accumulated=%dB",
+                cap,
+                total,
+            )
             raise HTTPException(status_code=413, detail="File too large")
         chunks.append(chunk)
     return b"".join(chunks)

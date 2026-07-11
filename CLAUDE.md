@@ -26,9 +26,11 @@ The key innovation is anonymized peer review, preventing models from playing fav
 
 **`auth.py`** - Authentication Module
 - `AUTH_ENABLED`: Controlled by `LLMCOUNCIL_AUTH_ENABLED` env var
-- `TRUSTED_PROXY_IPS`: CIDR-aware IP validation for reverse proxy trust
+- `TRUSTED_PROXY_IPS`: CIDR-aware IP validation for reverse proxy trust; reload with `reload_trusted_proxy_ips()` (called from `config.reload_config()`) so a changed env var isn't masked by the `lru_cache`d parse
+- `_get_peer_ip()`: The trust key — the raw TCP peer from `request.client`, never headers. Only valid because the entrypoint pins `proxy_headers=False` on uvicorn (otherwise uvicorn would overwrite `scope["client"]` from `X-Forwarded-For`)
+- `_get_client_ip()`: The claimed (attacker-controlled) client IP from `X-Forwarded-For`, for audit logging only — never for trust decisions
 - `User` dataclass: username, email, groups, display_name
-- `get_current_user()`: Extracts user from `Remote-User`, `Remote-Email`, etc. headers
+- `get_current_user()`: Extracts user from `Remote-User`, `Remote-Email`, etc. headers, gated on `_is_trusted_ip(_get_peer_ip(request))`
 - `get_optional_user()`: FastAPI dependency for optional auth
 - Used for per-user conversation isolation
 
@@ -240,6 +242,7 @@ The web search feature allows models to access current information from the web 
 - `LLMCOUNCIL_DATA_DIR`: Data directory (default: `/app/data`)
 - `LLMCOUNCIL_AUTH_ENABLED`: Enable reverse proxy auth
 - `LLMCOUNCIL_TRUSTED_PROXY_IPS`: Trusted proxy IPs for auth headers
+- `LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS`: Shutdown drain budget in seconds (default/ceiling: 85s; clamped to `[0, 85]`, malformed values fall back to the default)
 - `SENTRY_DSN`: Optional Sentry DSN for error monitoring (no-op when empty)
 - `SENTRY_ENVIRONMENT`: Sentry environment tag (default: `development` local, `production` in Docker)
 - `SENTRY_TRACES_SAMPLE_RATE`: Sentry performance tracing sample rate (default: `0.1`)
@@ -254,11 +257,13 @@ SSE streams can last 30-60+ seconds during model calls. The shutdown strategy ha
 - `timeout_graceful_shutdown=90` on uvicorn — drains in-flight requests for up to 90s
 - Covers most chairman model calls without any client-side awareness
 
-**Layer 2 (implemented):** Shutdown coordinator + `server_shutdown` SSE event
+**Layer 2 (implemented):** Shutdown coordinator + real drain + `server_shutdown` SSE event
 - `backend/shutdown.py`: `ShutdownCoordinator` tracks active SSE streams
-- On lifespan shutdown, sets a flag; generators check between yields
-- Emits `{"type": "server_shutdown", "message": "..."}` so frontend can react cleanly
-- Frontend `useConversationStream` handles via `onServerShutdown` callback
+- On lifespan shutdown, sets a flag; generators check between yields and emit `{"type": "server_shutdown", "message": "..."}` so the frontend can react cleanly
+- `drain_streams(coordinator, timeout, poll=0.5, clock=None)` then polls `active_stream_count` until it hits zero or `timeout` elapses, letting in-flight streams actually finish (not just a fixed 1s pause) before `close_shared_client()` runs
+- `backend/main.py` resolves the drain budget via `_resolve_drain_seconds()`: `LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS` env var, clamped to `[0, SHUTDOWN_DRAIN_CEILING_SECONDS]` (85s), falling back to the ceiling on absent/malformed input
+- Invariant: drain (85s) < uvicorn `timeout_graceful_shutdown` (90s) < docker `stop_grace_period` (120s) — the drain budget must stay strictly under uvicorn's timeout or the post-drain `close_shared_client()` risks being cancelled mid-close, leaking the connection pool
+- Frontend `useConversationStream` handles the SSE event via `onServerShutdown` callback
 - App.jsx reloads the conversation to pick up any partial data that was saved
 
 **Layer 3 (not implemented — infra):** Blue-green / rolling deployment
@@ -273,7 +278,7 @@ SSE streams can last 30-60+ seconds during model calls. The shutdown strategy ha
 ## Authentication
 
 **Reverse Proxy Auth Pattern:**
-- Backend trusts headers from configured proxy IPs only
+- Backend trusts auth headers only when the request's TCP peer (`_get_peer_ip`, not `X-Forwarded-For`) is in the configured proxy IP list — see `auth.py` above for why this must be the raw socket peer
 - Headers: `Remote-User`, `Remote-Email`, `Remote-Name`, `Remote-Groups`
 - Compatible with: Authelia, OAuth2 Proxy, Authentik, etc.
 

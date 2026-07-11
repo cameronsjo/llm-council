@@ -18,22 +18,17 @@ from backend.attachments import (
     MAX_PDF_SIZE,
     MAX_TEXT_SIZE,
 )
+from tests.conftest import build_request
 
 
 def _request_with_headers(headers: dict[str, str]) -> Request:
-    """Build a minimal Request carrying the given headers."""
-    raw_headers = [
-        (name.lower().encode(), value.encode()) for name, value in headers.items()
-    ]
-    scope = {
-        "type": "http",
-        "method": "POST",
-        "path": "/api/attachments",
-        "query_string": b"",
-        "headers": raw_headers,
-        "client": ("127.0.0.1", 12345),
-    }
-    return Request(scope)
+    """Build a POST /api/attachments Request (see conftest.build_request)."""
+    return build_request(
+        method="POST",
+        path="/api/attachments",
+        client=("127.0.0.1", 12345),
+        headers=headers,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +257,14 @@ class TestReadCapped:
         result = await read_capped(upload, MAX_PDF_SIZE)
         assert len(result) == MAX_PDF_SIZE
 
+    async def test_one_byte_over_cap_on_partial_final_chunk_raises(self):
+        """A single byte over the cap trips 413 even on a partial final chunk."""
+        content = b"x" * (MAX_PDF_SIZE + 1)
+        upload = UploadFile(filename="just-over.pdf", file=io.BytesIO(content))
+        with pytest.raises(HTTPException) as exc_info:
+            await read_capped(upload, MAX_PDF_SIZE)
+        assert exc_info.value.status_code == 413
+
 
 # ---------------------------------------------------------------------------
 # /api/attachments integration — the 413/400 status-code contract (issue #37)
@@ -320,3 +323,46 @@ class TestUploadEndpoint:
         body = response.json()
         assert body["filename"] == "hello.txt"
         assert body["file_type"] == "text"
+
+    def test_upload_just_under_cap_succeeds(self):
+        """A PDF a few KB under MAX_PDF_SIZE clears every size gate end to end.
+
+        Exercises content_length_exceeds, read_capped, and validate_file
+        together through a real multipart request. The margin (4KB) is
+        deliberate: a multipart body's own Content-Length includes the
+        boundary and part headers on top of the file bytes, so a file
+        whose *content* sits exactly at MAX_PDF_SIZE produces a *request*
+        Content-Length slightly above it — see
+        test_file_content_exactly_at_cap_is_413_via_multipart_overhead
+        for that finding.
+        """
+        near_cap = b"x" * (MAX_PDF_SIZE - 4096)
+        response = self._client().post(
+            "/api/attachments",
+            files={"file": ("near-cap.pdf", near_cap, "application/pdf")},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["filename"] == "near-cap.pdf"
+        assert body["size"] == MAX_PDF_SIZE - 4096
+
+    def test_file_content_exactly_at_cap_is_413_via_multipart_overhead(self):
+        """FINDING: a file whose own content is exactly MAX_PDF_SIZE is rejected.
+
+        content_length_exceeds checks the *request's* Content-Length against
+        MAX_PDF_SIZE, but a multipart body's Content-Length includes the
+        boundary markers and part headers on top of the file bytes. So a
+        file exactly at the documented per-type cap trips the fast-path
+        413 even though its own content never exceeds MAX_PDF_SIZE — the
+        effective usable file size for multipart uploads is a few hundred
+        bytes below the advertised cap. Not a security hole (fails closed,
+        conservative direction) but the cap is under-documented as exact.
+        """
+        exact = b"x" * MAX_PDF_SIZE
+        response = self._client().post(
+            "/api/attachments",
+            files={"file": ("exact.pdf", exact, "application/pdf")},
+        )
+
+        assert response.status_code == 413

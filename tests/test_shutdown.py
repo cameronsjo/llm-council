@@ -174,3 +174,51 @@ class TestDrainStreams:
         await spy_close()
 
         assert events == ["drain_start", "drain_end", "close"]
+
+
+class TestResolveDrainSeconds:
+    """Tests for the guarded env parse of the shutdown drain budget (#38)."""
+
+    def test_absent_env_returns_ceiling_default(self, monkeypatch):
+        """No override resolves to the ceiling default."""
+        from backend.main import (
+            SHUTDOWN_DRAIN_CEILING_SECONDS,
+            _resolve_drain_seconds,
+        )
+
+        monkeypatch.delenv("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS", raising=False)
+        assert _resolve_drain_seconds() == SHUTDOWN_DRAIN_CEILING_SECONDS
+
+    def test_valid_override_under_ceiling(self, monkeypatch):
+        """A valid override below the ceiling is honored."""
+        from backend.main import _resolve_drain_seconds
+
+        monkeypatch.setenv("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS", "30")
+        assert _resolve_drain_seconds() == 30.0
+
+    def test_override_above_ceiling_is_clamped(self, monkeypatch):
+        """An override above the ceiling is clamped to it (invariant < 90s)."""
+        from backend.main import (
+            SHUTDOWN_DRAIN_CEILING_SECONDS,
+            _resolve_drain_seconds,
+        )
+
+        monkeypatch.setenv("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS", "1000")
+        assert _resolve_drain_seconds() == SHUTDOWN_DRAIN_CEILING_SECONDS
+
+    def test_malformed_override_falls_back_without_raising(self, monkeypatch):
+        """A malformed override falls back to the default, never crashes startup."""
+        from backend.main import (
+            SHUTDOWN_DRAIN_CEILING_SECONDS,
+            _resolve_drain_seconds,
+        )
+
+        monkeypatch.setenv("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS", "85s")
+        assert _resolve_drain_seconds() == SHUTDOWN_DRAIN_CEILING_SECONDS
+
+    def test_negative_override_clamped_to_zero(self, monkeypatch):
+        """A negative override clamps to zero, not an immediately-expired deadline."""
+        from backend.main import _resolve_drain_seconds
+
+        monkeypatch.setenv("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS", "-5")
+        assert _resolve_drain_seconds() == 0.0

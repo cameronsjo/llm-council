@@ -183,17 +183,14 @@ def reload_config() -> dict[str, Any]:
         pass
 
     # Refresh trusted-proxy config so a reload picks up a changed
-    # LLMCOUNCIL_TRUSTED_PROXY_IPS. The auth module froze the string at
-    # import and _parse_trusted_ips is @lru_cache'd, so we must reassign
-    # the module var AND clear the cache — clearing alone would re-parse
-    # the stale value (issue #39).
+    # LLMCOUNCIL_TRUSTED_PROXY_IPS (issue #39). auth owns the
+    # cache-invalidation contract; we just trigger it.
     try:
         from . import auth
-        auth.TRUSTED_PROXY_IPS = os.getenv(
-            "LLMCOUNCIL_TRUSTED_PROXY_IPS", auth.TRUSTED_PROXY_IPS
-        )
-        auth._parse_trusted_ips.cache_clear()
+        auth.reload_trusted_proxy_ips()
     except ImportError:
+        # auth is an optional sibling: a reload must not hard-fail if it
+        # can't be imported (mirrors the websearch refresh above).
         pass
 
     logger.info("Configuration reloaded")

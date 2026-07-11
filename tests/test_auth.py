@@ -10,31 +10,17 @@ from backend.auth import (
     _is_trusted_ip,
     _parse_trusted_ips,
     get_current_user,
+    reload_trusted_proxy_ips,
 )
+from tests.conftest import build_request
 
 
 def _build_request(
     client: tuple[str, int] | None,
     headers: dict[str, str] | None = None,
 ) -> Request:
-    """Build a Request from a raw ASGI scope with a controlled peer address.
-
-    TestClient pins the peer to "testclient", so peer-sensitive tests need
-    a hand-built scope.
-    """
-    raw_headers = [
-        (name.lower().encode(), value.encode())
-        for name, value in (headers or {}).items()
-    ]
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "query_string": b"",
-        "headers": raw_headers,
-        "client": client,
-    }
-    return Request(scope)
+    """Build a GET Request with a controlled peer (see conftest.build_request)."""
+    return build_request(method="GET", path="/", client=client, headers=headers)
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +192,66 @@ class TestXffBypass:
         )
 
         assert await get_current_user(request) is None
+
+    async def test_missing_client_fails_closed(self, monkeypatch):
+        """A scope with no client at all (client=None) must not authenticate.
+
+        _get_peer_ip("") on a clientless scope must flow through
+        _is_trusted_ip and fail closed rather than raising or defaulting
+        open — a missing peer is exactly as untrusted as a hostile one.
+        """
+        monkeypatch.setattr(backend.auth, "AUTH_ENABLED", True)
+        request = _build_request(client=None, headers={"Remote-User": "ghost"})
+
+        assert await get_current_user(request) is None
+
+
+# ---------------------------------------------------------------------------
+# reload_trusted_proxy_ips — direct unit tests of the reload contract (#39)
+# ---------------------------------------------------------------------------
+
+class TestReloadTrustedProxyIpsDirect:
+    """Direct tests of reload_trusted_proxy_ips (config.reload_config's callee)."""
+
+    def teardown_method(self):
+        """Restore the module var and cache after mutating them."""
+        backend.auth.TRUSTED_PROXY_IPS = (
+            "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+        )
+        _parse_trusted_ips.cache_clear()
+
+    def test_env_present_updates_module_var_and_returns_it(self, monkeypatch):
+        """With the env var set, the module var is reassigned and returned."""
+        monkeypatch.setenv("LLMCOUNCIL_TRUSTED_PROXY_IPS", "203.0.113.9")
+
+        result = reload_trusted_proxy_ips()
+
+        assert result == "203.0.113.9"
+        assert backend.auth.TRUSTED_PROXY_IPS == "203.0.113.9"
+
+    def test_env_absent_keeps_current_value(self, monkeypatch):
+        """With the env var absent, the current in-memory value is kept, not reset."""
+        monkeypatch.delenv("LLMCOUNCIL_TRUSTED_PROXY_IPS", raising=False)
+        backend.auth.TRUSTED_PROXY_IPS = "192.0.2.1"  # simulate a prior reload's value
+
+        result = reload_trusted_proxy_ips()
+
+        assert result == "192.0.2.1"
+        assert backend.auth.TRUSTED_PROXY_IPS == "192.0.2.1"
+
+    def test_reload_clears_the_parse_cache(self, monkeypatch):
+        """The lru_cache is dropped, not just the module var reassigned.
+
+        Priming the cache with the current (untrusted) value first proves
+        the reload re-parses rather than serving the stale cached tuple.
+        """
+        _parse_trusted_ips.cache_clear()
+        assert _is_trusted_ip("203.0.113.9") is False  # primes the cache
+
+        monkeypatch.setenv("LLMCOUNCIL_TRUSTED_PROXY_IPS", "203.0.113.9")
+        reload_trusted_proxy_ips()
+
+        assert _is_trusted_ip("203.0.113.9") is True
 
 
 # ---------------------------------------------------------------------------

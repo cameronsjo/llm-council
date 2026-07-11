@@ -63,6 +63,24 @@ def _parse_trusted_ips() -> tuple:
     return tuple(trusted)
 
 
+def reload_trusted_proxy_ips() -> str:
+    """Re-read the trusted-proxy list from the environment and drop its cache.
+
+    Owns the cache-invalidation contract so callers (e.g. config.reload_config)
+    don't reach into this module's internals: TRUSTED_PROXY_IPS is frozen at
+    import and _parse_trusted_ips is lru_cache'd, so a reload must reassign the
+    module var AND clear the cache — clearing alone would re-parse the stale
+    value. A reload with the env var absent keeps the current value.
+
+    Returns:
+        The effective trusted-proxy IPs string after the reload
+    """
+    global TRUSTED_PROXY_IPS
+    TRUSTED_PROXY_IPS = os.getenv("LLMCOUNCIL_TRUSTED_PROXY_IPS", TRUSTED_PROXY_IPS)
+    _parse_trusted_ips.cache_clear()
+    return TRUSTED_PROXY_IPS
+
+
 def _is_trusted_ip(client_ip: str) -> bool:
     """Check if client IP is in the trusted proxy list.
 
@@ -94,10 +112,14 @@ def _is_trusted_ip(client_ip: str) -> bool:
 def _get_peer_ip(request: Request) -> str:
     """Extract the immediate TCP peer's IP address.
 
-    This is the only value safe to base trust decisions on: the peer
-    address comes from the socket and cannot be forged by request
-    headers. X-Forwarded-For is a client-supplied claim — never use it
-    to decide trust (see _get_client_ip for its audit-logging role).
+    This is the value trust decisions key on: the peer address comes from
+    the socket, not from request headers. This holds only while uvicorn's
+    proxy-header handling is off (the entrypoint pins ``proxy_headers=False``);
+    with it on, uvicorn overwrites ``scope["client"]`` from X-Forwarded-For
+    for peers in ``forwarded_allow_ips``, which would make the peer IP
+    spoofable and reopen the bypass. X-Forwarded-For is a client-supplied
+    claim — never use it to decide trust (see _get_client_ip for its
+    audit-logging role).
 
     Args:
         request: FastAPI request object

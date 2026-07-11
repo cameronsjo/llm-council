@@ -161,6 +161,13 @@ proxy body limit** as the receipt-level control:
 
 See the commented example in `docker-compose.yml`.
 
+Note: the `Content-Length` fast-reject checks the whole request body, which for
+a multipart upload includes the boundary and part-header framing (a few hundred
+bytes). A file whose own bytes sit exactly at the 10MB ceiling can therefore be
+rejected with `413`; the effective file cap is a few hundred bytes under 10MB
+for multipart requests. This is deliberate (it fails closed) — size the proxy
+limit and client expectations accordingly.
+
 ## API Endpoints
 
 ### GET /api/user

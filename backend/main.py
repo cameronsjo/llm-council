@@ -102,10 +102,34 @@ from contextlib import asynccontextmanager
 # equal budget risks the post-drain close_shared_client() being cancelled →
 # connection-pool leak. Keep this strictly under 90s. Worst case is uvicorn's
 # connection wait (up to 90s) PLUS this drain, bounded by docker's 120s hard kill.
-SHUTDOWN_DRAIN_SECONDS = min(
-    float(os.environ.get("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS", "85")),
-    85.0,
-)
+SHUTDOWN_DRAIN_CEILING_SECONDS = 85.0
+
+
+def _resolve_drain_seconds() -> float:
+    """Resolve the shutdown drain budget from the environment.
+
+    A malformed LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS falls back to the ceiling
+    default rather than crashing startup with an unhandled ValueError —
+    matching the guarded-parse discipline used for uploads. The result is
+    clamped to [0, ceiling] so the invariant (strictly under uvicorn's 90s)
+    holds and a negative override cannot produce an immediately-expired drain.
+    """
+    raw = os.environ.get("LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS")
+    if raw is None:
+        return SHUTDOWN_DRAIN_CEILING_SECONDS
+    try:
+        seconds = float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid LLMCOUNCIL_SHUTDOWN_DRAIN_SECONDS=%r; falling back to %.0fs",
+            raw,
+            SHUTDOWN_DRAIN_CEILING_SECONDS,
+        )
+        return SHUTDOWN_DRAIN_CEILING_SECONDS
+    return max(0.0, min(seconds, SHUTDOWN_DRAIN_CEILING_SECONDS))
+
+
+SHUTDOWN_DRAIN_SECONDS = _resolve_drain_seconds()
 
 
 @asynccontextmanager
@@ -417,6 +441,11 @@ async def upload_attachment(
 
     # Fast reject on a well-formed, over-cap Content-Length before reading.
     if content_length_exceeds(request, MAX_PDF_SIZE):
+        logger.debug(
+            "Upload rejected on Content-Length fast-path. content_length=%s cap=%dB",
+            request.headers.get("content-length", "unknown"),
+            MAX_PDF_SIZE,
+        )
         raise HTTPException(status_code=413, detail="File too large")
 
     # Hard in-memory cap: aborts with 413 the moment the read exceeds the
@@ -1156,4 +1185,18 @@ if STATIC_DIR.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001, timeout_graceful_shutdown=90)
+
+    # proxy_headers=False: the app keys auth trust on the raw TCP socket peer
+    # (auth._get_peer_ip). uvicorn's default proxy-header handling would
+    # overwrite scope["client"] from X-Forwarded-For for peers in
+    # forwarded_allow_ips, which would make the peer IP spoofable again and
+    # reopen the #40 bypass on loopback/host-network deployments. The app does
+    # its own X-Forwarded-For handling (audit only) and never needs uvicorn's
+    # rewrite.
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8001,
+        timeout_graceful_shutdown=90,
+        proxy_headers=False,
+    )
