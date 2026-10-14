@@ -45,11 +45,7 @@ async function fetchWithAuth(url, options = {}, errorMessage = 'Request failed')
     response = await fetch(url, options);
   } catch (err) {
     console.error('[api] Network error on %s %s: %s', method, url, err.message);
-    Sentry.addBreadcrumb({
-      category: 'fetch',
-      message: `${method} ${url} → network error: ${err.message}`,
-      level: 'error',
-    });
+    Sentry.addBreadcrumb({ category: 'fetch', message: `${method} ${url} → network error: ${err.message}`, level: 'error' });
     throw err;
   }
 
@@ -81,7 +77,7 @@ async function fetchJSON(url, options = {}, errorMessage = 'Request failed') {
     }
     throw new ApiError(
       `Expected JSON but got ${contentType || 'unknown content type'}`,
-      response.status
+      response.status,
     );
   }
 
@@ -105,7 +101,7 @@ async function fetchSSE(url, options = {}, errorMessage = 'Stream request failed
     console.error('[api:sse] Unexpected content-type "%s" on %s', contentType, url);
     throw new ApiError(
       `Expected event stream but got ${contentType || 'unknown content type'}`,
-      response.status
+      response.status,
     );
   }
 
@@ -124,10 +120,7 @@ function readWithTimeout(reader, timeoutMs) {
   if (!timeoutMs || timeoutMs <= 0) return reader.read();
   let timerId;
   return Promise.race([
-    reader.read().then((result) => {
-      clearTimeout(timerId);
-      return result;
-    }),
+    reader.read().then(result => { clearTimeout(timerId); return result; }),
     new Promise((_, reject) => {
       timerId = setTimeout(() => reject(new SSETimeoutError(timeoutMs)), timeoutMs);
     }),
@@ -288,18 +281,14 @@ export const api = {
    * Update council configuration.
    */
   async updateConfig(councilModels, chairmanModel) {
-    return fetchJSON(
-      `${API_BASE}/api/config`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          council_models: councilModels,
-          chairman_model: chairmanModel,
-        }),
-      },
-      'Failed to update config'
-    );
+    return fetchJSON(`${API_BASE}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        council_models: councilModels,
+        chairman_model: chairmanModel,
+      }),
+    }, 'Failed to update config');
   },
 
   /**
@@ -314,13 +303,9 @@ export const api = {
    * Use this to fetch the latest models when new models are available.
    */
   async refreshModels() {
-    return fetchJSON(
-      `${API_BASE}/api/models/refresh`,
-      {
-        method: 'POST',
-      },
-      'Failed to refresh models'
-    );
+    return fetchJSON(`${API_BASE}/api/models/refresh`, {
+      method: 'POST',
+    }, 'Failed to refresh models');
   },
 
   /**
@@ -334,15 +319,11 @@ export const api = {
    * Update curated models list.
    */
   async updateCuratedModels(modelIds) {
-    return fetchJSON(
-      `${API_BASE}/api/curated-models`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model_ids: modelIds }),
-      },
-      'Failed to update curated models'
-    );
+    return fetchJSON(`${API_BASE}/api/curated-models`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_ids: modelIds }),
+    }, 'Failed to update curated models');
   },
 
   /**
@@ -377,15 +358,11 @@ export const api = {
     const body = {};
     if (councilModels) body.council_models = councilModels;
     if (chairmanModel) body.chairman_model = chairmanModel;
-    return fetchJSON(
-      `${API_BASE}/api/conversations`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-      'Failed to create conversation'
-    );
+    return fetchJSON(`${API_BASE}/api/conversations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, 'Failed to create conversation');
   },
 
   /**
@@ -395,7 +372,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}`,
       {},
-      'Failed to get conversation'
+      'Failed to get conversation',
     );
   },
 
@@ -406,7 +383,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}`,
       { method: 'DELETE' },
-      'Failed to delete conversation'
+      'Failed to delete conversation',
     );
   },
 
@@ -421,7 +398,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       },
-      'Failed to rename conversation'
+      'Failed to rename conversation',
     );
   },
 
@@ -433,7 +410,7 @@ export const api = {
     const response = await fetchWithAuth(
       `${API_BASE}/api/conversations/${conversationId}/export/markdown`,
       {},
-      'Failed to export conversation'
+      'Failed to export conversation',
     );
     return response.blob();
   },
@@ -446,7 +423,7 @@ export const api = {
     const response = await fetchWithAuth(
       `${API_BASE}/api/conversations/${conversationId}/export/json`,
       {},
-      'Failed to export conversation'
+      'Failed to export conversation',
     );
     return response.blob();
   },
@@ -485,7 +462,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}/pending`,
       {},
-      'Failed to get pending status'
+      'Failed to get pending status',
     );
   },
 
@@ -496,7 +473,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}/pending`,
       { method: 'DELETE' },
-      'Failed to clear pending'
+      'Failed to clear pending',
     );
   },
 
@@ -552,7 +529,7 @@ export const api = {
         body: JSON.stringify(body),
         signal,
       },
-      'Failed to send message'
+      'Failed to send message',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -572,7 +549,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to extend debate'
+      'Failed to extend debate',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -590,7 +567,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry synthesis'
+      'Failed to retry synthesis',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -607,7 +584,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry rankings'
+      'Failed to retry rankings',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -624,7 +601,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry all stages'
+      'Failed to retry all stages',
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);

@@ -65,6 +65,7 @@ export default function ChatInterface({
   onForkConversation,
   onExtendDebate,
   onRetrySynthesis,
+  onRetryRankings,
   onRetryAll,
   onCancel,
   isLoading,

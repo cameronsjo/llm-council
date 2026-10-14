@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Corrupt stream events now stop reading, clear loading indicators, and show an
   actionable error instead of silently losing events or reporting completion.
+- OpenRouter model queries, streaming requests, and model-catalog refreshes now
+  use the current API key after configuration reload without a server restart.
 
 - Stage 2 ranking no longer includes models that failed in Stage 1, eliminating duplicate
   404s, redundant OpenRouter calls, and duplicated Sentry events when a council model's
