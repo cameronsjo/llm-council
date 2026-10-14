@@ -110,5 +110,21 @@ def test_partial_and_typed_rounds(shape: str) -> None:
             message["rounds"].reverse()
         else:
             message["rounds"][1]["round_type"] = "ranking"
+            message["rounds"].reverse()
         expected = "Peer evaluation"
-    assert expected in export_to_markdown({"messages": [message]})
+    markdown = export_to_markdown({"messages": [message]})
+    assert expected in markdown
+    if shape in ("reversed", "singular"):
+        blocks = [
+            "### Stage 1: Individual Responses",
+            "#### member\n\nIndividual answer",
+            "### Stage 2: Peer Rankings",
+            "#### evaluator's Evaluation\n\nPeer evaluation",
+            "**Extracted Ranking:** Response A",
+            "### Stage 3: Final Synthesis",
+            "*Synthesized by chair*\n\nFinal answer",
+        ]
+        for block in blocks:
+            assert block in markdown
+        positions = [markdown.index(block) for block in blocks]
+        assert positions == sorted(positions)
