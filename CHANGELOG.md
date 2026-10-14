@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Both message composers block button and keyboard submission while attachments
+  upload, showing an uploading label until all selected files are ready.
 - Conversation switches start a fresh composer, clearing draft text and staged
   attachments and preventing late uploads from attaching to another conversation.
 - `make test` now runs both test suites, with backend watch and coverage targets
