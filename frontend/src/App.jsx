@@ -8,7 +8,6 @@ import { useConversationStream } from './hooks/useConversationStream';
 import { useUIStore } from './stores/uiStore';
 import {
   useConfig,
-  useUserInfo,
   useConversations,
   useConversation,
   usePendingStatus,
@@ -32,16 +31,12 @@ function App() {
   const setMode = useUIStore((s) => s.setMode);
   const arenaRoundCount = useUIStore((s) => s.arenaRoundCount);
   const useWebSearch = useUIStore((s) => s.useWebSearch);
-  const pendingForkContext = useUIStore((s) => s.pendingForkContext);
   const setPendingForkContext = useUIStore((s) => s.setPendingForkContext);
 
   // ── TanStack Query ────────────────────────────────────────────────────
   const configQuery = useConfig();
   const conversationsQuery = useConversations();
   const conversationQuery = useConversation(currentConversationId);
-  const pendingStatusQuery = usePendingStatus(currentConversationId, {
-    enabled: !!currentConversationId,
-  });
 
   // Derive config values
   const councilModels = configQuery.data?.council_models ?? [];
@@ -54,6 +49,7 @@ function App() {
   // ── Streaming ─────────────────────────────────────────────────────────
   const {
     conversation: currentConversation,
+    activeConversationId,
     isLoading,
     isExtendingDebate,
     setConversation: setCurrentConversation,
@@ -63,7 +59,6 @@ function App() {
     retryRankings,
     retrySynthesis,
     cancelStream,
-    updateTitle,
   } = useConversationStream({
     onAuthExpired: () => setAuthExpired(true),
     onServerShutdown: (msg) => {
@@ -74,10 +69,15 @@ function App() {
     },
   });
 
+  const pendingStatusQuery = usePendingStatus(currentConversationId, {
+    enabled: !!currentConversationId && activeConversationId !== currentConversationId,
+  });
+
   // ── Sync fetched conversation into stream reducer ─────────────────────
   // When the TanStack query loads/reloads a conversation, push it into
   // the useReducer so the stream hook has the latest server state.
   useEffect(() => {
+    if (activeConversationId === currentConversationId || conversationQuery.isFetching) return;
     if (!conversationQuery.data || !currentConversationId) return;
 
     const conv = conversationQuery.data;
@@ -134,7 +134,9 @@ function App() {
       setCurrentConversation(conv);
     }
   }, [
+    activeConversationId,
     conversationQuery.data,
+    conversationQuery.isFetching,
     pendingStatusQuery.data,
     pendingStatusQuery.isLoading,
     currentConversationId,

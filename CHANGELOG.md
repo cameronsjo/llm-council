@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pending-status polling and fetched snapshots no longer overwrite local streaming
+  progress; polling resumes after the local transport ends or is cancelled.
+
 - Stage 2 ranking no longer includes models that failed in Stage 1, eliminating duplicate
   404s, redundant OpenRouter calls, and duplicated Sentry events when a council model's
   endpoint is deprecated or unavailable.
