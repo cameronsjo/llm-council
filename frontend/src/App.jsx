@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
@@ -47,8 +47,10 @@ function App() {
   const clearPending = useClearPending();
 
   // ── Streaming ─────────────────────────────────────────────────────────
+  const blockedStreamSnapshot = useRef(null);
   const {
     conversation: currentConversation,
+    activeStream,
     activeConversationId,
     isLoading,
     isExtendingDebate,
@@ -77,10 +79,25 @@ function App() {
   // When the TanStack query loads/reloads a conversation, push it into
   // the useReducer so the stream hook has the latest server state.
   useEffect(() => {
-    if (activeConversationId === currentConversationId || conversationQuery.isFetching) return;
     if (!conversationQuery.data || !currentConversationId) return;
 
     const conv = conversationQuery.data;
+    const blocked = blockedStreamSnapshot.current;
+    if (activeConversationId === currentConversationId) {
+      if (blocked?.owner !== activeStream) {
+        blockedStreamSnapshot.current = {
+          id: currentConversationId,
+          data: conv,
+          owner: activeStream,
+        };
+      }
+      return;
+    }
+    if (conversationQuery.isFetching) return;
+    // Releasing transport ownership does not make the cached pre-stream data fresh.
+    // Keep local results until a new conversation snapshot arrives or we navigate.
+    if (blocked?.id === currentConversationId && blocked.data === conv) return;
+    blockedStreamSnapshot.current = null;
     const pending = pendingStatusQuery.data;
 
     // No pending data or query still loading -- use conversation as-is
@@ -134,6 +151,7 @@ function App() {
       setCurrentConversation(conv);
     }
   }, [
+    activeStream,
     activeConversationId,
     conversationQuery.data,
     conversationQuery.isFetching,

@@ -21,8 +21,9 @@ import { useStreamInvalidation } from './queries';
 export function useConversationStream({ onComplete, onAuthExpired, onServerShutdown } = {}) {
   const [conversation, dispatch] = useReducer(conversationReducer, null);
   const abortRef = useRef(null);
-  // Local transport ownership is distinct from a server-reported pending response.
-  const [activeConversationId, setActiveConversationId] = useState(null);
+  // A new marker distinguishes consecutive local transports, even for the same ID.
+  const [activeStream, setActiveStream] = useState(null);
+  const activeConversationId = activeStream?.conversationId ?? null;
   const invalidateStream = useStreamInvalidation();
 
   // ── Derived state ──────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
     console.info('[stream] Cancel requested');
     abortRef.current?.abort();
     abortRef.current = null;
-    setActiveConversationId(null);
+    setActiveStream(null);
     dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
     dispatch({ type: 'SET_EXTENDING', payload: { isExtendingDebate: false } });
   }, []);
@@ -79,7 +80,7 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-      setActiveConversationId(conversationId);
+      setActiveStream({ conversationId });
 
       console.info('[stream] %s. ConversationId: %s', operationName, conversationId);
 
@@ -191,7 +192,7 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
         // A superseded stream must not release the newer stream's ownership.
         if (abortRef.current === controller) {
           abortRef.current = null;
-          setActiveConversationId(null);
+          setActiveStream(null);
         }
       }
     },
@@ -286,6 +287,7 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
 
   return {
     conversation,
+    activeStream,
     activeConversationId,
     isLoading,
     isExtendingDebate,

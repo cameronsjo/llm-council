@@ -96,6 +96,125 @@ afterEach(async () => {
 });
 
 describe('local stream ownership', () => {
+  it('captures a new baseline when another stream starts on the same conversation before EOF', async () => {
+    await send();
+    await emit('error');
+    fixture.queries.a = {
+      data: { id: 'a', title: 'A checkpoint', messages: [] },
+      isFetching: false,
+    };
+    await rerender();
+    await send();
+    expect(fixture.streams[0].signal.aborted).toBe(true);
+    await emit('round_start', { round_type: 'responses', round_number: 1, models: ['m'] });
+    await emit('model_token', { model: 'm', token: 'Second stream progress' });
+    await act(async () => fixture.streams[0].resolve());
+    expect(pollingEnabled()).toBe(false);
+    await act(async () => container.querySelector('#cancel').click());
+    await act(async () => fixture.streams[1].resolve());
+    expect(readState().messages).toHaveLength(4);
+    expect(readState().messages.at(-1).streaming.tokens.m).toBe('Second stream progress');
+    expect(pollingEnabled()).toBe(true);
+  });
+
+  it('adopts a fresh saved result after completion even if it arrived before reader EOF', async () => {
+    await send();
+    await emit('round_start', { round_type: 'responses', round_number: 1, models: ['m'] });
+    await emit('model_token', { model: 'm', token: 'Local progress' });
+    await emit('complete');
+    fixture.queries.a = {
+      data: {
+        id: 'a',
+        title: 'Fresh before EOF',
+        messages: [
+          { role: 'user', content: 'Question' },
+          {
+            role: 'assistant',
+            rounds: [
+              { round_type: 'responses', responses: [{ model: 'm', content: 'Saved answer' }] },
+            ],
+          },
+        ],
+      },
+      isFetching: false,
+    };
+    await rerender();
+    expect(readState().messages.at(-1).streaming.tokens.m).toBe('Local progress');
+    await act(async () => fixture.streams[0].resolve());
+    expect(readState().title).toBe('Fresh before EOF');
+    expect(readState().messages.at(-1).rounds[0].responses[0].content).toBe('Saved answer');
+  });
+
+  it('protects an immediate SSE error even when React batches start and finish together', async () => {
+    api.sendMessageStream.mockImplementation(
+      (_id, _content, _search, _mode, _arena, _files, onEvent) => {
+        onEvent('round_start', {
+          type: 'round_start',
+          data: { round_type: 'responses', round_number: 1, models: ['m'] },
+        });
+        onEvent('model_token', {
+          type: 'model_token',
+          data: { model: 'm', token: 'Fast progress' },
+        });
+        onEvent('error', { type: 'error', message: 'Please retry' });
+        return Promise.resolve();
+      }
+    );
+    await send();
+    expect(readState().messages).toHaveLength(2);
+    fixture.pending = { data: { pending: false }, isLoading: false };
+    await rerender();
+    expect(readState().messages).toHaveLength(2);
+    expect(readState().messages.at(-1).streaming.tokens.m).toBe('Fast progress');
+    expect(pollingEnabled()).toBe(true);
+  });
+
+  it.each(['cancel', 'SSE error'])(
+    'preserves streamed messages after %s without a refetch',
+    async (ending) => {
+      await send();
+      await emit('round_start', { round_type: 'responses', round_number: 1, models: ['m'] });
+      await emit('model_token', { model: 'm', token: 'Preserve this progress' });
+      if (ending === 'cancel') {
+        await act(async () => container.querySelector('#cancel').click());
+      } else {
+        await emit('error');
+      }
+      await act(async () => fixture.streams[0].resolve());
+      expect(pollingEnabled()).toBe(true);
+      expect(readState().messages).toHaveLength(2);
+      expect(readState().messages.at(-1).streaming.tokens.m).toBe('Preserve this progress');
+      expect(readState()._isLoading).toBe(false);
+      // Pending-only refreshes must not reapply the unchanged pre-stream conversation.
+      for (const data of [
+        { pending: false },
+        { pending: true, stale: false },
+        {
+          pending: true,
+          stale: true,
+          partial_data: { responses: [{ content: 'Old checkpoint' }] },
+        },
+      ]) {
+        fixture.pending = { data, isLoading: false };
+        await rerender();
+        expect(readState().messages).toHaveLength(2);
+        expect(readState().messages.at(-1).streaming.tokens.m).toBe('Preserve this progress');
+      }
+      fixture.pending = { data: { pending: false }, isLoading: false };
+      fixture.queries.a = {
+        data: {
+          id: 'a',
+          title: 'Authoritative saved result',
+          messages: [{ role: 'assistant', rounds: [] }],
+        },
+        isFetching: false,
+      };
+      await rerender();
+      expect(readState().title).toBe('Authoritative saved result');
+      expect(readState().messages).toHaveLength(1);
+    }
+  );
+
   it('preserves live tokens across late pending snapshots and resumes polling after completion', async () => {
     expect(pollingEnabled()).toBe(true);
     await send();
