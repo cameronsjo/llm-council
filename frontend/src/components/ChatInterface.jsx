@@ -18,7 +18,8 @@ import {
   ArrowRight,
   Download,
 } from 'lucide-react';
-import { api } from '../api';
+import { api, AuthRedirectError } from '../api';
+import { uploadFiles } from '../lib/uploads';
 import { getParticipantMapping, getMessageText, canRetryMessage } from '../lib/messageUtils';
 import { useUIStore } from '../stores/uiStore';
 import { useConfig } from '../hooks/queries';
@@ -65,7 +66,6 @@ export default function ChatInterface({
   onForkConversation,
   onExtendDebate,
   onRetrySynthesis,
-  onRetryRankings,
   onRetryAll,
   onCancel,
   isLoading,
@@ -93,6 +93,7 @@ export default function ChatInterface({
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadErrors, setUploadErrors] = useState([]);
   const [forkContextExpanded, setForkContextExpanded] = useState(true);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -148,23 +149,53 @@ export default function ChatInterface({
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+  const handleUploads = async (files) => {
+    if (files.length === 0 || uploadingFile) return;
     setUploadingFile(true);
     try {
-      for (const file of files) {
-        const attachment = await api.uploadAttachment(file);
-        setAttachments((prev) => [...prev, attachment]);
+      const result = await uploadFiles(files, (file) => api.uploadAttachment(file));
+      setAttachments((prev) => [...prev, ...result.attachments]);
+      if (result.errors.some((error) => error.cause instanceof AuthRedirectError)) {
+        useUIStore.getState().setAuthExpired(true);
       }
-    } catch (error) {
-      console.error('Failed to upload file:', error);
-      alert(error.message || 'Failed to upload file');
+      setUploadErrors((prev) => [
+        ...prev.filter((error) => !files.includes(error.file)),
+        ...result.errors.filter((error) => !(error.cause instanceof AuthRedirectError)),
+      ]);
     } finally {
       setUploadingFile(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
+  const handleFileSelect = (e) => handleUploads(Array.from(e.target.files || []));
+
+  const uploadErrorBanner = uploadErrors.length > 0 && (
+    <div className="upload-errors" role="alert">
+      {uploadErrors.map((error, index) => (
+        <div key={index} className="upload-error">
+          <span>
+            {error.file.name}: {error.message}
+          </span>
+          <button
+            type="button"
+            disabled={isLoading || uploadingFile}
+            onClick={() => handleUploads([error.file])}
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            disabled={uploadingFile}
+            aria-label={`Dismiss upload error for ${error.file.name}`}
+            onClick={() => setUploadErrors((prev) => prev.filter((entry) => entry !== error))}
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 
   const handleRemoveAttachment = (id) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
@@ -328,6 +359,7 @@ export default function ChatInterface({
 
             {/* Ask box */}
             <form className="ask-box" onSubmit={handleSubmit}>
+              {uploadErrorBanner}
               <textarea
                 className="ask-box-textarea"
                 placeholder={
@@ -956,6 +988,7 @@ export default function ChatInterface({
       )}
 
       {/* Attachment chips above ask-bar */}
+      {uploadErrorBanner}
       {attachments.length > 0 && (
         <div className="attachment-chips attachment-chips--bar">
           {attachments.map((att) => (
