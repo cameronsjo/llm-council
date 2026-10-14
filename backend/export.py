@@ -52,7 +52,9 @@ def export_to_markdown(conversation: dict[str, Any]) -> str:
     if council_models:
         lines.append("## Council Configuration")
         lines.append("")
-        lines.append(f"**Council Members:** {', '.join(format_model_name(m) for m in council_models)}")
+        lines.append(
+            f"**Council Members:** {', '.join(format_model_name(m) for m in council_models)}"
+        )
         if chairman_model:
             lines.append(f"**Chairman:** {format_model_name(chairman_model)}")
         lines.append("")
@@ -118,8 +120,28 @@ def export_to_markdown(conversation: dict[str, Any]) -> str:
                 lines.append("## Council Response")
                 lines.append("")
 
+                # Read current rounds by type, including partially completed councils.
+                if "rounds" in msg:
+                    rounds = msg.get("rounds") or []
+                    stage1 = [
+                        response
+                        for round_data in rounds
+                        if round_data.get("round_type") == "responses"
+                        for response in round_data.get("responses", [])
+                    ]
+                    stage2 = [
+                        response
+                        for round_data in rounds
+                        if round_data.get("round_type") in ("rankings", "ranking")
+                        for response in round_data.get("responses", [])
+                    ]
+                    stage3 = msg.get("synthesis") or {}
+                else:
+                    stage1 = msg.get("stage1", [])
+                    stage2 = msg.get("stage2", [])
+                    stage3 = msg.get("stage3") or {}
+
                 # Stage 1 responses
-                stage1 = msg.get("stage1", [])
                 if stage1:
                     lines.append("### Stage 1: Individual Responses")
                     lines.append("")
@@ -132,13 +154,17 @@ def export_to_markdown(conversation: dict[str, Any]) -> str:
                         lines.append("")
 
                 # Stage 2 rankings
-                stage2 = msg.get("stage2", [])
                 if stage2:
                     lines.append("### Stage 2: Peer Rankings")
                     lines.append("")
                     for ranking in stage2:
                         model = format_model_name(ranking.get("model", "Unknown"))
-                        text = ranking.get("text", ranking.get("ranking_text", ""))
+                        text = ranking.get(
+                            "content",
+                            ranking.get(
+                                "ranking", ranking.get("text", ranking.get("ranking_text", ""))
+                            ),
+                        )
                         parsed = ranking.get("parsed_ranking", [])
                         lines.append(f"#### {model}'s Evaluation")
                         lines.append("")
@@ -150,14 +176,13 @@ def export_to_markdown(conversation: dict[str, Any]) -> str:
                             lines.append("")
 
                 # Stage 3 synthesis
-                stage3 = msg.get("stage3", {})
                 if stage3:
                     lines.append("### Stage 3: Final Synthesis")
                     lines.append("")
                     chairman = format_model_name(stage3.get("model", "Chairman"))
                     lines.append(f"*Synthesized by {chairman}*")
                     lines.append("")
-                    lines.append(stage3.get("response", ""))
+                    lines.append(stage3.get("content", stage3.get("response", "")))
                     lines.append("")
 
         lines.append("---")
