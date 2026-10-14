@@ -65,7 +65,6 @@ export default function ChatInterface({
   onForkConversation,
   onExtendDebate,
   onRetrySynthesis,
-  onRetryRankings,
   onRetryAll,
   onCancel,
   isLoading,
@@ -172,7 +171,7 @@ export default function ChatInterface({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
+    if (input.trim() && !isLoading && !uploadingFile) {
       onSendMessage(input, attachments);
       setInput('');
       setAttachments([]);
@@ -338,7 +337,7 @@ export default function ChatInterface({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading || !conversation}
+                disabled={isLoading || uploadingFile || !conversation}
                 rows={2}
               />
               {attachments.length > 0 && (
@@ -392,9 +391,13 @@ export default function ChatInterface({
                   <button
                     type="submit"
                     className="convene-btn"
-                    disabled={!input.trim() || !conversation}
+                    disabled={!input.trim() || uploadingFile || !conversation}
                   >
-                    {mode === 'arena' ? 'Open debate' : 'Convene council'}
+                    {uploadingFile
+                      ? 'Uploading…'
+                      : mode === 'arena'
+                        ? 'Open debate'
+                        : 'Convene council'}
                     <ArrowRight size={14} strokeWidth={2} aria-hidden="true" />
                   </button>
                 )}
@@ -1033,7 +1036,7 @@ export default function ChatInterface({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading}
+                disabled={isLoading || uploadingFile}
                 rows={1}
               />
             </div>
@@ -1047,8 +1050,12 @@ export default function ChatInterface({
                 Cancel
               </button>
             ) : (
-              <button type="submit" className="ask-bar-send" disabled={!input.trim()}>
-                Send
+              <button
+                type="submit"
+                className="ask-bar-send"
+                disabled={!input.trim() || uploadingFile}
+              >
+                {uploadingFile ? 'Uploading…' : 'Send'}
                 <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
               </button>
             )}
