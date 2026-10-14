@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `make test` now runs both test suites, with backend watch and coverage targets
   and correct phony declarations for build commands.
+- Markdown downloads now include unified council responses, peer evaluations,
+  and synthesis, while preserving legacy exports and partially completed councils.
 - OpenRouter model queries, streaming requests, and model-catalog refreshes now
   use the current API key after configuration reload without a server restart.
 
