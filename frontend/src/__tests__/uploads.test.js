@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { uploadFiles } from '../lib/uploads';
+import { uploadFiles, mergeUploadState } from '../lib/uploads';
 import { AuthRedirectError } from '../api';
 
 describe('uploadFiles', () => {
@@ -46,5 +46,60 @@ describe('uploadFiles', () => {
         throw null;
       })
     ).toEqual({ attachments: [], errors: [{ file, message: 'Upload failed', cause: null }] });
+  });
+});
+
+describe('mergeUploadState', () => {
+  it('retains unrelated failures, replaces retries, and separates auth from retryable errors', () => {
+    const retry = { name: 'retry.pdf' };
+    const expired = { name: 'expired.pdf' };
+    const other = { name: 'other.pdf' };
+    const oldOther = { file: other, message: 'Keep this failure' };
+    const oldRetry = { file: retry, message: 'Old failure' };
+    const newRetry = { file: retry, message: 'Still too large', cause: new Error('Too large') };
+    const authError = { file: expired, cause: new AuthRedirectError('/login') };
+    const previous = Object.freeze({
+      attachments: Object.freeze([{ id: 'already-attached' }]),
+      errors: Object.freeze([oldOther, oldRetry]),
+    });
+    const result = Object.freeze({
+      attachments: Object.freeze([{ id: 'new-success' }]),
+      errors: Object.freeze([newRetry, authError]),
+    });
+    expect(mergeUploadState(previous, [retry, expired], result)).toEqual({
+      attachments: [{ id: 'already-attached' }, { id: 'new-success' }],
+      errors: [oldOther, newRetry],
+      authExpired: true,
+    });
+    expect(previous.errors).toEqual([oldOther, oldRetry]);
+    expect(result.errors).toEqual([newRetry, authError]);
+  });
+
+  it('clears a successful retry without dropping a distinct file with the same name', () => {
+    const file = { name: 'same.pdf' };
+    const otherFile = { name: 'same.pdf' };
+    const unrelated = { file: otherFile, message: 'Keep me' };
+    expect(
+      mergeUploadState(
+        { attachments: [], errors: [{ file, message: 'Old failure' }, unrelated] },
+        [file],
+        { attachments: [{ id: 'retry-success' }], errors: [] }
+      )
+    ).toEqual({
+      attachments: [{ id: 'retry-success' }],
+      errors: [unrelated],
+      authExpired: false,
+    });
+  });
+
+  it('keeps ordinary errors retryable without expiring the session', () => {
+    const file = { name: 'bad.pdf' };
+    const error = { file, message: 'Too large', cause: new Error('Too large') };
+    expect(
+      mergeUploadState({ attachments: [], errors: [] }, [file], {
+        attachments: [],
+        errors: [error],
+      })
+    ).toEqual({ attachments: [], errors: [error], authExpired: false });
   });
 });

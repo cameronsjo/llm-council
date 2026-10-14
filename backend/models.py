@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from .config import OPENROUTER_API_KEY
+from . import config
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def fetch_available_models() -> list[dict[str, Any]]:
             return _models_cache['data']
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
     }
 
     try:
