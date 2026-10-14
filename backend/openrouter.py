@@ -4,12 +4,14 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Awaitable
+from typing import Any
 
 import httpx
 
-from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
+from . import config
+from .config import OPENROUTER_API_URL
 from .telemetry import get_tracer, is_telemetry_enabled
 
 logger = logging.getLogger(__name__)
@@ -130,7 +132,7 @@ async def query_model(
 
     with tracer.start_as_current_span("llm.query_model", attributes=span_attributes) as span:
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
         }
 
@@ -357,7 +359,7 @@ async def query_model_streaming(
 
     with tracer.start_as_current_span("llm.query_model_streaming", attributes=span_attributes) as span:
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
         }
 
