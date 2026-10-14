@@ -8,7 +8,6 @@ import { useConversationStream } from './hooks/useConversationStream';
 import { useUIStore } from './stores/uiStore';
 import {
   useConfig,
-  useUserInfo,
   useConversations,
   useConversation,
   usePendingStatus,
@@ -32,7 +31,6 @@ function App() {
   const setMode = useUIStore((s) => s.setMode);
   const arenaRoundCount = useUIStore((s) => s.arenaRoundCount);
   const useWebSearch = useUIStore((s) => s.useWebSearch);
-  const pendingForkContext = useUIStore((s) => s.pendingForkContext);
   const setPendingForkContext = useUIStore((s) => s.setPendingForkContext);
 
   // ── TanStack Query ────────────────────────────────────────────────────
@@ -63,7 +61,6 @@ function App() {
     retryRankings,
     retrySynthesis,
     cancelStream,
-    updateTitle,
   } = useConversationStream({
     onAuthExpired: () => setAuthExpired(true),
     onServerShutdown: (msg) => {
@@ -440,6 +437,7 @@ function App() {
         <Standings />
       ) : (
         <ChatInterface
+          key={currentConversationId}
           conversation={currentConversation}
           isLoading={isLoading}
           isExtendingDebate={isExtendingDebate}
