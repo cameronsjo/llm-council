@@ -45,7 +45,11 @@ async function fetchWithAuth(url, options = {}, errorMessage = 'Request failed')
     response = await fetch(url, options);
   } catch (err) {
     console.error('[api] Network error on %s %s: %s', method, url, err.message);
-    Sentry.addBreadcrumb({ category: 'fetch', message: `${method} ${url} → network error: ${err.message}`, level: 'error' });
+    Sentry.addBreadcrumb({
+      category: 'fetch',
+      message: `${method} ${url} → network error: ${err.message}`,
+      level: 'error',
+    });
     throw err;
   }
 
@@ -77,7 +81,7 @@ async function fetchJSON(url, options = {}, errorMessage = 'Request failed') {
     }
     throw new ApiError(
       `Expected JSON but got ${contentType || 'unknown content type'}`,
-      response.status,
+      response.status
     );
   }
 
@@ -101,7 +105,7 @@ async function fetchSSE(url, options = {}, errorMessage = 'Stream request failed
     console.error('[api:sse] Unexpected content-type "%s" on %s', contentType, url);
     throw new ApiError(
       `Expected event stream but got ${contentType || 'unknown content type'}`,
-      response.status,
+      response.status
     );
   }
 
@@ -120,7 +124,10 @@ function readWithTimeout(reader, timeoutMs) {
   if (!timeoutMs || timeoutMs <= 0) return reader.read();
   let timerId;
   return Promise.race([
-    reader.read().then(result => { clearTimeout(timerId); return result; }),
+    reader.read().then((result) => {
+      clearTimeout(timerId);
+      return result;
+    }),
     new Promise((_, reject) => {
       timerId = setTimeout(() => reject(new SSETimeoutError(timeoutMs)), timeoutMs);
     }),
@@ -146,73 +153,113 @@ class SSETimeoutError extends Error {
  * @param {Object} [options]
  * @param {number} [options.inactivityTimeout] - Max ms between chunks before timeout (0 to disable)
  */
-async function readSSEStream(reader, onEvent, signal = null, { inactivityTimeout = SSE_INACTIVITY_TIMEOUT } = {}) {
+async function readSSEStream(
+  reader,
+  onEvent,
+  signal = null,
+  { inactivityTimeout = SSE_INACTIVITY_TIMEOUT } = {}
+) {
   const decoder = new TextDecoder();
   let buffer = '';
   let eventCount = 0;
 
-  while (true) {
-    if (signal?.aborted) {
-      console.debug('[api:sse] Stream aborted by signal after %d events', eventCount);
-      break;
-    }
-
-    let result;
+  const processLine = (line) => {
+    const raw = line.slice(6);
+    let event;
     try {
-      result = await readWithTimeout(reader, inactivityTimeout);
-    } catch (e) {
-      if (e.name === 'AbortError') {
-        console.debug('[api:sse] Stream read aborted after %d events', eventCount);
-        break;
+      event = JSON.parse(raw);
+      if (!event || typeof event.type !== 'string' || !event.type.trim()) {
+        throw new Error('Invalid SSE event envelope');
       }
-      if (e.name === 'SSETimeoutError') {
-        console.warn('[api:sse] Stream timed out after %d events (%ds inactive)', eventCount, inactivityTimeout / 1000);
-      } else {
-        console.error('[api:sse] Stream read error after %d events: %s', eventCount, e.message);
-      }
-      throw e;
+    } catch {
+      // Record diagnostics without copying conversation content into telemetry.
+      const extra = { eventIndex: eventCount + 1, payloadLength: raw.length };
+      console.error(
+        '[api:sse] Invalid event. Index: %d, PayloadLength: %d',
+        extra.eventIndex,
+        extra.payloadLength
+      );
+      Sentry.captureMessage('SSE parse error', { level: 'error', extra });
+      onEvent('error', {
+        type: 'error',
+        code: 'SSE_PARSE_ERROR',
+        message: 'Stream payload could not be read. Please retry.',
+      });
+      return false;
     }
-    if (result.done) break;
+    eventCount++;
+    // Handler failures are not JSON parsing failures; let callers handle them.
+    onEvent(event.type, event);
+    return true;
+  };
 
-    buffer += decoder.decode(result.value, { stream: true });
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        console.debug('[api:sse] Stream aborted by signal after %d events', eventCount);
+        return;
+      }
 
-    // SSE events are delimited by double newlines
-    const parts = buffer.split('\n\n');
-    // Last element is either empty (if buffer ended on \n\n) or an incomplete event
-    buffer = parts.pop();
+      let result;
+      try {
+        result = await readWithTimeout(reader, inactivityTimeout);
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          console.debug('[api:sse] Stream read aborted after %d events', eventCount);
+          return;
+        }
+        if (e.name === 'SSETimeoutError') {
+          console.warn(
+            '[api:sse] Stream timed out after %d events (%ds inactive)',
+            eventCount,
+            inactivityTimeout / 1000
+          );
+        } else {
+          console.error('[api:sse] Stream read error after %d events: %s', eventCount, e.message);
+        }
+        throw e;
+      }
+      if (result.done) break;
 
-    for (const part of parts) {
-      for (const line of part.split('\n')) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event = JSON.parse(line.slice(6));
-            eventCount++;
-            onEvent(event.type, event);
-          } catch (e) {
-            if (e.name === 'AbortError') break;
-            console.error('[api:sse] Failed to parse SSE event: %s. Raw: %s', e.message, line.slice(6, 100));
+      buffer += decoder.decode(result.value, { stream: true });
+
+      // SSE events are delimited by double newlines
+      const parts = buffer.split('\n\n');
+      // Last element is either empty (if buffer ended on \n\n) or an incomplete event
+      buffer = parts.pop();
+
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (line.startsWith('data: ')) {
+            if (!processLine(line)) return;
           }
         }
       }
     }
-  }
 
-  // Flush any remaining buffered data
-  if (buffer.trim()) {
-    for (const line of buffer.split('\n')) {
-      if (line.startsWith('data: ')) {
-        try {
-          const event = JSON.parse(line.slice(6));
-          eventCount++;
-          onEvent(event.type, event);
-        } catch (e) {
-          // Incomplete final event — nothing to do
+    // Flush any remaining buffered data
+    if (buffer.trim()) {
+      for (const line of buffer.split('\n')) {
+        if (line.startsWith('data: ')) {
+          if (!processLine(line)) return;
         }
       }
     }
-  }
 
-  console.debug('[api:sse] Stream ended. Total events: %d', eventCount);
+    console.debug('[api:sse] Stream ended. Total events: %d', eventCount);
+  } finally {
+    // Returning on corruption must also stop the underlying HTTP response.
+    try {
+      await reader.cancel?.();
+    } catch {
+      console.warn('[api:sse] Could not cancel stream reader');
+    }
+    try {
+      reader.releaseLock?.();
+    } catch {
+      console.warn('[api:sse] Could not release stream reader');
+    }
+  }
 }
 
 export const api = {
@@ -241,14 +288,18 @@ export const api = {
    * Update council configuration.
    */
   async updateConfig(councilModels, chairmanModel) {
-    return fetchJSON(`${API_BASE}/api/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        council_models: councilModels,
-        chairman_model: chairmanModel,
-      }),
-    }, 'Failed to update config');
+    return fetchJSON(
+      `${API_BASE}/api/config`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          council_models: councilModels,
+          chairman_model: chairmanModel,
+        }),
+      },
+      'Failed to update config'
+    );
   },
 
   /**
@@ -263,9 +314,13 @@ export const api = {
    * Use this to fetch the latest models when new models are available.
    */
   async refreshModels() {
-    return fetchJSON(`${API_BASE}/api/models/refresh`, {
-      method: 'POST',
-    }, 'Failed to refresh models');
+    return fetchJSON(
+      `${API_BASE}/api/models/refresh`,
+      {
+        method: 'POST',
+      },
+      'Failed to refresh models'
+    );
   },
 
   /**
@@ -279,11 +334,15 @@ export const api = {
    * Update curated models list.
    */
   async updateCuratedModels(modelIds) {
-    return fetchJSON(`${API_BASE}/api/curated-models`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model_ids: modelIds }),
-    }, 'Failed to update curated models');
+    return fetchJSON(
+      `${API_BASE}/api/curated-models`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_ids: modelIds }),
+      },
+      'Failed to update curated models'
+    );
   },
 
   /**
@@ -318,11 +377,15 @@ export const api = {
     const body = {};
     if (councilModels) body.council_models = councilModels;
     if (chairmanModel) body.chairman_model = chairmanModel;
-    return fetchJSON(`${API_BASE}/api/conversations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }, 'Failed to create conversation');
+    return fetchJSON(
+      `${API_BASE}/api/conversations`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      'Failed to create conversation'
+    );
   },
 
   /**
@@ -332,7 +395,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}`,
       {},
-      'Failed to get conversation',
+      'Failed to get conversation'
     );
   },
 
@@ -343,7 +406,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}`,
       { method: 'DELETE' },
-      'Failed to delete conversation',
+      'Failed to delete conversation'
     );
   },
 
@@ -358,7 +421,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       },
-      'Failed to rename conversation',
+      'Failed to rename conversation'
     );
   },
 
@@ -370,7 +433,7 @@ export const api = {
     const response = await fetchWithAuth(
       `${API_BASE}/api/conversations/${conversationId}/export/markdown`,
       {},
-      'Failed to export conversation',
+      'Failed to export conversation'
     );
     return response.blob();
   },
@@ -383,7 +446,7 @@ export const api = {
     const response = await fetchWithAuth(
       `${API_BASE}/api/conversations/${conversationId}/export/json`,
       {},
-      'Failed to export conversation',
+      'Failed to export conversation'
     );
     return response.blob();
   },
@@ -422,7 +485,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}/pending`,
       {},
-      'Failed to get pending status',
+      'Failed to get pending status'
     );
   },
 
@@ -433,7 +496,7 @@ export const api = {
     return fetchJSON(
       `${API_BASE}/api/conversations/${conversationId}/pending`,
       { method: 'DELETE' },
-      'Failed to clear pending',
+      'Failed to clear pending'
     );
   },
 
@@ -489,7 +552,7 @@ export const api = {
         body: JSON.stringify(body),
         signal,
       },
-      'Failed to send message',
+      'Failed to send message'
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -509,7 +572,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to extend debate',
+      'Failed to extend debate'
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -527,7 +590,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry synthesis',
+      'Failed to retry synthesis'
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -544,7 +607,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry rankings',
+      'Failed to retry rankings'
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);
@@ -561,7 +624,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         signal,
       },
-      'Failed to retry all stages',
+      'Failed to retry all stages'
     );
 
     await readSSEStream(response.body.getReader(), onEvent, signal);

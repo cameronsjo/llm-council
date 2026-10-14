@@ -26,6 +26,7 @@ export function buildAssistantMessage(mode) {
     synthesis: null,
     participant_mapping: null,
     errors: [],
+    streamError: null,
     webSearchUsed: false,
     loading: {
       webSearch: false,
@@ -105,6 +106,7 @@ export function conversationReducer(state, action) {
 
     case 'round_start': {
       const { messages, lastMsg } = cloneLastMessage(state);
+      lastMsg.streamError = null;
       const roundType = action.payload.data?.round_type;
 
       // Clear downstream data on retry
@@ -116,7 +118,7 @@ export function conversationReducer(state, action) {
       }
       if (roundType === 'rankings') {
         // Keep responses round, clear rankings onward
-        lastMsg.rounds = (lastMsg.rounds || []).filter(r => r.round_type !== 'rankings');
+        lastMsg.rounds = (lastMsg.rounds || []).filter((r) => r.round_type !== 'rankings');
         lastMsg.synthesis = null;
       }
 
@@ -199,6 +201,7 @@ export function conversationReducer(state, action) {
 
     case 'synthesis_start': {
       const { messages, lastMsg } = cloneLastMessage(state);
+      lastMsg.streamError = null;
       lastMsg.synthesis = null; // Clear stale on retry
       lastMsg.loading = { ...lastMsg.loading, synthesis: true };
       return { ...state, messages };
@@ -246,9 +249,25 @@ export function conversationReducer(state, action) {
     case 'prior_context':
     case 'title_complete':
     case 'complete':
-    case 'error':
     case 'server_shutdown':
       return state;
+
+    case 'error': {
+      const { messages, lastMsg } = cloneLastMessage(state);
+      lastMsg.streamError =
+        typeof action.payload?.message === 'string'
+          ? action.payload.message
+          : 'Response stream stopped unexpectedly. Please retry.';
+      lastMsg.loading = {
+        ...lastMsg.loading,
+        webSearch: false,
+        round: false,
+        roundNumber: null,
+        roundType: null,
+        synthesis: false,
+      };
+      return { ...state, messages };
+    }
 
     default:
       console.log('Unknown event:', action.type);
