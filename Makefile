@@ -1,4 +1,4 @@
-.PHONY: help install dev backend frontend tui docker clean lint test
+.PHONY: help install dev backend frontend tui build docker docker-build clean lint lint-fix test test-watch test-cov
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -42,6 +42,16 @@ lint-fix: ## Fix linting issues
 	uv run ruff check --fix backend/ tui/
 	uv run ruff format backend/ tui/
 	cd frontend && npm run lint -- --fix
+
+test: ## Run backend and frontend tests
+	uv run pytest tests/ -v
+	cd frontend && npm test
+
+test-watch: ## Re-run backend tests when Python source or tests change
+	uv run python -m watchfiles --filter python 'uv run pytest tests/ -v --tb=short -x --ff' backend tests
+
+test-cov: ## Run backend tests with coverage
+	uv run pytest tests/ --cov=backend --cov-report=term-missing
 
 clean: ## Clean build artifacts
 	rm -rf frontend/dist
