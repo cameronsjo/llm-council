@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Corrupt stream events now stop reading, clear loading indicators, and show an
+  actionable error instead of silently losing events or reporting completion.
 - Attachment batches retain successful uploads when another file fails, with inline
   errors and retry/dismiss controls for each failed file.
 - Both message composers block button and keyboard submission while attachments

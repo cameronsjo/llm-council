@@ -644,6 +644,12 @@ export default function ChatInterface({
                 </div>
 
                 {/* Web search states */}
+                {msg.streamError && (
+                  <div className="web-search-error" role="alert">
+                    <AlertTriangle size={12} aria-hidden="true" />
+                    {msg.streamError}
+                  </div>
+                )}
                 {msg.loading?.webSearch && (
                   <div className="stage-loading" role="status" aria-live="polite">
                     <div className="spinner" aria-hidden="true" />

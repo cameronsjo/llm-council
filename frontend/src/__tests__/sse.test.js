@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readSSEStream, SSETimeoutError } from '../api.js';
+import * as Sentry from '@sentry/browser';
+vi.mock('@sentry/browser', () => ({
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
+}));
 
 /**
  * Create a mock ReadableStreamDefaultReader from an array of string chunks.
@@ -13,15 +18,15 @@ function mockReader(chunks) {
       if (i >= chunks.length) return { done: true, value: undefined };
       return { done: false, value: encoder.encode(chunks[i++]) };
     }),
+    cancel: vi.fn(async () => {}),
+    releaseLock: vi.fn(),
   };
 }
 
 describe('readSSEStream', () => {
   it('parses a single complete SSE event', async () => {
     const events = [];
-    const reader = mockReader([
-      'data: {"type":"stage1_start","data":{}}\n\n',
-    ]);
+    const reader = mockReader(['data: {"type":"stage1_start","data":{}}\n\n']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 
@@ -45,10 +50,7 @@ describe('readSSEStream', () => {
   it('handles event split across two chunks', async () => {
     const events = [];
     // JSON split mid-object between two reader.read() calls
-    const reader = mockReader([
-      'data: {"type":"stage1_st',
-      'art","data":{"models":["a"]}}\n\n',
-    ]);
+    const reader = mockReader(['data: {"type":"stage1_st', 'art","data":{"models":["a"]}}\n\n']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 
@@ -60,10 +62,7 @@ describe('readSSEStream', () => {
   it('handles chunk boundary splitting \\n\\n delimiter', async () => {
     const events = [];
     // First chunk ends with first \n of the \n\n delimiter
-    const reader = mockReader([
-      'data: {"type":"a"}\n',
-      '\ndata: {"type":"b"}\n\n',
-    ]);
+    const reader = mockReader(['data: {"type":"a"}\n', '\ndata: {"type":"b"}\n\n']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 
@@ -74,9 +73,7 @@ describe('readSSEStream', () => {
 
   it('ignores non-data SSE lines (comments, event, id)', async () => {
     const events = [];
-    const reader = mockReader([
-      ': this is a comment\nevent: message\ndata: {"type":"ok"}\n\n',
-    ]);
+    const reader = mockReader([': this is a comment\nevent: message\ndata: {"type":"ok"}\n\n']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 
@@ -84,31 +81,88 @@ describe('readSSEStream', () => {
     expect(events[0].type).toBe('ok');
   });
 
-  it('handles malformed JSON gracefully without crashing', async () => {
+  it('emits a terminal error and stops before later events on malformed JSON', async () => {
     const events = [];
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const reader = mockReader([
-      'data: {not json}\n\ndata: {"type":"valid"}\n\n',
-    ]);
+    const reader = mockReader(['data: {not json}\n\ndata: {"type":"valid"}\n\n']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 
     expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('valid');
+    expect(events[0].type).toBe('error');
+    expect(events[0].event.code).toBe('SSE_PARSE_ERROR');
     expect(consoleError).toHaveBeenCalledOnce();
+    expect(reader.cancel).toHaveBeenCalledOnce();
+    expect(reader.releaseLock).toHaveBeenCalledOnce();
 
     consoleError.mockRestore();
+  });
+
+  it('reports corrupt trailing data rather than dropping it', async () => {
+    const events = [];
+    const reader = mockReader(['data: {"type":"complete"']);
+    await readSSEStream(reader, (type, event) => events.push({ type, event }));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('error');
+    expect(reader.cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each(['null', '{}', '[]', '"text"', '{"type":""}', '{"type":"   "}'])(
+    'rejects invalid event envelope %s',
+    async (payload) => {
+      const events = [];
+      await readSSEStream(mockReader([`data: ${payload}\n\n`]), (type) => events.push(type));
+      expect(events).toEqual(['error']);
+    }
+  );
+
+  it('does not mislabel event-handler exceptions as parse errors', async () => {
+    const failure = new Error('Handler failed');
+    const reader = mockReader(['data: {"type":"valid"}\n\n']);
+    await expect(
+      readSSEStream(reader, () => {
+        throw failure;
+      })
+    ).rejects.toBe(failure);
+    expect(reader.cancel).toHaveBeenCalledOnce();
+  });
+
+  it('records bounded metadata without capturing malformed conversation content', async () => {
+    const capture = Sentry.captureMessage.mockClear();
+    const raw = '{private document text';
+    await readSSEStream(mockReader([`data: ${raw}\n\n`]), () => {});
+    expect(capture).toHaveBeenCalledWith('SSE parse error', {
+      level: 'error',
+      extra: { eventIndex: 1, payloadLength: raw.length },
+    });
+    expect(JSON.stringify(capture.mock.calls)).not.toContain('private document text');
+    capture.mockClear();
+  });
+
+  it('does not treat an intentionally aborted partial event as corruption', async () => {
+    const controller = new AbortController();
+    const events = [];
+    const capture = Sentry.captureMessage.mockClear();
+    const reader = mockReader(['data: {"type":']);
+    const read = reader.read;
+    reader.read = async () => {
+      const result = await read();
+      controller.abort();
+      return result;
+    };
+    await readSSEStream(reader, (type) => events.push(type), controller.signal);
+    expect(events).toEqual([]);
+    expect(capture).not.toHaveBeenCalled();
+    expect(reader.cancel).toHaveBeenCalledOnce();
+    capture.mockClear();
   });
 
   it('respects abort signal', async () => {
     const events = [];
     const controller = new AbortController();
 
-    const reader = mockReader([
-      'data: {"type":"first"}\n\n',
-      'data: {"type":"second"}\n\n',
-    ]);
+    const reader = mockReader(['data: {"type":"first"}\n\n', 'data: {"type":"second"}\n\n']);
 
     // Abort after first read
     const originalRead = reader.read;
@@ -129,9 +183,7 @@ describe('readSSEStream', () => {
 
   it('flushes trailing buffered event without \\n\\n terminator', async () => {
     const events = [];
-    const reader = mockReader([
-      'data: {"type":"a"}\n\ndata: {"type":"trailing"}',
-    ]);
+    const reader = mockReader(['data: {"type":"a"}\n\ndata: {"type":"trailing"}']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 
@@ -158,12 +210,7 @@ describe('readSSEStream', () => {
 
   it('handles empty chunks between events', async () => {
     const events = [];
-    const reader = mockReader([
-      'data: {"type":"a"}\n\n',
-      '',
-      '',
-      'data: {"type":"b"}\n\n',
-    ]);
+    const reader = mockReader(['data: {"type":"a"}\n\n', '', '', 'data: {"type":"b"}\n\n']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 
@@ -189,7 +236,9 @@ describe('readSSEStream', () => {
     };
 
     await expect(
-      readSSEStream(reader, (type, event) => events.push({ type, event }), null, { inactivityTimeout: 50 }),
+      readSSEStream(reader, (type, event) => events.push({ type, event }), null, {
+        inactivityTimeout: 50,
+      })
     ).rejects.toThrow(SSETimeoutError);
 
     expect(events).toHaveLength(1);
@@ -198,12 +247,12 @@ describe('readSSEStream', () => {
 
   it('does not timeout when inactivityTimeout is 0 (disabled)', async () => {
     const events = [];
-    const reader = mockReader([
-      'data: {"type":"ok"}\n\n',
-    ]);
+    const reader = mockReader(['data: {"type":"ok"}\n\n']);
 
     // Should complete normally with timeout disabled
-    await readSSEStream(reader, (type, event) => events.push({ type, event }), null, { inactivityTimeout: 0 });
+    await readSSEStream(reader, (type, event) => events.push({ type, event }), null, {
+      inactivityTimeout: 0,
+    });
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe('ok');
@@ -227,7 +276,9 @@ describe('readSSEStream', () => {
     };
 
     // 100ms timeout, but each chunk arrives in 10ms — should not timeout
-    await readSSEStream(reader, (type, event) => events.push({ type, event }), null, { inactivityTimeout: 100 });
+    await readSSEStream(reader, (type, event) => events.push({ type, event }), null, {
+      inactivityTimeout: 100,
+    });
 
     expect(events).toHaveLength(3);
   });
@@ -235,9 +286,7 @@ describe('readSSEStream', () => {
   it('stream ending without terminal event resolves cleanly', async () => {
     const events = [];
     // Stream sends stage1_start but never sends complete/error
-    const reader = mockReader([
-      'data: {"type":"stage1_start"}\n\n',
-    ]);
+    const reader = mockReader(['data: {"type":"stage1_start"}\n\n']);
 
     await readSSEStream(reader, (type, event) => events.push({ type, event }));
 

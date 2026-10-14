@@ -146,73 +146,113 @@ class SSETimeoutError extends Error {
  * @param {Object} [options]
  * @param {number} [options.inactivityTimeout] - Max ms between chunks before timeout (0 to disable)
  */
-async function readSSEStream(reader, onEvent, signal = null, { inactivityTimeout = SSE_INACTIVITY_TIMEOUT } = {}) {
+async function readSSEStream(
+  reader,
+  onEvent,
+  signal = null,
+  { inactivityTimeout = SSE_INACTIVITY_TIMEOUT } = {}
+) {
   const decoder = new TextDecoder();
   let buffer = '';
   let eventCount = 0;
 
-  while (true) {
-    if (signal?.aborted) {
-      console.debug('[api:sse] Stream aborted by signal after %d events', eventCount);
-      break;
-    }
-
-    let result;
+  const processLine = (line) => {
+    const raw = line.slice(6);
+    let event;
     try {
-      result = await readWithTimeout(reader, inactivityTimeout);
-    } catch (e) {
-      if (e.name === 'AbortError') {
-        console.debug('[api:sse] Stream read aborted after %d events', eventCount);
-        break;
+      event = JSON.parse(raw);
+      if (!event || typeof event.type !== 'string' || !event.type.trim()) {
+        throw new Error('Invalid SSE event envelope');
       }
-      if (e.name === 'SSETimeoutError') {
-        console.warn('[api:sse] Stream timed out after %d events (%ds inactive)', eventCount, inactivityTimeout / 1000);
-      } else {
-        console.error('[api:sse] Stream read error after %d events: %s', eventCount, e.message);
-      }
-      throw e;
+    } catch {
+      // Record diagnostics without copying conversation content into telemetry.
+      const extra = { eventIndex: eventCount + 1, payloadLength: raw.length };
+      console.error(
+        '[api:sse] Invalid event. Index: %d, PayloadLength: %d',
+        extra.eventIndex,
+        extra.payloadLength
+      );
+      Sentry.captureMessage('SSE parse error', { level: 'error', extra });
+      onEvent('error', {
+        type: 'error',
+        code: 'SSE_PARSE_ERROR',
+        message: 'Stream payload could not be read. Please retry.',
+      });
+      return false;
     }
-    if (result.done) break;
+    eventCount++;
+    // Handler failures are not JSON parsing failures; let callers handle them.
+    onEvent(event.type, event);
+    return true;
+  };
 
-    buffer += decoder.decode(result.value, { stream: true });
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        console.debug('[api:sse] Stream aborted by signal after %d events', eventCount);
+        return;
+      }
 
-    // SSE events are delimited by double newlines
-    const parts = buffer.split('\n\n');
-    // Last element is either empty (if buffer ended on \n\n) or an incomplete event
-    buffer = parts.pop();
+      let result;
+      try {
+        result = await readWithTimeout(reader, inactivityTimeout);
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          console.debug('[api:sse] Stream read aborted after %d events', eventCount);
+          return;
+        }
+        if (e.name === 'SSETimeoutError') {
+          console.warn(
+            '[api:sse] Stream timed out after %d events (%ds inactive)',
+            eventCount,
+            inactivityTimeout / 1000
+          );
+        } else {
+          console.error('[api:sse] Stream read error after %d events: %s', eventCount, e.message);
+        }
+        throw e;
+      }
+      if (result.done) break;
 
-    for (const part of parts) {
-      for (const line of part.split('\n')) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event = JSON.parse(line.slice(6));
-            eventCount++;
-            onEvent(event.type, event);
-          } catch (e) {
-            if (e.name === 'AbortError') break;
-            console.error('[api:sse] Failed to parse SSE event: %s. Raw: %s', e.message, line.slice(6, 100));
+      buffer += decoder.decode(result.value, { stream: true });
+
+      // SSE events are delimited by double newlines
+      const parts = buffer.split('\n\n');
+      // Last element is either empty (if buffer ended on \n\n) or an incomplete event
+      buffer = parts.pop();
+
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (line.startsWith('data: ')) {
+            if (!processLine(line)) return;
           }
         }
       }
     }
-  }
 
-  // Flush any remaining buffered data
-  if (buffer.trim()) {
-    for (const line of buffer.split('\n')) {
-      if (line.startsWith('data: ')) {
-        try {
-          const event = JSON.parse(line.slice(6));
-          eventCount++;
-          onEvent(event.type, event);
-        } catch (e) {
-          // Incomplete final event — nothing to do
+    // Flush any remaining buffered data
+    if (buffer.trim()) {
+      for (const line of buffer.split('\n')) {
+        if (line.startsWith('data: ')) {
+          if (!processLine(line)) return;
         }
       }
     }
-  }
 
-  console.debug('[api:sse] Stream ended. Total events: %d', eventCount);
+    console.debug('[api:sse] Stream ended. Total events: %d', eventCount);
+  } finally {
+    // Returning on corruption must also stop the underlying HTTP response.
+    try {
+      await reader.cancel?.();
+    } catch {
+      console.warn('[api:sse] Could not cancel stream reader');
+    }
+    try {
+      reader.releaseLock?.();
+    } catch {
+      console.warn('[api:sse] Could not release stream reader');
+    }
+  }
 }
 
 export const api = {
