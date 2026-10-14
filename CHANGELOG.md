@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Attachment batches retain successful uploads when another file fails, with inline
   errors and retry/dismiss controls for each failed file.
+- Both message composers block button and keyboard submission while attachments
+  upload, showing an uploading label until all selected files are ready.
+- Conversation switches start a fresh composer, clearing draft text and staged
+  attachments and preventing late uploads from attaching to another conversation.
+- `make test` now runs both test suites, with backend watch and coverage targets
+  and correct phony declarations for build commands.
+- Markdown downloads now include unified council responses, peer evaluations,
+  and synthesis, while preserving legacy exports and partially completed councils.
 - OpenRouter model queries, streaming requests, and model-catalog refreshes now
   use the current API key after configuration reload without a server restart.
 
