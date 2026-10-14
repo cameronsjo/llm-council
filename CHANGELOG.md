@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Conversation switches start a fresh composer, clearing draft text and staged
   attachments and preventing late uploads from attaching to another conversation.
+- OpenRouter model queries, streaming requests, and model-catalog refreshes now
+  use the current API key after configuration reload without a server restart.
 
 - Stage 2 ranking no longer includes models that failed in Stage 1, eliminating duplicate
   404s, redundant OpenRouter calls, and duplicated Sentry events when a council model's
