@@ -1102,6 +1102,26 @@
   padding: 8px 14px 4px;
 }
 
+.upload-errors {
+  margin: 8px 14px;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: var(--surface);
+}
+
+.upload-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.upload-error span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
 .attachment-chips--bar {
   padding: 0 20px 8px;
 }
