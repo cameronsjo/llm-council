@@ -62,3 +62,51 @@ def test_mixed_timestamp_formats_sort_by_instant_without_rewriting_files(
     ]
     assert {item["id"]: item["created_at"] for item in listed} == timestamps
     assert all(path.read_bytes() == contents for path, contents in original_files.items())
+
+
+@pytest.mark.parametrize("user_id", [None, "alice"])
+def test_invalid_timestamps_sort_last_without_breaking_or_rewriting_files(
+    isolated_storage: None, user_id: str | None
+) -> None:
+    timestamps = {
+        "latest": "2026-01-15T12:00:00+00:00",
+        "earlier": "2026-01-15T11:00:00+00:00",
+        "empty": "",
+        "malformed": "not-a-date",
+        "null": None,
+    }
+    missing_id = "missing"
+    original_files = {}
+
+    for conversation_id, timestamp in timestamps.items():
+        conversation = storage.create_conversation(
+            conversation_id,
+            user_id=user_id,
+            council_models=["model"],
+            chairman_model="chairman",
+        )
+        conversation["created_at"] = timestamp
+        storage.save_conversation(conversation, user_id=user_id)
+
+    missing = storage.create_conversation(
+        missing_id,
+        user_id=user_id,
+        council_models=["model"],
+        chairman_model="chairman",
+    )
+    missing.pop("created_at")
+    storage.save_conversation(missing, user_id=user_id)
+
+    for conversation_id in (*timestamps, missing_id):
+        path = Path(storage.get_conversation_path(conversation_id, user_id))
+        original_files[path] = path.read_bytes()
+
+    listed = storage.list_conversations(user_id=user_id)
+    assert [item["id"] for item in listed[:2]] == ["latest", "earlier"]
+    assert {item["id"] for item in listed[2:]} == {
+        "empty",
+        "malformed",
+        "null",
+        "missing",
+    }
+    assert all(path.read_bytes() == contents for path, contents in original_files.items())

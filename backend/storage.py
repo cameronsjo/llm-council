@@ -232,7 +232,7 @@ def _extract_conversation_metadata(data: dict[str, Any]) -> dict[str, Any]:
     """
     return {
         "id": data["id"],
-        "created_at": data["created_at"],
+        "created_at": data.get("created_at") or "",
         "title": data.get("title", "New Conversation"),
         "message_count": len(data.get("messages", [])),
     }
@@ -240,10 +240,16 @@ def _extract_conversation_metadata(data: dict[str, Any]) -> dict[str, Any]:
 
 def _created_at_utc(conversation: dict[str, Any]) -> datetime:
     """Interpret legacy naive creation times as UTC and normalize explicit offsets."""
-    created_at = datetime.fromisoformat(conversation["created_at"].replace("Z", "+00:00"))
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=timezone.utc)
-    return created_at.astimezone(timezone.utc)
+    try:
+        raw_created_at = conversation.get("created_at")
+        if not isinstance(raw_created_at, str) or not raw_created_at:
+            raise ValueError("missing or empty creation timestamp")
+        created_at = datetime.fromisoformat(raw_created_at.replace("Z", "+00:00"))
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        return created_at.astimezone(timezone.utc)
+    except (AttributeError, OverflowError, TypeError, ValueError):
+        return datetime.min.replace(tzinfo=timezone.utc)
 
 
 def list_conversations(user_id: str | None = None) -> list[dict[str, Any]]:
