@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,27 +85,25 @@ def create_conversation(
     Returns:
         New conversation dict
     """
-    ensure_data_dir(user_id)
+    with _conversation_lock(conversation_id, user_id):
+        ensure_data_dir(user_id)
 
-    # Inherit from global config if not specified
-    effective_council = council_models if council_models else get_council_models()
-    effective_chairman = chairman_model if chairman_model else get_chairman_model()
+        # Inherit from global config if not specified
+        effective_council = council_models if council_models else get_council_models()
+        effective_chairman = chairman_model if chairman_model else get_chairman_model()
 
-    conversation = {
-        "id": conversation_id,
-        "created_at": datetime.utcnow().isoformat(),
-        "title": "New Conversation",
-        "council_models": effective_council,
-        "chairman_model": effective_chairman,
-        "messages": [],
-    }
+        conversation = {
+            "id": conversation_id,
+            "created_at": datetime.utcnow().isoformat(),
+            "title": "New Conversation",
+            "council_models": effective_council,
+            "chairman_model": effective_chairman,
+            "messages": [],
+        }
 
-    # Save to file
-    path = get_conversation_path(conversation_id, user_id)
-    with open(path, "w") as f:
-        json.dump(conversation, f, indent=2)
+        _save_conversation(conversation, user_id)
 
-    return conversation
+        return conversation
 
 
 def get_conversation_config(
@@ -174,11 +173,7 @@ def _should_migrate_message(msg: dict[str, Any]) -> bool:
     Returns:
         True if the message should be migrated
     """
-    return (
-        msg.get("role") == "assistant"
-        and "stage1" in msg
-        and "rounds" not in msg
-    )
+    return msg.get("role") == "assistant" and "stage1" in msg and "rounds" not in msg
 
 
 def migrate_legacy_messages(conversation: dict[str, Any]) -> dict[str, Any]:
@@ -205,20 +200,51 @@ def migrate_legacy_messages(conversation: dict[str, Any]) -> dict[str, Any]:
     return conversation
 
 
-def save_conversation(
-    conversation: dict[str, Any], user_id: str | None = None
-) -> None:
+def save_conversation(conversation: dict[str, Any], user_id: str | None = None) -> None:
     """Save a conversation to storage.
 
     Args:
         conversation: Conversation dict to save
         user_id: Optional username for user-scoped storage
     """
-    ensure_data_dir(user_id)
+    with _conversation_lock(conversation["id"], user_id):
+        _save_conversation(conversation, user_id)
 
-    path = get_conversation_path(conversation["id"], user_id)
-    with open(path, "w") as f:
-        json.dump(conversation, f, indent=2)
+
+def _save_conversation(conversation: dict[str, Any], user_id: str | None) -> None:
+    """Write a snapshot while the caller holds the conversation lock."""
+    ensure_data_dir(user_id)
+    _atomic_write_json(get_conversation_path(conversation["id"], user_id), conversation)
+
+
+def _atomic_write_json(path: str, data: dict[str, Any]) -> None:
+    """Replace JSON only after serialization succeeds in the same directory."""
+    parent = Path(path).parent
+    parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+@contextmanager
+def _conversation_lock(conversation_id: str, user_id: str | None) -> Iterator[None]:
+    """Serialize a whole read-modify-write using a stable per-conversation lock."""
+    lock_path = get_conversation_path(conversation_id, user_id) + ".lock"
+    Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _extract_conversation_metadata(data: dict[str, Any]) -> dict[str, Any]:
@@ -264,9 +290,7 @@ def list_conversations(user_id: str | None = None) -> list[dict[str, Any]]:
     return conversations
 
 
-def add_user_message(
-    conversation_id: str, content: str, user_id: str | None = None
-) -> None:
+def add_user_message(conversation_id: str, content: str, user_id: str | None = None) -> None:
     """Add a user message to a conversation.
 
     Args:
@@ -274,13 +298,14 @@ def add_user_message(
         content: User message content
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["messages"].append({"role": "user", "content": content})
+        conversation["messages"].append({"role": "user", "content": content})
 
-    save_conversation(conversation, user_id)
+        _save_conversation(conversation, user_id)
 
 
 def add_assistant_message(
@@ -303,27 +328,26 @@ def add_assistant_message(
         metrics: Optional aggregated metrics for this response
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    message = {
-        "role": "assistant",
-        "stage1": stage1,
-        "stage2": stage2,
-        "stage3": stage3,
-    }
+        message = {
+            "role": "assistant",
+            "stage1": stage1,
+            "stage2": stage2,
+            "stage3": stage3,
+        }
 
-    if metrics:
-        message["metrics"] = metrics
+        if metrics:
+            message["metrics"] = metrics
 
-    conversation["messages"].append(message)
-    save_conversation(conversation, user_id)
+        conversation["messages"].append(message)
+        _save_conversation(conversation, user_id)
 
 
-def update_conversation_title(
-    conversation_id: str, title: str, user_id: str | None = None
-) -> None:
+def update_conversation_title(conversation_id: str, title: str, user_id: str | None = None) -> None:
     """Update the title of a conversation.
 
     Args:
@@ -331,17 +355,16 @@ def update_conversation_title(
         title: New title for the conversation
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        conversation = get_conversation(conversation_id, user_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["title"] = title
-    save_conversation(conversation, user_id)
+        conversation["title"] = title
+        _save_conversation(conversation, user_id)
 
 
-def delete_conversation(
-    conversation_id: str, user_id: str | None = None
-) -> bool:
+def delete_conversation(conversation_id: str, user_id: str | None = None) -> bool:
     """Delete a conversation from storage.
 
     Args:
@@ -351,13 +374,14 @@ def delete_conversation(
     Returns:
         True if deleted, False if not found
     """
-    path = get_conversation_path(conversation_id, user_id)
+    with _conversation_lock(conversation_id, user_id):
+        path = get_conversation_path(conversation_id, user_id)
 
-    if not os.path.exists(path):
-        return False
+        if not os.path.exists(path):
+            return False
 
-    os.remove(path)
-    return True
+        os.remove(path)
+        return True
 
 
 def add_arena_message(
@@ -378,23 +402,24 @@ def add_arena_message(
         metrics: Optional aggregated metrics for this debate
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    message = {
-        "role": "assistant",
-        "mode": "arena",
-        "rounds": rounds,
-        "synthesis": synthesis,
-        "participant_mapping": participant_mapping,
-    }
+        message = {
+            "role": "assistant",
+            "mode": "arena",
+            "rounds": rounds,
+            "synthesis": synthesis,
+            "participant_mapping": participant_mapping,
+        }
 
-    if metrics:
-        message["metrics"] = metrics
+        if metrics:
+            message["metrics"] = metrics
 
-    conversation["messages"].append(message)
-    save_conversation(conversation, user_id)
+        conversation["messages"].append(message)
+        _save_conversation(conversation, user_id)
 
 
 def add_unified_message(
@@ -411,15 +436,16 @@ def add_unified_message(
         result: DeliberationResult from either council or arena mode
         user_id: Optional username for user-scoped storage
     """
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    message = result.to_dict()
-    message["role"] = "assistant"
+        message = result.to_dict()
+        message["role"] = "assistant"
 
-    conversation["messages"].append(message)
-    save_conversation(conversation, user_id)
+        conversation["messages"].append(message)
+        _save_conversation(conversation, user_id)
 
 
 def update_last_arena_message(
@@ -437,29 +463,31 @@ def update_last_arena_message(
         result: Updated DeliberationResult with extended debate
         user_id: Optional username for user-scoped storage
     """
-    logger.info(
-        "Updating last arena message. ConversationId: %s, Rounds: %d",
-        conversation_id, len(result.rounds),
-    )
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        logger.info(
+            "Updating last arena message. ConversationId: %s, Rounds: %d",
+            conversation_id,
+            len(result.rounds),
+        )
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    # Find and replace the last arena message
-    for i in range(len(conversation["messages"]) - 1, -1, -1):
-        msg = conversation["messages"][i]
-        if msg.get("role") == "assistant" and msg.get("mode") == "arena":
-            message = result.to_dict()
-            message["role"] = "assistant"
-            conversation["messages"][i] = message
-            save_conversation(conversation, user_id)
-            logger.info(
-                "Successfully updated arena message. ConversationId: %s",
-                conversation_id,
-            )
-            return
+        # Find and replace the last arena message
+        for i in range(len(conversation["messages"]) - 1, -1, -1):
+            msg = conversation["messages"][i]
+            if msg.get("role") == "assistant" and msg.get("mode") == "arena":
+                message = result.to_dict()
+                message["role"] = "assistant"
+                conversation["messages"][i] = message
+                _save_conversation(conversation, user_id)
+                logger.info(
+                    "Successfully updated arena message. ConversationId: %s",
+                    conversation_id,
+                )
+                return
 
-    raise ValueError("No arena message found to update")
+        raise ValueError("No arena message found to update")
 
 
 def update_last_council_stage3(
@@ -478,40 +506,42 @@ def update_last_council_stage3(
         metrics: Optional updated aggregate metrics
         user_id: Optional username for user-scoped storage
     """
-    logger.info(
-        "Updating last council Stage 3. ConversationId: %s, Chairman: %s",
-        conversation_id, stage3_result.get("model"),
-    )
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        logger.info(
+            "Updating last council Stage 3. ConversationId: %s, Chairman: %s",
+            conversation_id,
+            stage3_result.get("model"),
+        )
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    for i in range(len(conversation["messages"]) - 1, -1, -1):
-        msg = conversation["messages"][i]
-        if msg.get("role") == "assistant" and msg.get("mode") == "council":
-            if "rounds" in msg:
-                # Unified format: update synthesis dict
-                msg["synthesis"] = {
-                    "model": stage3_result.get("model", ""),
-                    "content": stage3_result.get("response", ""),
-                }
-                if stage3_result.get("metrics"):
-                    msg["synthesis"]["metrics"] = stage3_result["metrics"]
-                if stage3_result.get("reasoning_details"):
-                    msg["synthesis"]["reasoning_details"] = stage3_result["reasoning_details"]
-            else:
-                # Legacy format: update stage3 key
-                msg["stage3"] = stage3_result
-            if metrics is not None:
-                msg["metrics"] = metrics
-            save_conversation(conversation, user_id)
-            logger.info(
-                "Successfully updated council Stage 3. ConversationId: %s",
-                conversation_id,
-            )
-            return
+        for i in range(len(conversation["messages"]) - 1, -1, -1):
+            msg = conversation["messages"][i]
+            if msg.get("role") == "assistant" and msg.get("mode") == "council":
+                if "rounds" in msg:
+                    # Unified format: update synthesis dict
+                    msg["synthesis"] = {
+                        "model": stage3_result.get("model", ""),
+                        "content": stage3_result.get("response", ""),
+                    }
+                    if stage3_result.get("metrics"):
+                        msg["synthesis"]["metrics"] = stage3_result["metrics"]
+                    if stage3_result.get("reasoning_details"):
+                        msg["synthesis"]["reasoning_details"] = stage3_result["reasoning_details"]
+                else:
+                    # Legacy format: update stage3 key
+                    msg["stage3"] = stage3_result
+                if metrics is not None:
+                    msg["metrics"] = metrics
+                _save_conversation(conversation, user_id)
+                logger.info(
+                    "Successfully updated council Stage 3. ConversationId: %s",
+                    conversation_id,
+                )
+                return
 
-    raise ValueError("No council message found to update")
+        raise ValueError("No council message found to update")
 
 
 # =============================================================================
@@ -554,9 +584,7 @@ def load_pending_messages(user_id: str | None = None) -> dict[str, Any]:
     return {}
 
 
-def save_pending_messages(
-    pending: dict[str, Any], user_id: str | None = None
-) -> None:
+def save_pending_messages(pending: dict[str, Any], user_id: str | None = None) -> None:
     """Save pending messages to file using atomic write.
 
     Writes to a temporary file then renames, preventing partial writes
@@ -566,20 +594,7 @@ def save_pending_messages(
         pending: Dict of pending messages
         user_id: Optional username for user-scoped storage
     """
-    path = get_pending_file_path(user_id)
-    parent = Path(path).parent
-    parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=str(parent), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(pending, f, indent=2)
-        os.replace(tmp_path, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
+    _atomic_write_json(get_pending_file_path(user_id), pending)
 
 
 @contextmanager
@@ -642,9 +657,7 @@ def update_pending_progress(
             save_pending_messages(pending, user_id)
 
 
-def clear_pending(
-    conversation_id: str, user_id: str | None = None
-) -> None:
+def clear_pending(conversation_id: str, user_id: str | None = None) -> None:
     """Clear a pending response marker (on success).
 
     Args:
@@ -658,9 +671,7 @@ def clear_pending(
             save_pending_messages(pending, user_id)
 
 
-def get_pending_message(
-    conversation_id: str, user_id: str | None = None
-) -> dict[str, Any] | None:
+def get_pending_message(conversation_id: str, user_id: str | None = None) -> dict[str, Any] | None:
     """Get pending message info for a conversation.
 
     Args:
@@ -716,30 +727,31 @@ def replace_last_council_message(
         metrics: Optional aggregate metrics
         user_id: Optional username for user-scoped storage
     """
-    logger.info(
-        "Replacing last council message (stage 1 retry). ConversationId: %s",
-        conversation_id,
-    )
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        logger.info(
+            "Replacing last council message (stage 1 retry). ConversationId: %s",
+            conversation_id,
+        )
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    for i in range(len(conversation["messages"]) - 1, -1, -1):
-        msg = conversation["messages"][i]
-        if msg.get("role") == "assistant" and msg.get("mode") == "council":
-            new_msg = unified_result.to_dict()
-            new_msg["role"] = "assistant"
-            if metrics is not None:
-                new_msg["metrics"] = metrics
-            conversation["messages"][i] = new_msg
-            save_conversation(conversation, user_id)
-            logger.info(
-                "Successfully replaced council message. ConversationId: %s",
-                conversation_id,
-            )
-            return
+        for i in range(len(conversation["messages"]) - 1, -1, -1):
+            msg = conversation["messages"][i]
+            if msg.get("role") == "assistant" and msg.get("mode") == "council":
+                new_msg = unified_result.to_dict()
+                new_msg["role"] = "assistant"
+                if metrics is not None:
+                    new_msg["metrics"] = metrics
+                conversation["messages"][i] = new_msg
+                _save_conversation(conversation, user_id)
+                logger.info(
+                    "Successfully replaced council message. ConversationId: %s",
+                    conversation_id,
+                )
+                return
 
-    raise ValueError("No council message found to replace")
+        raise ValueError("No council message found to replace")
 
 
 def update_last_council_stages(
@@ -760,66 +772,73 @@ def update_last_council_stages(
         metrics: Optional updated aggregate metrics
         user_id: Optional username for user-scoped storage
     """
-    logger.info(
-        "Updating last council stages 2+3 (stage 2 retry). ConversationId: %s",
-        conversation_id,
-    )
-    conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    with _conversation_lock(conversation_id, user_id):
+        logger.info(
+            "Updating last council stages 2+3 (stage 2 retry). ConversationId: %s",
+            conversation_id,
+        )
+        conversation = get_conversation(conversation_id, user_id, migrate_messages=False)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    for i in range(len(conversation["messages"]) - 1, -1, -1):
-        msg = conversation["messages"][i]
-        if msg.get("role") == "assistant" and msg.get("mode") == "council":
-            if "rounds" in msg and len(msg["rounds"]) >= 2:
-                # Unified format: update round[1] (rankings) and synthesis
-                msg["rounds"][1] = {
-                    "round_number": 2,
-                    "round_type": "ranking",
-                    "responses": [
-                        {
-                            "model": r.get("model", ""),
-                            "content": r.get("ranking", ""),
-                            **({"metrics": r["metrics"]} if r.get("metrics") else {}),
-                            **({"parsed_ranking": r["parsed_ranking"]} if r.get("parsed_ranking") else {}),
-                            **({"reasoning_details": r["reasoning_details"]} if r.get("reasoning_details") else {}),
-                        }
-                        for r in stage2_results
-                    ],
-                }
-                # Update synthesis
-                msg["synthesis"] = {
-                    "model": stage3_result.get("model", ""),
-                    "content": stage3_result.get("response", ""),
-                }
-                if stage3_result.get("metrics"):
-                    msg["synthesis"]["metrics"] = stage3_result["metrics"]
-                if stage3_result.get("reasoning_details"):
-                    msg["synthesis"]["reasoning_details"] = stage3_result["reasoning_details"]
-            else:
-                # Legacy format: update stage2 and stage3
-                msg["stage2"] = stage2_results
-                msg["stage3"] = stage3_result
+        for i in range(len(conversation["messages"]) - 1, -1, -1):
+            msg = conversation["messages"][i]
+            if msg.get("role") == "assistant" and msg.get("mode") == "council":
+                if "rounds" in msg and len(msg["rounds"]) >= 2:
+                    # Unified format: update round[1] (rankings) and synthesis
+                    msg["rounds"][1] = {
+                        "round_number": 2,
+                        "round_type": "ranking",
+                        "responses": [
+                            {
+                                "model": r.get("model", ""),
+                                "content": r.get("ranking", ""),
+                                **({"metrics": r["metrics"]} if r.get("metrics") else {}),
+                                **(
+                                    {"parsed_ranking": r["parsed_ranking"]}
+                                    if r.get("parsed_ranking")
+                                    else {}
+                                ),
+                                **(
+                                    {"reasoning_details": r["reasoning_details"]}
+                                    if r.get("reasoning_details")
+                                    else {}
+                                ),
+                            }
+                            for r in stage2_results
+                        ],
+                    }
+                    # Update synthesis
+                    msg["synthesis"] = {
+                        "model": stage3_result.get("model", ""),
+                        "content": stage3_result.get("response", ""),
+                    }
+                    if stage3_result.get("metrics"):
+                        msg["synthesis"]["metrics"] = stage3_result["metrics"]
+                    if stage3_result.get("reasoning_details"):
+                        msg["synthesis"]["reasoning_details"] = stage3_result["reasoning_details"]
+                else:
+                    # Legacy format: update stage2 and stage3
+                    msg["stage2"] = stage2_results
+                    msg["stage3"] = stage3_result
 
-            # Update metadata and metrics
-            if metadata:
-                msg["metadata"] = metadata
-            if metrics is not None:
-                msg["metrics"] = metrics
+                # Update metadata and metrics
+                if metadata:
+                    msg["metadata"] = metadata
+                if metrics is not None:
+                    msg["metrics"] = metrics
 
-            save_conversation(conversation, user_id)
-            logger.info(
-                "Successfully updated council stages 2+3. ConversationId: %s",
-                conversation_id,
-            )
-            return
+                _save_conversation(conversation, user_id)
+                logger.info(
+                    "Successfully updated council stages 2+3. ConversationId: %s",
+                    conversation_id,
+                )
+                return
 
-    raise ValueError("No council message found to update")
+        raise ValueError("No council message found to update")
 
 
-def remove_last_user_message(
-    conversation_id: str, user_id: str | None = None
-) -> bool:
+def remove_last_user_message(conversation_id: str, user_id: str | None = None) -> bool:
     """Remove the last user message from a conversation (for retry cleanup).
 
     Args:
@@ -829,10 +848,11 @@ def remove_last_user_message(
     Returns:
         True if message was removed, False otherwise
     """
-    conversation = get_conversation(conversation_id, user_id)
-    if conversation and conversation["messages"]:
-        if conversation["messages"][-1].get("role") == "user":
-            conversation["messages"] = conversation["messages"][:-1]
-            save_conversation(conversation, user_id)
-            return True
-    return False
+    with _conversation_lock(conversation_id, user_id):
+        conversation = get_conversation(conversation_id, user_id)
+        if conversation and conversation["messages"]:
+            if conversation["messages"][-1].get("role") == "user":
+                conversation["messages"] = conversation["messages"][:-1]
+                _save_conversation(conversation, user_id)
+                return True
+        return False

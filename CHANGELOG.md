@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Save conversation JSON atomically and serialize conversation updates to prevent truncated files and lost concurrent changes.
+
 - Corrupt stream events now stop reading, clear loading indicators, and show an
   actionable error instead of silently losing events or reporting completion.
 - Attachment batches retain successful uploads when another file fails, with inline
