@@ -4,7 +4,8 @@ import logging
 import re
 import time
 from collections import defaultdict
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .config import get_chairman_model, get_council_models
 from .deliberation import (
@@ -17,13 +18,13 @@ from .deliberation import (
 )
 from .openrouter import (
     ModelError,
+    OnModelCompleteCallback,
+    OnProgressCallback,
+    OnTokenCallback,
     is_model_error,
     query_model,
     query_models_parallel,
     query_models_progressive,
-    OnModelCompleteCallback,
-    OnProgressCallback,
-    OnTokenCallback,
 )
 from .telemetry import get_tracer, is_telemetry_enabled
 from .websearch import format_search_results, is_web_search_available, search_web
@@ -438,16 +439,13 @@ Now provide your synthesis - the truth as best you can determine it:"""
 
         messages = [{"role": "user", "content": chairman_prompt}]
 
-        # Query the chairman model with one retry (most important single call)
+        # The transport owns retries, including which failures are retryable.
         response = await query_model(effective_chairman, messages)
-        if response is None or is_model_error(response):
-            logger.warning("Chairman model %s failed on first attempt, retrying.", effective_chairman)
-            response = await query_model(effective_chairman, messages)
 
         if response is None or is_model_error(response):
             stage_duration = time.monotonic() - stage_start
             logger.error(
-                "Failed Stage 3 synthesis, chairman failed after retry. Chairman: %s, Duration: %.2fs",
+                "Failed Stage 3 synthesis, chairman failed. Chairman: %s, Duration: %.2fs",
                 effective_chairman, stage_duration,
             )
             if is_telemetry_enabled():

@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Let the model transport own chairman retries, avoiding duplicate requests after terminal synthesis failures.
+
 - Corrupt stream events now stop reading, clear loading indicators, and show an
   actionable error instead of silently losing events or reporting completion.
 - Attachment batches retain successful uploads when another file fails, with inline
