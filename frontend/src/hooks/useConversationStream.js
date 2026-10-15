@@ -87,8 +87,16 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
         ? { isExtendingDebate: active }
         : { isLoading: active };
 
+    const optimisticId = Symbol('optimistic-send');
     dispatch({ type: loadingAction, payload: buildLoadingPayload(true) });
-    for (const action of setupActions) dispatch(action);
+    for (const action of setupActions) {
+      dispatch({ ...action, payload: { ...action.payload, optimisticId } });
+    }
+    const rollbackOptimistic = () => {
+      if (setupActions.length > 0) {
+        dispatch({ type: 'ROLLBACK_OPTIMISTIC', payload: { optimisticId } });
+      }
+    };
 
     await Sentry.startSpan(
       { name: `council.${operationName}`, op: 'ui.action', attributes: { 'council.conversationId': conversationId } },
@@ -146,7 +154,7 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
           }
           Sentry.captureException(error, { tags: { operation: operationName, conversationId } });
           console.error('[stream] %s failed. ConversationId: %s, Error: %s', operationName, conversationId, error.message, error);
-          if (setupActions.length > 0) dispatch({ type: 'ROLLBACK_OPTIMISTIC' });
+          rollbackOptimistic();
           resetLoading();
         }
       },
