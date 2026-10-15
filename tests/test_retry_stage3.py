@@ -102,7 +102,7 @@ class TestUpdateLastCouncilStage3:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation),
-            patch("backend.storage.save_conversation") as mock_save,
+            patch("backend.storage._save_conversation") as mock_save,
         ):
             update_last_council_stage3("conv-123", new_stage3)
 
@@ -118,7 +118,7 @@ class TestUpdateLastCouncilStage3:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation),
-            patch("backend.storage.save_conversation") as mock_save,
+            patch("backend.storage._save_conversation") as mock_save,
         ):
             update_last_council_stage3("conv-123", new_stage3, metrics=new_metrics)
 
@@ -135,7 +135,7 @@ class TestUpdateLastCouncilStage3:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation),
-            patch("backend.storage.save_conversation"),
+            patch("backend.storage._save_conversation"),
         ):
             update_last_council_stage3("conv-123", new_stage3)
 
@@ -160,7 +160,7 @@ class TestUpdateLastCouncilStage3:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation),
-            patch("backend.storage.save_conversation"),
+            patch("backend.storage._save_conversation"),
         ):
             with pytest.raises(ValueError, match="No council message found"):
                 update_last_council_stage3("conv-456", {})
@@ -181,7 +181,7 @@ class TestUpdateLastCouncilStage3:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation),
-            patch("backend.storage.save_conversation"),
+            patch("backend.storage._save_conversation"),
         ):
             update_last_council_stage3("conv-789", new_stage3)
 
@@ -197,7 +197,7 @@ class TestUpdateLastCouncilStage3:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation) as mock_get,
-            patch("backend.storage.save_conversation") as mock_save,
+            patch("backend.storage._save_conversation") as mock_save,
         ):
             update_last_council_stage3("conv-123", new_stage3, user_id="alice")
 
@@ -631,7 +631,7 @@ class TestUpdateLastCouncilStage3Unified:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation),
-            patch("backend.storage.save_conversation") as mock_save,
+            patch("backend.storage._save_conversation") as mock_save,
         ):
             update_last_council_stage3("conv-unified", new_stage3)
 
@@ -654,7 +654,7 @@ class TestUpdateLastCouncilStage3Unified:
 
         with (
             patch("backend.storage.get_conversation", return_value=conversation),
-            patch("backend.storage.save_conversation"),
+            patch("backend.storage._save_conversation"),
         ):
             update_last_council_stage3("conv-unified", new_stage3)
 
