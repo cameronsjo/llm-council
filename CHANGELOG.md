@@ -28,7 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Let the model transport own chairman retries, avoiding duplicate requests after terminal synthesis failures.
+- Avoid duplicate chairman requests after billing/authentication errors or exhausted HTTP retries, while retaining one recovery attempt for timeouts, connection failures, and other server errors.
+
+- Honor numeric Retry-After delays on 429 responses for regular and streaming model requests, with a 30-second cap and exponential fallback.
+
+- Stop retrying a timed-out model stream after response text arrives, preventing duplicated live output.
 
 - Corrupt stream events now stop reading, clear loading indicators, and show an
   actionable error instead of silently losing events or reporting completion.
