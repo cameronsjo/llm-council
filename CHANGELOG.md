@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Roll back optimistic messages by send identity, so overlapping failures and repeated cleanup cannot remove another send or saved history.
 
+- Avoid duplicate chairman requests after billing/authentication errors or exhausted HTTP retries, while retaining one recovery attempt for timeouts, connection failures, and other server errors.
+
 - Store UTC-aware creation timestamps and sort legacy naive, Z, and offset-aware conversation dates chronologically without rewriting saved data.
 
 - Honor numeric Retry-After delays on 429 responses for regular and streaming model requests, with a 30-second cap and exponential fallback.
