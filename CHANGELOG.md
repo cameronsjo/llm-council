@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Remove optimistic messages and reset loading after an SSE inactivity timeout before starting recovery, preventing orphaned assistant bubbles.
 
+- Roll back optimistic messages by send identity, so overlapping failures and repeated cleanup cannot remove another send or saved history.
+
 - Save conversation JSON atomically and serialize conversation updates to prevent truncated files and lost concurrent changes.
 
 - Cancel and await background title generation when council or arena streams fail or close, preventing orphaned requests.
