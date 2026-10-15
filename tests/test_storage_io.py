@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
 import json
+import os
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -274,3 +276,67 @@ def test_delete_serializes_with_in_progress_update(
     assert errors == []
     assert deleted == [True]
     assert not path.exists()
+
+
+@pytest.mark.parametrize("user_id", [None, "alice"])
+def test_delete_removes_conversation_and_lock_sidecar(
+    isolated_storage: Path, user_id: str | None
+) -> None:
+    """A successful delete leaves neither data nor its lock sidecar."""
+    storage.create_conversation("delete-cleanup", user_id=user_id)
+    path = _conversation_path("delete-cleanup", user_id)
+    lock_path = Path(str(path) + ".lock")
+    assert lock_path.exists()
+    assert storage.delete_conversation("delete-cleanup", user_id=user_id)
+    assert not path.exists()
+    assert not lock_path.exists()
+
+
+@pytest.mark.parametrize("user_id", [None, "alice"])
+def test_delete_missing_conversation_creates_no_files(
+    isolated_storage: Path, user_id: str | None
+) -> None:
+    """Deleting an unknown ID does not create a directory or lock file."""
+    assert not storage.delete_conversation("missing", user_id=user_id)
+    assert not isolated_storage.exists()
+
+
+def test_waiter_retries_unlinked_lock_inode_before_mutating(
+    isolated_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An old open descriptor cannot bypass the lock of a recreated conversation."""
+    storage.create_conversation("recreated")
+    path = _conversation_path("recreated")
+    lock_path = str(path) + ".lock"
+    # This represents a waiter that opened the sidecar before deletion.
+    stale_file = open(lock_path, "a")
+    stale_inode = os.fstat(stale_file.fileno()).st_ino
+    assert storage.delete_conversation("recreated")
+    storage.create_conversation("recreated")
+    current_inode = os.stat(lock_path).st_ino
+    assert stale_inode != current_inode
+    original_open = builtins.open
+    original_flock = storage.fcntl.flock
+    acquired_inodes = []
+    supplied_stale = False
+
+    def open_stale_first(file: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal supplied_stale
+        if str(file) == lock_path and not supplied_stale:
+            supplied_stale = True
+            return stale_file
+        return original_open(file, *args, **kwargs)
+
+    def record_flock(file: Any, operation: int) -> None:
+        original_flock(file, operation)
+        if operation == storage.fcntl.LOCK_EX:
+            acquired_inodes.append(os.fstat(file.fileno()).st_ino)
+
+    monkeypatch.setattr(builtins, "open", open_stale_first)
+    monkeypatch.setattr(storage.fcntl, "flock", record_flock)
+    try:
+        storage.add_user_message("recreated", "after-delete")
+    finally:
+        stale_file.close()
+    assert acquired_inodes == [stale_inode, current_inode]
+    assert storage.get_conversation("recreated")["messages"][0]["content"] == "after-delete"

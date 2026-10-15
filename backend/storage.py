@@ -236,15 +236,31 @@ def _atomic_write_json(path: str, data: dict[str, Any]) -> None:
 
 @contextmanager
 def _conversation_lock(conversation_id: str, user_id: str | None) -> Iterator[None]:
-    """Serialize a whole read-modify-write using a stable per-conversation lock."""
-    lock_path = get_conversation_path(conversation_id, user_id) + ".lock"
+    """Serialize mutations, retrying waiters whose lock sidecar was removed."""
+    path = get_conversation_path(conversation_id, user_id)
+    lock_path = path + ".lock"
     Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(lock_path, "w") as lock_file:
-        fcntl.flock(lock_file, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file, fcntl.LOCK_UN)
+    while True:
+        with open(lock_path, "a") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                # A delete may unlink a sidecar while this descriptor waits.
+                # Only the inode currently named by lock_path may guard writes.
+                try:
+                    if not os.path.samestat(os.fstat(lock_file.fileno()), os.stat(lock_path)):
+                        continue
+                except FileNotFoundError:
+                    continue
+                try:
+                    yield
+                finally:
+                    # Remove only after the last operation, while still locked.
+                    # Stale waiters retry above before touching conversation data.
+                    if not os.path.exists(path):
+                        os.unlink(lock_path)
+                return
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _extract_conversation_metadata(data: dict[str, Any]) -> dict[str, Any]:
@@ -374,9 +390,11 @@ def delete_conversation(conversation_id: str, user_id: str | None = None) -> boo
     Returns:
         True if deleted, False if not found
     """
-    with _conversation_lock(conversation_id, user_id):
-        path = get_conversation_path(conversation_id, user_id)
+    path = get_conversation_path(conversation_id, user_id)
+    if not os.path.exists(path):
+        return False
 
+    with _conversation_lock(conversation_id, user_id):
         if not os.path.exists(path):
             return False
 
