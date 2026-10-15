@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 # Initialize OpenTelemetry (must happen before creating FastAPI app for best results)
 setup_telemetry()
 instrument_httpx()
+from contextlib import aclosing, asynccontextmanager
+
 from .arena import (
     aggregate_arena_metrics,
     convert_arena_to_unified_result,
@@ -74,7 +76,6 @@ from .config import (
     update_curated_models,
 )
 from .council import (
-    aggregate_metrics,
     generate_conversation_title,
     perform_web_search,
 )
@@ -86,15 +87,13 @@ from .council_stream import (
     run_council_pipeline,
 )
 from .export import export_to_json, export_to_markdown
-from .models import fetch_available_models, invalidate_cache as invalidate_models_cache
+from .models import fetch_available_models
+from .models import invalidate_cache as invalidate_models_cache
 from .openrouter import close_shared_client
 from .rankings_storage import get_leaderboard, replay_history
 from .shutdown import drain_streams, shutdown_coordinator
+from .task_utils import cancel_and_await_task
 from .websearch import get_search_provider, is_web_search_available
-
-
-from contextlib import asynccontextmanager
-
 
 # Shutdown drain budget. Invariant:
 #   drain (85) < uvicorn timeout_graceful_shutdown (90) < docker stop_grace_period (120)
@@ -692,17 +691,19 @@ async def send_message_stream(
 
         shutdown_coordinator.register_stream()
         try:
-            async for event in run_council_pipeline(pipeline_input):
-                if shutdown_coordinator.is_shutting_down:
-                    yield shutdown_coordinator.shutdown_sse_event()
-                    return
-                yield f"data: {json.dumps(event)}\n\n"
+            async with aclosing(run_council_pipeline(pipeline_input)) as pipeline:
+                async for event in pipeline:
+                    if shutdown_coordinator.is_shutting_down:
+                        yield shutdown_coordinator.shutdown_sse_event()
+                        return
+                    yield f"data: {json.dumps(event)}\n\n"
         finally:
             shutdown_coordinator.unregister_stream()
 
     async def arena_event_generator():
         """Generate events for arena mode (multi-round debate)."""
         shutdown_coordinator.register_stream()
+        title_task: asyncio.Task | None = None
         try:
             logger.info(
                 "Beginning arena stream. ConversationId: %s, UserId: %s",
@@ -889,7 +890,10 @@ async def send_message_stream(
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            shutdown_coordinator.unregister_stream()
+            try:
+                await cancel_and_await_task(title_task)
+            finally:
+                shutdown_coordinator.unregister_stream()
 
     # Choose the appropriate event generator based on mode
     if request.mode == "arena":
