@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Roll back optimistic messages by send identity, so overlapping failures and repeated cleanup cannot remove another send or saved history.
 
+- Honor numeric Retry-After delays on 429 responses for regular and streaming model requests, with a 30-second cap and exponential fallback.
+
+- Stop retrying a timed-out model stream after response text arrives, preventing duplicated live output.
+
 - Corrupt stream events now stop reading, clear loading indicators, and show an
   actionable error instead of silently losing events or reporting completion.
 - Attachment batches retain successful uploads when another file fails, with inline
