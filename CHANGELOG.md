@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Store UTC-aware creation timestamps and sort legacy naive, Z, and offset-aware conversation dates chronologically without rewriting saved data.
+
 - Stop retrying a timed-out model stream after response text arrives, preventing duplicated live output.
 
 - Corrupt stream events now stop reading, clear loading indicators, and show an
