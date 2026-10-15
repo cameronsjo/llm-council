@@ -65,17 +65,29 @@ export function conversationReducer(state, action) {
     case 'ADD_USER_MESSAGE': {
       const { content, attachments } = action.payload;
       const userMsg = { role: 'user', content };
+      if (action.payload.optimisticId !== undefined) {
+        userMsg._optimisticId = action.payload.optimisticId;
+      }
       if (attachments?.length > 0) userMsg.attachments = attachments;
       return { ...state, messages: [...state.messages, userMsg] };
     }
 
     case 'ADD_ASSISTANT_MESSAGE': {
       const msg = buildAssistantMessage(action.payload.mode);
+      if (action.payload.optimisticId !== undefined) {
+        msg._optimisticId = action.payload.optimisticId;
+      }
       return { ...state, messages: [...state.messages, msg] };
     }
 
-    case 'ROLLBACK_OPTIMISTIC':
-      return { ...state, messages: state.messages.slice(0, -2) };
+    case 'ROLLBACK_OPTIMISTIC': {
+      const optimisticId = action.payload?.optimisticId;
+      if (optimisticId === undefined || optimisticId === null) return state;
+      return {
+        ...state,
+        messages: state.messages.filter((message) => message._optimisticId !== optimisticId),
+      };
+    }
 
     case 'UPDATE_TITLE':
       return { ...state, title: action.payload.title };
