@@ -501,7 +501,9 @@ async def query_model_streaming(
                 return ModelError(model, status, _classify_error(status), error_msg)
 
             except httpx.TimeoutException as e:
-                if attempt < MAX_RETRIES - 1:
+                # Already-forwarded text cannot be retracted from the client.
+                # Retry only before content arrives, otherwise report the failure.
+                if not content_chunks and attempt < MAX_RETRIES - 1:
                     delay = RETRY_BASE_DELAY * (2 ** attempt)
                     logger.warning(
                         "Timeout streaming %s, attempt %d/%d. Retrying in %.1fs.",
@@ -511,7 +513,13 @@ async def query_model_streaming(
                     continue
 
                 # Per-model timeout post-retries — gracefully handled.
-                logger.warning("Timeout streaming %s after %d attempts (%.0fs each): %s", model, MAX_RETRIES, timeout, e)
+                logger.warning(
+                    "Timeout streaming %s after %d attempts (%.0fs each): %s",
+                    model,
+                    attempt + 1,
+                    timeout,
+                    e,
+                )
                 if is_telemetry_enabled():
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode
