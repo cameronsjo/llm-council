@@ -145,17 +145,19 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
         } catch (error) {
           if (error.name === 'AbortError') return;
           if (error instanceof AuthRedirectError) { onAuthExpired?.(); return; }
-          if (error instanceof SSETimeoutError) {
+          const timedOut = error instanceof SSETimeoutError;
+          if (timedOut) {
             Sentry.captureMessage('SSE stream timed out', { level: 'warning', tags: { operation: operationName, conversationId } });
             console.warn('[stream] %s timed out. ConversationId: %s', operationName, conversationId);
-            resetLoading();
-            onServerShutdown?.('Stream timed out — the server may be unresponsive');
-            return;
+          } else {
+            Sentry.captureException(error, { tags: { operation: operationName, conversationId } });
+            console.error('[stream] %s failed. ConversationId: %s, Error: %s', operationName, conversationId, error.message, error);
           }
-          Sentry.captureException(error, { tags: { operation: operationName, conversationId } });
-          console.error('[stream] %s failed. ConversationId: %s, Error: %s', operationName, conversationId, error.message, error);
           rollbackOptimistic();
           resetLoading();
+          if (timedOut) {
+            onServerShutdown?.('Stream timed out — the server may be unresponsive');
+          }
         }
       },
     );
