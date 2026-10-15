@@ -23,7 +23,7 @@ class ModelError:
     """Structured error from a failed model query."""
 
     model: str
-    status_code: int | None  # HTTP status; None for timeouts
+    status_code: int | None  # HTTP status; None for non-HTTP failures
     category: str  # billing | auth | rate_limit | transient | timeout | unknown
     message: str  # Human-readable detail from OpenRouter
 
@@ -255,6 +255,15 @@ async def query_model(
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
                 return ModelError(model, None, "timeout", str(e))
+
+            except httpx.ConnectError as e:
+                logger.warning("Connection failed querying %s: %s", model, e)
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+
+                    span.set_status(Status(StatusCode.ERROR, f"Connection failed: {e}"))
+                return ModelError(model, None, "transient", str(e))
 
             except Exception as e:
                 logger.error("Unexpected error querying %s: %s", model, e)

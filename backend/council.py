@@ -4,7 +4,8 @@ import logging
 import re
 import time
 from collections import defaultdict
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .config import get_chairman_model, get_council_models
 from .deliberation import (
@@ -16,19 +17,40 @@ from .deliberation import (
     Synthesis,
 )
 from .openrouter import (
+    RETRYABLE_STATUS_CODES,
     ModelError,
+    OnModelCompleteCallback,
+    OnProgressCallback,
+    OnTokenCallback,
     is_model_error,
     query_model,
     query_models_parallel,
     query_models_progressive,
-    OnModelCompleteCallback,
-    OnProgressCallback,
-    OnTokenCallback,
 )
 from .telemetry import get_tracer, is_telemetry_enabled
 from .websearch import format_search_results, is_web_search_available, search_web
 
 logger = logging.getLogger(__name__)
+
+
+def _should_retry_chairman(
+    response: dict[str, Any] | ModelError | None,
+) -> bool:
+    """Return whether Stage 3 should make its one additional transport call."""
+    if response is None or not is_model_error(response):
+        return False
+    if response.category == "timeout":
+        return True
+    if response.status_code is None and response.category == "transient":
+        return True
+    if response.status_code in RETRYABLE_STATUS_CODES:
+        return False
+    return (
+        response.status_code is not None
+        and 500 <= response.status_code < 600
+        and response.category in {"transient", "unknown"}
+    )
+
 
 STAGE1_SYSTEM_PROMPT = """You are a council member providing your honest assessment. Your role is to give a direct, accurate answer - not to please or validate the user.
 
@@ -438,20 +460,29 @@ Now provide your synthesis - the truth as best you can determine it:"""
 
         messages = [{"role": "user", "content": chairman_prompt}]
 
-        # Query the chairman model with one retry (most important single call)
+        # The transport owns its retryable HTTP statuses. Stage 3 adds one
+        # bounded retry only for failures the transport returns immediately.
         response = await query_model(effective_chairman, messages)
-        if response is None or is_model_error(response):
-            logger.warning("Chairman model %s failed on first attempt, retrying.", effective_chairman)
+        retried = False
+        if _should_retry_chairman(response):
+            logger.warning(
+                "Chairman model %s failed with a retryable transient error, retrying once.",
+                effective_chairman,
+            )
             response = await query_model(effective_chairman, messages)
+            retried = True
 
         if response is None or is_model_error(response):
             stage_duration = time.monotonic() - stage_start
             logger.error(
-                "Failed Stage 3 synthesis, chairman failed after retry. Chairman: %s, Duration: %.2fs",
-                effective_chairman, stage_duration,
+                "Failed Stage 3 synthesis, chairman failed%s. Chairman: %s, Duration: %.2fs",
+                " after retry" if retried else "",
+                effective_chairman,
+                stage_duration,
             )
             if is_telemetry_enabled():
                 from opentelemetry.trace import Status, StatusCode
+
                 span.set_status(Status(StatusCode.ERROR, "Chairman model failed"))
 
             # Build category-specific error message
