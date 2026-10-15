@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -64,6 +65,25 @@ OnProgressCallback = Callable[[int, int, list[str], list[str]], Awaitable[None]]
 RETRYABLE_STATUS_CODES = {408, 429, 502, 503}
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
+MAX_RETRY_DELAY = 30.0  # seconds; upper bound for provider-directed waits
+
+
+def _retry_delay(attempt: int, response: httpx.Response) -> float:
+    """Honor a finite numeric 429 Retry-After without extending retries indefinitely."""
+    delay = RETRY_BASE_DELAY * (2**attempt)
+    if response.status_code != 429:
+        return delay
+    header = response.headers.get("Retry-After")
+    if header is None:
+        return delay
+    try:
+        retry_after = float(header)
+    except ValueError:
+        return delay
+    if not math.isfinite(retry_after) or retry_after < 0:
+        return delay
+    return min(max(delay, retry_after), MAX_RETRY_DELAY)
+
 
 async def _extract_error_message(response: httpx.Response) -> str:
     """Extract the error message from an OpenRouter error response body.
@@ -194,7 +214,7 @@ async def query_model(
                 error_msg = await _extract_error_message(e.response)
 
                 if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = _retry_delay(attempt, e.response)
                     logger.warning(
                         "Retryable error querying %s (HTTP %d), attempt %d/%d. Retrying in %.1fs. Detail: %s",
                         model, status, attempt + 1, MAX_RETRIES, delay, error_msg,
@@ -469,7 +489,7 @@ async def query_model_streaming(
                 error_msg = await _extract_error_message(e.response)
 
                 if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = _retry_delay(attempt, e.response)
                     logger.warning(
                         "Retryable error streaming %s (HTTP %d), attempt %d/%d. Retrying in %.1fs. Detail: %s",
                         model, status, attempt + 1, MAX_RETRIES, delay, error_msg,
