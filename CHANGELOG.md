@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cancel and await background title generation when council or arena streams fail or close, preventing orphaned requests.
 
+- Store UTC-aware creation timestamps and sort legacy naive, Z, and offset-aware conversation dates chronologically without rewriting saved data.
+
 - Honor numeric Retry-After delays on 429 responses for regular and streaming model requests, with a 30-second cap and exponential fallback.
 
 - Stop retrying a timed-out model stream after response text arrives, preventing duplicated live output.
