@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
@@ -37,9 +37,6 @@ function App() {
   const configQuery = useConfig();
   const conversationsQuery = useConversations();
   const conversationQuery = useConversation(currentConversationId);
-  const pendingStatusQuery = usePendingStatus(currentConversationId, {
-    enabled: !!currentConversationId,
-  });
 
   // Derive config values
   const councilModels = configQuery.data?.council_models ?? [];
@@ -50,8 +47,11 @@ function App() {
   const clearPending = useClearPending();
 
   // ── Streaming ─────────────────────────────────────────────────────────
+  const blockedStreamSnapshot = useRef(null);
   const {
     conversation: currentConversation,
+    activeStream,
+    activeConversationId,
     isLoading,
     isExtendingDebate,
     setConversation: setCurrentConversation,
@@ -71,6 +71,10 @@ function App() {
     },
   });
 
+  const pendingStatusQuery = usePendingStatus(currentConversationId, {
+    enabled: !!currentConversationId && activeConversationId !== currentConversationId,
+  });
+
   // ── Sync fetched conversation into stream reducer ─────────────────────
   // When the TanStack query loads/reloads a conversation, push it into
   // the useReducer so the stream hook has the latest server state.
@@ -78,6 +82,30 @@ function App() {
     if (!conversationQuery.data || !currentConversationId) return;
 
     const conv = conversationQuery.data;
+    const blocked = blockedStreamSnapshot.current;
+    if (activeConversationId === currentConversationId) {
+      if (blocked?.owner !== activeStream) {
+        blockedStreamSnapshot.current = {
+          id: currentConversationId,
+          data: conv,
+          owner: activeStream,
+        };
+      }
+      return;
+    }
+    if (blocked?.id === currentConversationId) {
+      if (conversationQuery.isFetching) return;
+      // A refetch during the stream can still contain only the user message or
+      // an old checkpoint. Wait for a changed, saved assistant result.
+      const hasSavedResult = conv.messages.some(
+        (message, index) =>
+          message.role === 'assistant' &&
+          !message.partial &&
+          JSON.stringify(message) !== JSON.stringify(blocked.data.messages[index])
+      );
+      if (!hasSavedResult) return;
+    }
+    blockedStreamSnapshot.current = null;
     const pending = pendingStatusQuery.data;
 
     // No pending data or query still loading -- use conversation as-is
@@ -131,7 +159,10 @@ function App() {
       setCurrentConversation(conv);
     }
   }, [
+    activeStream,
+    activeConversationId,
     conversationQuery.data,
+    conversationQuery.isFetching,
     pendingStatusQuery.data,
     pendingStatusQuery.isLoading,
     currentConversationId,

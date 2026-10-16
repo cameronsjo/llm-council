@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pending-status polling and fetched snapshots no longer overwrite local streaming
+  progress, including after cancel or SSE errors without a refetch; polling resumes
+  after the local transport ends or is cancelled. Mid-stream refetches cannot erase
+  interrupted tokens before a changed, saved assistant result arrives; switching
+  conversations displays cached messages immediately during background refetches.
 - Remove optimistic messages and reset loading after an SSE inactivity timeout before starting recovery, preventing orphaned assistant bubbles.
 
 - Roll back optimistic messages by send identity, so overlapping failures and repeated cleanup cannot remove another send or saved history.
