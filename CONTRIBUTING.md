@@ -86,6 +86,11 @@ npm run lint
 
 ## Testing
 
+Run both local test suites with `make test`. Use `make test-watch` to re-run
+backend tests on Python changes, or `make test-cov` for backend coverage.
+These commands use the development dependencies installed by `uv sync`;
+frontend dependencies must also be installed for `make test`.
+
 ### Backend
 
 Test OpenRouter connectivity:

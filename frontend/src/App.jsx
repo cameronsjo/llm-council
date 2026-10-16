@@ -93,10 +93,18 @@ function App() {
       }
       return;
     }
-    if (conversationQuery.isFetching) return;
-    // Releasing transport ownership does not make the cached pre-stream data fresh.
-    // Keep local results until a new conversation snapshot arrives or we navigate.
-    if (blocked?.id === currentConversationId && blocked.data === conv) return;
+    if (blocked?.id === currentConversationId) {
+      if (conversationQuery.isFetching) return;
+      // A refetch during the stream can still contain only the user message or
+      // an old checkpoint. Wait for a changed, saved assistant result.
+      const hasSavedResult = conv.messages.some(
+        (message, index) =>
+          message.role === 'assistant' &&
+          !message.partial &&
+          JSON.stringify(message) !== JSON.stringify(blocked.data.messages[index])
+      );
+      if (!hasSavedResult) return;
+    }
     blockedStreamSnapshot.current = null;
     const pending = pendingStatusQuery.data;
 
@@ -460,6 +468,7 @@ function App() {
         <Standings />
       ) : (
         <ChatInterface
+          key={currentConversationId}
           conversation={currentConversation}
           isLoading={isLoading}
           isExtendingDebate={isExtendingDebate}

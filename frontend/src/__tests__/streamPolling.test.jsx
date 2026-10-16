@@ -96,6 +96,84 @@ afterEach(async () => {
 });
 
 describe('local stream ownership', () => {
+  it.each(['cancel', 'SSE error', 'shutdown'])(
+    'preserves tokens after a mid-stream refetch and %s until a saved assistant changes',
+    async (ending) => {
+      const savedHistory = [
+        { role: 'user', content: 'Earlier question' },
+        { role: 'assistant', rounds: [], synthesis: 'Earlier answer' },
+      ];
+      fixture.queries.a.data = { id: 'a', title: 'A', messages: savedHistory };
+      fixture.queries.a.refetch = vi.fn();
+      await rerender();
+      await send();
+      await emit('round_start', { round_type: 'responses', round_number: 1, models: ['m'] });
+      await emit('model_token', { model: 'm', token: 'Keep mid-stream progress' });
+      fixture.queries.a.data = {
+        id: 'a',
+        title: 'Mid-stream snapshot',
+        messages: [{ role: 'user', content: 'Question' }],
+      };
+      await rerender();
+      if (ending === 'cancel') {
+        await act(async () => container.querySelector('#cancel').click());
+      } else {
+        await emit(ending === 'shutdown' ? 'server_shutdown' : 'error');
+      }
+      await act(async () => fixture.streams[0].resolve());
+      expect(readState().messages).toHaveLength(4);
+      expect(readState().messages.at(-1).streaming.tokens.m).toBe('Keep mid-stream progress');
+      expect(pollingEnabled()).toBe(true);
+      if (ending === 'shutdown') expect(fixture.queries.a.refetch).toHaveBeenCalledOnce();
+
+      // Cloned saved history and partial assistant checkpoints are not new results.
+      for (const messages of [
+        JSON.parse(JSON.stringify(savedHistory)),
+        [...savedHistory, { role: 'assistant', partial: true, rounds: [] }],
+      ]) {
+        fixture.queries.a.data = { id: 'a', title: 'Still stale', messages };
+        await rerender();
+        expect(readState().messages).toHaveLength(4);
+        expect(readState().messages.at(-1).streaming.tokens.m).toBe('Keep mid-stream progress');
+      }
+      const savedResult = { role: 'assistant', rounds: [], synthesis: 'Updated saved answer' };
+      fixture.queries.a.data = {
+        id: 'a',
+        title: 'Saved result',
+        messages: [savedHistory[0], savedResult],
+      };
+      fixture.queries.a.isFetching = true;
+      await rerender();
+      expect(readState().messages.at(-1).streaming.tokens.m).toBe('Keep mid-stream progress');
+      fixture.queries.a.isFetching = false;
+      await rerender();
+      expect(readState().messages.at(-1)).toEqual(savedResult);
+    }
+  );
+
+  it('renders cached conversation b while its stale cache is fetching', async () => {
+    expect(readState().id).toBe('a');
+    fixture.queries.b.isFetching = true;
+    await act(async () => useUIStore.getState().setCurrentConversationId('b'));
+    expect(readState()).toMatchObject({ id: 'b', title: 'B', messages: [] });
+    await send();
+    expect(api.sendMessageStream.mock.lastCall[0]).toBe('b');
+    expect(readState().id).toBe('b');
+    expect(readState().messages[0].content).toBe('Question');
+  });
+
+  it('preserves cancelled tokens when the transport rejects after cancellation', async () => {
+    await send();
+    await emit('round_start', { round_type: 'responses', round_number: 1, models: ['m'] });
+    await emit('model_token', { model: 'm', token: 'Cancelled progress' });
+    await act(async () => container.querySelector('#cancel').click());
+    await act(async () => fixture.streams[0].reject(new Error('Late transport failure')));
+    expect(readState().messages).toHaveLength(2);
+    expect(readState().messages.at(-1).streaming.tokens.m).toBe('Cancelled progress');
+    expect(readState()._isLoading).toBe(false);
+    expect(pollingEnabled()).toBe(true);
+  });
+
   it('captures a new baseline when another stream starts on the same conversation before EOF', async () => {
     await send();
     await emit('error');

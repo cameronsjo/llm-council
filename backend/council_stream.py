@@ -1,12 +1,12 @@
 """Council streaming pipeline - extracted from main.py for testability."""
 
 import asyncio
-import json
 import logging
 import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from types import ModuleType
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from .attachments import process_attachments
 from .council import (
@@ -19,8 +19,9 @@ from .council import (
     stage2_collect_rankings,
     stage3_synthesize_final,
 )
-from .openrouter import ModelError, is_model_error
+from .openrouter import ModelError
 from .rankings_storage import record_stage2_matches
+from .task_utils import cancel_and_await_task
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +233,7 @@ async def run_council_pipeline(
         input.use_web_search, input.resume,
     )
 
+    title_task: asyncio.Task | None = None
     try:
         # --- Resume check ---
         pending_data = storage.get_pending_message(
@@ -458,6 +460,8 @@ async def run_council_pipeline(
             input.conversation_id, {"error": str(e)}, user_id=input.user_id
         )
         yield {"type": "error", "message": str(e)}
+    finally:
+        await cancel_and_await_task(title_task)
 
 
 async def retry_synthesis_pipeline(

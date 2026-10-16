@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ class ModelError:
     """Structured error from a failed model query."""
 
     model: str
-    status_code: int | None  # HTTP status; None for timeouts
+    status_code: int | None  # HTTP status; None for non-HTTP failures
     category: str  # billing | auth | rate_limit | transient | timeout | unknown
     message: str  # Human-readable detail from OpenRouter
 
@@ -64,6 +65,25 @@ OnProgressCallback = Callable[[int, int, list[str], list[str]], Awaitable[None]]
 RETRYABLE_STATUS_CODES = {408, 429, 502, 503}
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
+MAX_RETRY_DELAY = 30.0  # seconds; upper bound for provider-directed waits
+
+
+def _retry_delay(attempt: int, response: httpx.Response) -> float:
+    """Honor a finite numeric 429 Retry-After without extending retries indefinitely."""
+    delay = RETRY_BASE_DELAY * (2**attempt)
+    if response.status_code != 429:
+        return delay
+    header = response.headers.get("Retry-After")
+    if header is None:
+        return delay
+    try:
+        retry_after = float(header)
+    except ValueError:
+        return delay
+    if not math.isfinite(retry_after) or retry_after < 0:
+        return delay
+    return min(max(delay, retry_after), MAX_RETRY_DELAY)
+
 
 async def _extract_error_message(response: httpx.Response) -> str:
     """Extract the error message from an OpenRouter error response body.
@@ -194,7 +214,7 @@ async def query_model(
                 error_msg = await _extract_error_message(e.response)
 
                 if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = _retry_delay(attempt, e.response)
                     logger.warning(
                         "Retryable error querying %s (HTTP %d), attempt %d/%d. Retrying in %.1fs. Detail: %s",
                         model, status, attempt + 1, MAX_RETRIES, delay, error_msg,
@@ -235,6 +255,15 @@ async def query_model(
                     from opentelemetry.trace import Status, StatusCode
                     span.set_status(Status(StatusCode.ERROR, f"Timeout: {e}"))
                 return ModelError(model, None, "timeout", str(e))
+
+            except httpx.ConnectError as e:
+                logger.warning("Connection failed querying %s: %s", model, e)
+                if is_telemetry_enabled():
+                    span.record_exception(e)
+                    from opentelemetry.trace import Status, StatusCode
+
+                    span.set_status(Status(StatusCode.ERROR, f"Connection failed: {e}"))
+                return ModelError(model, None, "transient", str(e))
 
             except Exception as e:
                 logger.error("Unexpected error querying %s: %s", model, e)
@@ -469,7 +498,7 @@ async def query_model_streaming(
                 error_msg = await _extract_error_message(e.response)
 
                 if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = _retry_delay(attempt, e.response)
                     logger.warning(
                         "Retryable error streaming %s (HTTP %d), attempt %d/%d. Retrying in %.1fs. Detail: %s",
                         model, status, attempt + 1, MAX_RETRIES, delay, error_msg,
@@ -501,7 +530,9 @@ async def query_model_streaming(
                 return ModelError(model, status, _classify_error(status), error_msg)
 
             except httpx.TimeoutException as e:
-                if attempt < MAX_RETRIES - 1:
+                # Already-forwarded text cannot be retracted from the client.
+                # Retry only before content arrives, otherwise report the failure.
+                if not content_chunks and attempt < MAX_RETRIES - 1:
                     delay = RETRY_BASE_DELAY * (2 ** attempt)
                     logger.warning(
                         "Timeout streaming %s, attempt %d/%d. Retrying in %.1fs.",
@@ -511,7 +542,13 @@ async def query_model_streaming(
                     continue
 
                 # Per-model timeout post-retries — gracefully handled.
-                logger.warning("Timeout streaming %s after %d attempts (%.0fs each): %s", model, MAX_RETRIES, timeout, e)
+                logger.warning(
+                    "Timeout streaming %s after %d attempts (%.0fs each): %s",
+                    model,
+                    attempt + 1,
+                    timeout,
+                    e,
+                )
                 if is_telemetry_enabled():
                     span.record_exception(e)
                     from opentelemetry.trace import Status, StatusCode

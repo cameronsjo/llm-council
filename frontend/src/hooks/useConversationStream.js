@@ -77,7 +77,7 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
       apiFn,
       { loadingKey = 'isLoading', setupActions = [] } = {}
     ) => {
-      abortRef.current?.abort();
+      abortRef.current?.abort('superseded');
       const controller = new AbortController();
       abortRef.current = controller;
       setActiveStream({ conversationId });
@@ -88,8 +88,16 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
       const buildLoadingPayload = (active) =>
         loadingKey === 'isExtendingDebate' ? { isExtendingDebate: active } : { isLoading: active };
 
+      const optimisticId = Symbol('optimistic-send');
       dispatch({ type: loadingAction, payload: buildLoadingPayload(true) });
-      for (const action of setupActions) dispatch(action);
+      for (const action of setupActions) {
+        dispatch({ ...action, payload: { ...action.payload, optimisticId } });
+      }
+      const rollbackOptimistic = () => {
+        if (setupActions.length > 0) {
+          dispatch({ type: 'ROLLBACK_OPTIMISTIC', payload: { optimisticId } });
+        }
+      };
 
       try {
         await Sentry.startSpan(
@@ -154,12 +162,19 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
                 onComplete?.();
               }
             } catch (error) {
-              if (controller.signal.aborted || error.name === 'AbortError') return;
+              if (error.name === 'AbortError') return;
+              if (controller.signal.aborted) {
+                // Superseded sends still need identity-specific cleanup; user cancellation
+                // deliberately keeps local progress even if the transport fails afterward.
+                if (controller.signal.reason === 'superseded') rollbackOptimistic();
+                return;
+              }
               if (error instanceof AuthRedirectError) {
                 onAuthExpired?.();
                 return;
               }
-              if (error instanceof SSETimeoutError) {
+              const timedOut = error instanceof SSETimeoutError;
+              if (timedOut) {
                 Sentry.captureMessage('SSE stream timed out', {
                   level: 'warning',
                   tags: { operation: operationName, conversationId },
@@ -169,22 +184,23 @@ export function useConversationStream({ onComplete, onAuthExpired, onServerShutd
                   operationName,
                   conversationId
                 );
-                resetLoading();
-                onServerShutdown?.('Stream timed out — the server may be unresponsive');
-                return;
+              } else {
+                Sentry.captureException(error, {
+                  tags: { operation: operationName, conversationId },
+                });
+                console.error(
+                  '[stream] %s failed. ConversationId: %s, Error: %s',
+                  operationName,
+                  conversationId,
+                  error.message,
+                  error
+                );
               }
-              Sentry.captureException(error, {
-                tags: { operation: operationName, conversationId },
-              });
-              console.error(
-                '[stream] %s failed. ConversationId: %s, Error: %s',
-                operationName,
-                conversationId,
-                error.message,
-                error
-              );
-              if (setupActions.length > 0) dispatch({ type: 'ROLLBACK_OPTIMISTIC' });
+              rollbackOptimistic();
               resetLoading();
+              if (timedOut) {
+                onServerShutdown?.('Stream timed out — the server may be unresponsive');
+              }
             }
           }
         );

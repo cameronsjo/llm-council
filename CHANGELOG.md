@@ -30,7 +30,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pending-status polling and fetched snapshots no longer overwrite local streaming
   progress, including after cancel or SSE errors without a refetch; polling resumes
-  after the local transport ends or is cancelled.
+  after the local transport ends or is cancelled. Mid-stream refetches cannot erase
+  interrupted tokens before a changed, saved assistant result arrives; switching
+  conversations displays cached messages immediately during background refetches.
+- Remove optimistic messages and reset loading after an SSE inactivity timeout before starting recovery, preventing orphaned assistant bubbles.
+
+- Roll back optimistic messages by send identity, so overlapping failures and repeated cleanup cannot remove another send or saved history.
+
+- Save conversation JSON atomically and serialize conversation updates to prevent truncated files and lost concurrent changes.
+
+- Cancel and await background title generation when council or arena streams fail or close, preventing orphaned requests.
+
+- Avoid duplicate chairman requests after billing/authentication errors or exhausted HTTP retries, while retaining one recovery attempt for timeouts, connection failures, and other server errors.
+
+- Store UTC-aware creation timestamps and sort legacy naive, Z, and offset-aware conversation dates chronologically without rewriting saved data.
+
+- Honor numeric Retry-After delays on 429 responses for regular and streaming model requests, with a 30-second cap and exponential fallback.
+
+- Stop retrying a timed-out model stream after response text arrives, preventing duplicated live output.
+
+- Corrupt stream events now stop reading, clear loading indicators, and show an
+  actionable error instead of silently losing events or reporting completion.
+- Attachment batches retain successful uploads when another file fails, with inline
+  errors and retry/dismiss controls for each failed file.
+- Both message composers block button and keyboard submission while attachments
+  upload, showing an uploading label until all selected files are ready.
+- Conversation switches start a fresh composer, clearing draft text and staged
+  attachments and preventing late uploads from attaching to another conversation.
+- `make test` now runs both test suites, with backend watch and coverage targets
+  and correct phony declarations for build commands.
+- Markdown downloads now include unified council responses, peer evaluations,
+  and synthesis, while preserving legacy exports and partially completed councils.
 - OpenRouter model queries, streaming requests, and model-catalog refreshes now
   use the current API key after configuration reload without a server restart.
 
